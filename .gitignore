@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+build
+build/*/**
+node_modules
+dist
+dist/.DS_Store
+dist-ssr
+*.local
+*.tsbuildinfo
+
+# Build files
+public/*/*.wasm
+public/*/*.so
+public/*/menu
+public/*/filesystem_stdio
+public/cs16-client
+public/hlsdk-portable
+public/xash3d-fwgs
+public/hl/valve
+
+# misc
+vite.config.d.ts
+vite.config.js
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
