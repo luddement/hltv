@@ -1,0 +1,39 @@
+{
+  "protocol": 46,
+  "durationMs": 10000,
+  "frames": [
+    {
+      "time": 1,
+      "messages": [
+        { "type": 13, "data": { "clientIndex": 0, "clientUserId": 10, "clientUserInfo": "\\name\\Alpha" } },
+        { "type": 13, "data": { "clientIndex": 1, "clientUserId": 20, "clientUserInfo": "\\name\\Bravo" } },
+        { "type": 64, "data": { "name": "TeamInfo", "payload": [1, 84, 69, 82, 82, 79, 82, 73, 83, 84, 0] } },
+        { "type": 64, "data": { "name": "TeamInfo", "payload": [2, 67, 84, 0] } },
+        { "type": 64, "data": { "name": "RoundTime", "payload": [180, 0] } }
+      ]
+    },
+    {
+      "time": 2,
+      "messages": [
+        { "type": 64, "data": { "name": "DeathMsg", "payload": [1, 2, 1, 100, 101, 97, 103, 108, 101, 0] } }
+      ]
+    },
+    {
+      "time": 3,
+      "messages": [
+        { "type": 64, "data": { "name": "DeathMsg", "payload": [1, 1, 0, 103, 108, 111, 99, 107, 0] } }
+      ]
+    }
+  ],
+  "expected": {
+    "diagnostics": { "deathEvents": 2, "roundCount": 1, "playerSessions": 2, "unknownPlayerReferences": 0 },
+    "players": [
+      { "playerId": "player-1", "userId": 10, "joinedAtMs": 1000, "leftAtMs": 10000, "names": ["Alpha"], "teams": ["TERRORIST"] },
+      { "playerId": "player-2", "userId": 20, "joinedAtMs": 1000, "leftAtMs": 10000, "names": ["Bravo"], "teams": ["CT"] }
+    ],
+    "deaths": [
+      { "demoTimeMs": 2000, "killerPlayerId": "player-1", "victimPlayerId": "player-2", "weapon": "deagle", "headshot": true, "teamKill": { "value": false, "evidence": "derived" }, "worldKill": false, "suicide": false },
+      { "demoTimeMs": 3000, "killerPlayerId": "player-1", "victimPlayerId": "player-1", "weapon": "glock", "headshot": false, "teamKill": { "value": false, "evidence": "derived" }, "worldKill": false, "suicide": true }
+    ]
+  }
+}

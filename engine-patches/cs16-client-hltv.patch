@@ -1,0 +1,1148 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1251583..5f750de 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,6 +1,10 @@
+ cmake_minimum_required(VERSION 3.10)
+ project(cs16-client)
+ 
++if(EMSCRIPTEN)
++	set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
++endif()
++
+ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
+ 
+ include(LibraryNaming)
+@@ -144,4 +148,4 @@ endif()
+ 
+ set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+ 
+-include(CPack)
+\ No newline at end of file
++include(CPack)
+diff --git a/cl_dll/CMakeLists.txt b/cl_dll/CMakeLists.txt
+index c62b5bf..b200410 100644
+--- a/cl_dll/CMakeLists.txt
++++ b/cl_dll/CMakeLists.txt
+@@ -60,6 +60,12 @@ endif()
+ 
+ add_library(${CLIENT_LIB} SHARED ${CS_CLIENT_SRC})
+ 
++if(EMSCRIPTEN)
++	target_compile_options(${CLIENT_LIB} PRIVATE -fPIC)
++	target_link_options(${CLIENT_LIB} PRIVATE -sSIDE_MODULE=1)
++	set_target_properties(${CLIENT_LIB} PROPERTIES SUFFIX ".wasm")
++endif()
++
+ set_target_postfix(${CLIENT_LIB})
+ 
+ install(TARGETS ${CLIENT_LIB}
+@@ -72,4 +78,4 @@ install(TARGETS ${CLIENT_LIB}
+ if(MSVC)
+ 	install(FILES $<TARGET_PDB_FILE:${CLIENT_LIB}>
+ 		DESTINATION "${GAME_DIR}/${CLIENT_INSTALL_DIR}/" OPTIONAL)
+-endif()
+\ No newline at end of file
++endif()
+diff --git a/cl_dll/death.cpp b/cl_dll/death.cpp
+index 32e836d..c1560aa 100644
+--- a/cl_dll/death.cpp
++++ b/cl_dll/death.cpp
+@@ -172,7 +172,7 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
+ 
+ 	//if (gViewPort)
+ 	//	gViewPort->DeathMsg( killer, victim );
+-	gHUD.m_Scoreboard.DeathMsg( killer, victim );
++	gHUD.m_Scoreboard.DeathMsg( killer, victim, !strncmp( killedwith, "d_teammate", sizeof(killedwith) ) );
+ 
+ 	gHUD.m_Spectator.DeathMessage(victim);
+ 	int i;
+@@ -306,4 +306,3 @@ int CHudDeathNotice :: MsgFunc_DeathMsg( const char *pszName, int iSize, void *p
+ 
+ 
+ 
+-
+diff --git a/cl_dll/entity.cpp b/cl_dll/entity.cpp
+index 254100f..e642f6a 100644
+--- a/cl_dll/entity.cpp
++++ b/cl_dll/entity.cpp
+@@ -152,9 +152,18 @@ void DLLEXPORT HUD_ProcessPlayerState( struct entity_state_s *dst, const struct
+ 	{
+ 		g_iTeamNumber = g_PlayerExtraInfo[dst->number].teamnumber;
+ 
+-		dst->iuser1 = g_iUser1 = src->iuser1;
+-		dst->iuser2 = g_iUser2 = src->iuser2;
+-		dst->iuser3 = g_iUser3 = src->iuser3;
++		if( CVAR_GET_FLOAT( "hltv_native_spectator" ) != 0.0f )
++		{
++			dst->iuser1 = g_iUser1;
++			dst->iuser2 = g_iUser2;
++			dst->iuser3 = g_iUser3;
++		}
++		else
++		{
++			dst->iuser1 = g_iUser1 = src->iuser1;
++			dst->iuser2 = g_iUser2 = src->iuser2;
++			dst->iuser3 = g_iUser3 = src->iuser3;
++		}
+ 	}
+ 	dst->fuser2					= src->fuser2;
+ 	if( src->number > 0 && src->number < MAX_PLAYERS )
+@@ -338,6 +347,20 @@ fired during this frame, handle the event by it's tag ( e.g., muzzleflash, sound
+ void DLLEXPORT HUD_StudioEvent( const struct mstudioevent_s *event, struct cl_entity_s *entity )
+ {
+ // #define CL_MuzzleFlash( x, y, z ) gEngfuncs.pEfxAPI->R_MuzzleFlash( y, z )
++	const bool replayLabMuzzleEvent = event->event == 5001 || event->event == 5011 ||
++		event->event == 5021 || event->event == 5031;
++	if( replayLabMuzzleEvent && entity == gEngfuncs.GetViewModel() &&
++		CVAR_GET_FLOAT( "hltv_native_spectator" ) != 0.0f )
++	{
++		extern int g_ReplayLabMuzzleSerial;
++		extern float g_ReplayLabMuzzleTime;
++		static int consumedMuzzleSerial = 0;
++		float muzzleAge = gEngfuncs.GetClientTime() - g_ReplayLabMuzzleTime;
++		if( consumedMuzzleSerial == g_ReplayLabMuzzleSerial ||
++			muzzleAge < -0.01f || muzzleAge > 0.5f )
++			return;
++		consumedMuzzleSerial = g_ReplayLabMuzzleSerial;
++	}
+ 	switch( event->event )
+ 	{
+ 	case 5001:
+@@ -792,4 +829,3 @@ cl_entity_t DLLEXPORT *HUD_GetUserEntity( int index )
+ {
+ 	return NULL;
+ }
+-
+diff --git a/cl_dll/include/eventscripts.h b/cl_dll/include/eventscripts.h
+index c576f44..fcb2dad 100644
+--- a/cl_dll/include/eventscripts.h
++++ b/cl_dll/include/eventscripts.h
+@@ -65,6 +65,12 @@
+ 
+ #define IS_FIRSTPERSON_SPEC ( g_iUser1 == OBS_IN_EYE || (g_iUser1 && (gHUD.m_Spectator.m_pip->value == INSET_IN_EYE)) )
+ 
++// Native HLTV has no local clientdata viewmodel clock. Weapon event scripts
++// publish one serial and timestamp per real first-person shot so the selected
++// spectator viewmodel can start its animation exactly once.
++extern int g_ReplayLabMuzzleSerial;
++extern float g_ReplayLabMuzzleTime;
++
+ // Some of these are HL/TFC specific?
+ void EV_GetGunPosition( struct event_args_s *args, Vector &pos, const Vector &origin );
+ void EV_GetDefaultShellInfo( struct event_args_s *args, float *origin, float *velocity, float *ShellVelocity, float *ShellOrigin, float *forward, float *right, float *up, float forwardScale, float upScale, float rightScale, bool bReverseDirection = false );
+@@ -87,6 +93,12 @@ inline void EV_MuzzleFlash( void )
+ 	if ( !ent )
+ 		return;
+ 
++	if( gEngfuncs.pfnGetCvarFloat( "hltv_native_spectator" ) != 0.0f )
++	{
++		++g_ReplayLabMuzzleSerial;
++		g_ReplayLabMuzzleTime = gEngfuncs.GetClientTime();
++	}
++
+ 	// Or in the muzzle flash
+ 	ent->curstate.effects |= EF_MUZZLEFLASH;
+ }
+diff --git a/cl_dll/hud.h b/cl_dll/hud.h
+index b75b3c9..18e05b9 100644
+--- a/cl_dll/hud.h
++++ b/cl_dll/hud.h
+@@ -359,9 +359,10 @@ public:
+ 	int DrawTeams( float listslot );
+ 	int DrawPlayers( float listslot, int nameoffset = 0, const char *team = NULL ); // returns the ypos where it finishes drawing
+ 
+-	void DeathMsg( int killer, int victim );
++	void DeathMsg( int killer, int victim, bool teamkill );
+ 	void SetScoreboardDefaults( void );
+ 	void GetAllPlayersInfo( void );
++	void RebuildTeams( void );
+ 
+ 	bool ShouldDrawScoreboard() const;
+ 
+@@ -380,6 +381,7 @@ public:
+ 
+ 	bool m_bForceDraw; // if called by showscoreboard2
+ 	bool m_bShowscoresHeld;
++	bool m_bReceivedScoreInfo;
+ 
+ private:
+ 	int m_iLastKilledBy;
+@@ -532,6 +534,7 @@ public:
+ 	int m_fMenuDisplayed;
+ 	bool m_bAllowSpec;
+ 	cvar_t *_extended_menus;
++	cvar_t *hltv_replay_mode;
+ 	int m_bitsValidSlots;
+ 	float m_flShutoffTime;
+ 	int m_fWaitingForMore;
+@@ -918,6 +921,7 @@ private:
+ 		char m_szNameAndHealth[80];
+ 	} label;
+ 	int m_hTimerTexture;
++	bool m_bReceivedSpecHealth[MAX_PLAYERS+1];
+ 
+ 	enum {
+ 		ROOT_MENU = (1<<0),
+diff --git a/cl_dll/hud/scoreboard.cpp b/cl_dll/hud/scoreboard.cpp
+index faed4a2..f64d0dc 100644
+--- a/cl_dll/hud/scoreboard.cpp
++++ b/cl_dll/hud/scoreboard.cpp
+@@ -39,6 +39,8 @@ int g_iUser1;
+ int g_iUser2;
+ int g_iUser3;
+ int g_iTeamNumber;
++static cvar_t *hltv_legacy_scoreboard;
++static cvar_t *hltv_force_scoreboard;
+ 
+ 
+ // X positions
+@@ -107,6 +109,8 @@ int CHudScoreboard :: Init( void )
+ 
+ 	cl_showpacketloss = CVAR_CREATE( "cl_showpacketloss", "0", FCVAR_ARCHIVE );
+ 	cl_showplayerversion = CVAR_CREATE( "cl_showplayerversion", "0", 0 );
++	hltv_legacy_scoreboard = CVAR_CREATE( "hltv_legacy_scoreboard", "0", 0 );
++	hltv_force_scoreboard = CVAR_CREATE( "hltv_force_scoreboard", "0", 0 );
+ 
+ 	return 1;
+ }
+@@ -131,6 +135,7 @@ void CHudScoreboard :: InitHUDData( void )
+ 	m_fLastKillTime = 0;
+ 	m_iPlayerNum = 0;
+ 	m_iNumTeams = 0;
++	m_bReceivedScoreInfo = false;
+ 	memset( g_TeamInfo, 0, sizeof g_TeamInfo );
+ 
+ 	for ( int i = 1; i <= MAX_PLAYERS; i++ )
+@@ -139,16 +144,29 @@ void CHudScoreboard :: InitHUDData( void )
+ 		g_PlayerExtraInfo[i].sb_account = -1;
+ 	}
+ 
+-	m_iFlags &= ~HUD_DRAW;  // starts out inactive
++	// Keep Draw in the HUD traversal; Draw itself is cheap and gates on
++	// ShouldDrawScoreboard. Old HLTV signon streams may not emit ScoreInfo until
++	// after the user first presses Tab, so waiting for that message makes the
++	// key appear broken during early playback.
++	m_iFlags |= HUD_DRAW;
+ 
+ 	m_iFlags |= HUD_INTERMISSION; // is always drawn during an intermission
+ }
+ 
+ bool CHudScoreboard :: ShouldDrawScoreboard() const
+ {
++	if( hltv_force_scoreboard && hltv_force_scoreboard->value != 0.0f )
++		return true;
++
+ 	if( m_bForceDraw )
+ 		return true;
+ 
++	// Replay Lab's local in-eye spectator has no server-owned health value, so
++	// the normal "dead player" rule would cover every selected highlight with
++	// the scoreboard. Keep the explicit Tab/+showscores path available.
++	if( CVAR_GET_FLOAT( "hltv_native_spectator" ) != 0.0f )
++		return m_bShowscoresHeld;
++
+ 	if( m_bShowscoresHeld || gHUD.m_Health.m_iHealth <= 0 || gHUD.m_iIntermission )
+ 		return true;
+ 
+@@ -165,10 +183,29 @@ int CHudScoreboard :: Draw( float flTime )
+ 
+ 	if( !m_bForceDraw )
+ 	{
+-		xstart     = 0.125f * ScreenWidth;
+-		xend       = ScreenWidth - xstart;
+-		ystart     = 90;
+-		yend       = ScreenHeight - ystart;
++		const bool legacyLayout = hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f;
++		if( legacyLayout )
++		{
++			// The original CS scoreboard was authored for an 800x600 viewport.
++			// Scale from the limiting axis and centre it, preserving its period
++			// proportions on widescreen/high-resolution browser canvases.
++			const float scaleX = ScreenWidth / 800.0f;
++			const float scaleY = ScreenHeight / 600.0f;
++			const float scale = min( scaleX, scaleY );
++			const int width = (int)( 650.0f * scale );
++			const int height = (int)( 423.0f * scale );
++			xstart = ( ScreenWidth - width ) / 2;
++			xend = xstart + width;
++			ystart = ( ScreenHeight - height ) / 2;
++			yend = ystart + height;
++		}
++		else
++		{
++			xstart = 0.125f * ScreenWidth;
++			xend = ScreenWidth - xstart;
++			ystart = 90;
++			yend = ScreenHeight - ystart;
++		}
+ 		m_colors.r = 0;
+ 		m_colors.g = 0;
+ 		m_colors.b = 0;
+@@ -182,6 +219,8 @@ int CHudScoreboard :: Draw( float flTime )
+ int CHudScoreboard :: DrawScoreboard( float fTime )
+ {
+ 	GetAllPlayersInfo();
++	if( hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f )
++		RebuildTeams();
+ 	char ServerName[90];
+ 
+ //	Packetloss removed on Kelly 'shipping nazi' Bailey's orders
+@@ -193,16 +232,28 @@ int CHudScoreboard :: DrawScoreboard( float fTime )
+ 	// just sort the list on the fly
+ 	// list is sorted first by frags, then by deaths
+ 	float list_slot = 0;
++	const bool legacyLayout = hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f;
+ 
+ 	// calculate columns sizes
+ 	g_Columns[COL_PING] = Column( xend - 15, Localize( "#PlayerPing" ) );
+ 	g_Columns[COL_DEATHS] = Column( g_Columns[COL_PING].end - 10, Localize( "#PlayerDeath" ) );
+ 	g_Columns[COL_KILLS] = Column( g_Columns[COL_DEATHS].end - 10, Localize( "#PlayerScore" ) );
+-	g_Columns[COL_MONEY] = Column( g_Columns[COL_KILLS].end - 10, Localize( "#Cstrike_ACCOUNT" ) );
+-	g_Columns[COL_MONEY].end = g_Columns[COL_MONEY].start - DrawUtils::HudStringLen( "$16000" );
+-	g_Columns[COL_HP] = Column( g_Columns[COL_MONEY].end - 10, Localize( "#Cstrike_HEALTH" ) );
+-	g_Columns[COL_HP].end = g_Columns[COL_HP].start - DrawUtils::HudStringLen( "100" );
+-	g_Columns[COL_ATTRIB] = Column( g_Columns[COL_HP].end - 10 );
++	if( legacyLayout )
++	{
++		// Protocol 46 HLTV recordings do not carry CS 1.6's spectator
++		// health/account messages. Use the period-correct three-column layout.
++		g_Columns[COL_MONEY] = Column( g_Columns[COL_KILLS].end );
++		g_Columns[COL_HP] = Column( g_Columns[COL_KILLS].end );
++		g_Columns[COL_ATTRIB] = Column( g_Columns[COL_KILLS].end - 10 );
++	}
++	else
++	{
++		g_Columns[COL_MONEY] = Column( g_Columns[COL_KILLS].end - 10, Localize( "#Cstrike_ACCOUNT" ) );
++		g_Columns[COL_MONEY].end = g_Columns[COL_MONEY].start - DrawUtils::HudStringLen( "$16000" );
++		g_Columns[COL_HP] = Column( g_Columns[COL_MONEY].end - 10, Localize( "#Cstrike_HEALTH" ) );
++		g_Columns[COL_HP].end = g_Columns[COL_HP].start - DrawUtils::HudStringLen( "100" );
++		g_Columns[COL_ATTRIB] = Column( g_Columns[COL_HP].end - 10 );
++	}
+ 	g_Columns[COL_ATTRIB].end = g_Columns[COL_ATTRIB].start - DrawUtils::HudStringLen( "#Cstrike_DEFUSE_KIT" );
+ 	g_Columns[COL_NAME] = Column( xstart + 15, nullptr, false );
+ 	g_Columns[COL_NAME].end = g_Columns[COL_ATTRIB].end - 10;
+@@ -221,8 +272,11 @@ int CHudScoreboard :: DrawScoreboard( float fTime )
+ 		strncpy( ServerName, gHUD.m_Teamplay ? "TEAMS" : "PLAYERS", 80 );
+ 
+ 	DrawUtils::DrawHudString( g_Columns[COL_NAME].start, ypos, g_Columns[COL_NAME].end, ServerName, 255, 140, 0 );
+-	DrawUtils::DrawHudStringReverse( g_Columns[COL_HP].start, ypos, g_Columns[COL_HP].end, g_Columns[COL_HP].name, 255, 140, 0 );
+-	DrawUtils::DrawHudStringReverse( g_Columns[COL_MONEY].start, ypos, g_Columns[COL_MONEY].end, g_Columns[COL_MONEY].name, 255, 140, 0 );
++	if( !legacyLayout )
++	{
++		DrawUtils::DrawHudStringReverse( g_Columns[COL_HP].start, ypos, g_Columns[COL_HP].end, g_Columns[COL_HP].name, 255, 140, 0 );
++		DrawUtils::DrawHudStringReverse( g_Columns[COL_MONEY].start, ypos, g_Columns[COL_MONEY].end, g_Columns[COL_MONEY].name, 255, 140, 0 );
++	}
+ 	DrawUtils::DrawHudStringReverse( g_Columns[COL_KILLS].start, ypos, g_Columns[COL_KILLS].end, g_Columns[COL_KILLS].name, 255, 140, 0 );
+ 	DrawUtils::DrawHudStringReverse( g_Columns[COL_DEATHS].start, ypos, g_Columns[COL_DEATHS].end, g_Columns[COL_DEATHS].name, 255, 140, 0 );
+ 	DrawUtils::DrawHudStringReverse( g_Columns[COL_PING].start, ypos, g_Columns[COL_PING].end, g_Columns[COL_PING].name, 255, 140, 0 );
+@@ -472,23 +526,26 @@ int CHudScoreboard :: DrawPlayers( float list_slot, int nameoffset, const char *
+ 			DrawUtils::DrawHudStringReverse( g_Columns[COL_ATTRIB].start, ypos, g_Columns[COL_ATTRIB].end, gEngfuncs.PlayerInfo_ValueForKey( best_player, "cscl_ver" ),  r, g, b );
+ 		}
+ 
+-		if ( g_PlayerExtraInfo[best_player].sb_health >= 0 && !g_PlayerExtraInfo[best_player].dead )
++		if( !hltv_legacy_scoreboard || hltv_legacy_scoreboard->value == 0.0f )
+ 		{
+-			if ( gHUD.m_pShowHealth->value )
++			if ( g_PlayerExtraInfo[best_player].sb_health >= 0 && !g_PlayerExtraInfo[best_player].dead )
+ 			{
+-				static char buf[64];
+-				sprintf( buf, "%d", g_PlayerExtraInfo[best_player].sb_health );
+-				DrawUtils::DrawHudStringReverse( g_Columns[COL_HP].start, ypos, g_Columns[COL_HP].end, buf, r, g, b );
++				if ( gHUD.m_pShowHealth->value )
++				{
++					static char health[64];
++					sprintf( health, "%d", g_PlayerExtraInfo[best_player].sb_health );
++					DrawUtils::DrawHudStringReverse( g_Columns[COL_HP].start, ypos, g_Columns[COL_HP].end, health, r, g, b );
++				}
+ 			}
+-		}
+ 
+-		if ( g_PlayerExtraInfo[best_player].sb_account >= 0 )
+-		{
+-			if ( gHUD.m_pShowMoney->value )
++			if ( g_PlayerExtraInfo[best_player].sb_account >= 0 )
+ 			{
+-				static char buf[64];
+-				sprintf( buf, "$%d", g_PlayerExtraInfo[best_player].sb_account );
+-				DrawUtils::DrawHudStringReverse( g_Columns[COL_MONEY].start, ypos, g_Columns[COL_MONEY].end, buf, r, g, b );
++				if ( gHUD.m_pShowMoney->value )
++				{
++					static char account[64];
++					sprintf( account, "$%d", g_PlayerExtraInfo[best_player].sb_account );
++					DrawUtils::DrawHudStringReverse( g_Columns[COL_MONEY].start, ypos, g_Columns[COL_MONEY].end, account, r, g, b );
++				}
+ 			}
+ 		}
+ 
+@@ -532,6 +589,34 @@ void CHudScoreboard :: GetAllPlayersInfo( void )
+ 	{
+ 		GetPlayerInfo( i, &g_PlayerInfoList[i] );
+ 
++		// Some early HLTV relays omit TeamInfo entirely. The recorded player
++		// model remains authoritative for classic Counter-Strike teams and is
++		// stable across the protocol-46/47/48 resource sets.
++		if( hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f
++			&& g_PlayerInfoList[i].name && !g_PlayerExtraInfo[i].teamname[0] )
++		{
++			const char *model = g_PlayerInfoList[i].model;
++			if( model && ( !stricmp( model, "terror" ) || !stricmp( model, "leet" )
++				|| !stricmp( model, "arctic" ) || !stricmp( model, "guerilla" ) ) )
++			{
++				strncpy( g_PlayerExtraInfo[i].teamname, "TERRORIST", MAX_TEAM_NAME );
++				g_PlayerExtraInfo[i].teamnumber = TEAM_TERRORIST;
++				gHUD.m_Teamplay = 1;
++			}
++			else if( model && ( !stricmp( model, "urban" ) || !stricmp( model, "gsg9" )
++				|| !stricmp( model, "sas" ) || !stricmp( model, "gign" ) ) )
++			{
++				strncpy( g_PlayerExtraInfo[i].teamname, "CT", MAX_TEAM_NAME );
++				g_PlayerExtraInfo[i].teamnumber = TEAM_CT;
++				gHUD.m_Teamplay = 1;
++			}
++			else if( g_PlayerInfoList[i].spectator )
++			{
++				strncpy( g_PlayerExtraInfo[i].teamname, "SPECTATOR", MAX_TEAM_NAME );
++				g_PlayerExtraInfo[i].teamnumber = TEAM_SPECTATOR;
++			}
++		}
++
+ 		if ( g_PlayerInfoList[i].thisplayer )
+ 			m_iPlayerNum = i;  // !!!HACK: this should be initialized elsewhere... maybe gotten from the engine
+ 	}
+@@ -540,6 +625,7 @@ void CHudScoreboard :: GetAllPlayersInfo( void )
+ int CHudScoreboard :: MsgFunc_ScoreInfo( const char *pszName, int iSize, void *pbuf )
+ {
+ 	m_iFlags |= HUD_DRAW;
++	m_bReceivedScoreInfo = true;
+ 
+ 	BufferReader reader( pszName, pbuf, iSize );
+ 	short cl = reader.ReadByte();
+@@ -590,23 +676,34 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
+ 		// just in case
+ 		else teamNumber = TEAM_UNASSIGNED;
+ 
++		// Legacy HLTV signon streams may omit or deliver GameMode before the
++		// client HUD is ready. TeamInfo is authoritative and means the exact
++		// same thing for scoreboard presentation.
++		if( teamNumber == TEAM_TERRORIST || teamNumber == TEAM_CT )
++			gHUD.m_Teamplay = 1;
++
+ 		strncpy( g_PlayerExtraInfo[cl].teamname, teamName, MAX_TEAM_NAME );
+ 		g_PlayerExtraInfo[cl].teamnumber = teamNumber;
+ 	}
+ 
+-	// rebuild the list of teams
++	GetAllPlayersInfo();
++	RebuildTeams();
+ 
+-	// clear out player counts from teams
+-	for ( int i = 1; i <= m_iNumTeams; i++ )
+-	{
+-		g_TeamInfo[i].players = 0;
+-	}
++	return 1;
++}
+ 
+-	// rebuild the team list
+-	GetAllPlayersInfo();
++void CHudScoreboard :: RebuildTeams( void )
++{
++	// Rebuild from authoritative TeamInfo or, for early HLTV, the inferred
++	// classic-CS player models populated by GetAllPlayersInfo. TeamScore can
++	// arrive before the player table, so retain any recorded aggregate scores.
++	team_info_t previousTeams[MAX_TEAMS+1];
++	const int previousTeamCount = m_iNumTeams;
++	memcpy( previousTeams, g_TeamInfo, sizeof previousTeams );
++	memset( g_TeamInfo, 0, sizeof g_TeamInfo );
+ 	m_iNumTeams = 0;
+ 
+-	for ( int i = 1; i < MAX_PLAYERS; i++ )
++	for ( int i = 1; i <= MAX_PLAYERS; i++ )
+ 	{
+ 		int j;
+ 		//if ( g_PlayerInfoList[i].name == NULL )
+@@ -640,6 +737,17 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
+ 			strncpy( g_TeamInfo[j].name, g_PlayerExtraInfo[i].teamname, MAX_TEAM_NAME );
+ 			g_TeamInfo[j].teamnumber = g_PlayerExtraInfo[i].teamnumber;
+ 			g_TeamInfo[j].players = 0;
++
++			for( int oldTeam = 1; oldTeam <= previousTeamCount; oldTeam++ )
++			{
++				if( !stricmp( previousTeams[oldTeam].name, g_TeamInfo[j].name ) )
++				{
++					g_TeamInfo[j].scores_overriden = previousTeams[oldTeam].scores_overriden;
++					g_TeamInfo[j].frags = previousTeams[oldTeam].frags;
++					g_TeamInfo[j].deaths = previousTeams[oldTeam].deaths;
++					break;
++				}
++			}
+ 		}
+ 
+ 		g_TeamInfo[j].players++;
+@@ -652,7 +760,6 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
+ 			memset( &g_TeamInfo[i], 0, sizeof(team_info_t) );
+ 	}
+ 
+-	return 1;
+ }
+ 
+ // Message handler for TeamScore message
+@@ -665,30 +772,60 @@ int CHudScoreboard :: MsgFunc_TeamScore( const char *pszName, int iSize, void *p
+ {
+ 	BufferReader reader( pszName, pbuf, iSize );
+ 	char *TeamName = reader.ReadString();
++	const int score = reader.ReadShort();
+ 	int i;
++	if( hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f )
++	{
++		GetAllPlayersInfo();
++		RebuildTeams();
++	}
+ 
+ 	// find the team matching the name
+-	for ( i = 0; i < m_iNumTeams; i++ )
++	for ( i = 1; i <= m_iNumTeams; i++ )
+ 	{
+ 		if ( !stricmp( TeamName, g_TeamInfo[i].name ) )
+ 			break;
+ 	}
+ 	if ( i > m_iNumTeams )
+ 	{
+-		reader.Flush();
+-		return 1;
++		// HLTV may send TeamScore before player/model data. Keep it as a
++		// pending team entry; RebuildTeams will attach players once available.
++		if( !TeamName[0] || m_iNumTeams >= MAX_TEAMS )
++			return 1;
++
++		i = ++m_iNumTeams;
++		strncpy( g_TeamInfo[i].name, TeamName, MAX_TEAM_NAME );
++		g_TeamInfo[i].name[MAX_TEAM_NAME-1] = 0;
++		if( !stricmp( TeamName, "TERRORIST" ) )
++			g_TeamInfo[i].teamnumber = TEAM_TERRORIST;
++		else if( !stricmp( TeamName, "CT" ) )
++			g_TeamInfo[i].teamnumber = TEAM_CT;
++		else if( !stricmp( TeamName, "SPECTATOR" ) )
++			g_TeamInfo[i].teamnumber = TEAM_SPECTATOR;
+ 	}
+ 
+ 	// use this new score data instead of combined player scores
+ 	g_TeamInfo[i].scores_overriden = TRUE;
+-	g_TeamInfo[i].frags = reader.ReadShort();
++	g_TeamInfo[i].frags = score;
+ 	// g_TeamInfo[i].deaths = reader.ReadShort();
+ 
+ 	return 1;
+ }
+ 
+-void CHudScoreboard :: DeathMsg( int killer, int victim )
++void CHudScoreboard :: DeathMsg( int killer, int victim, bool teamkill )
+ {
++	if( hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f && !m_bReceivedScoreInfo )
++	{
++		if( victim > 0 && victim <= MAX_PLAYERS )
++			g_PlayerExtraInfo[victim].deaths++;
++		if( killer > 0 && killer <= MAX_PLAYERS )
++		{
++			if( killer == victim || teamkill )
++				g_PlayerExtraInfo[killer].frags--;
++			else g_PlayerExtraInfo[killer].frags++;
++		}
++	}
++
+ 	// if we were the one killed,  or the world killed us, set the scoreboard to indicate suicide
+ 	if ( victim == m_iPlayerNum || killer == 0 )
+ 	{
+diff --git a/cl_dll/hud/spectator_gui.cpp b/cl_dll/hud/spectator_gui.cpp
+index 04b6d26..66c0836 100644
+--- a/cl_dll/hud/spectator_gui.cpp
++++ b/cl_dll/hud/spectator_gui.cpp
+@@ -138,8 +138,11 @@ int CHudSpectatorGui::Draw( float flTime )
+ 		startpos = XRES(gHUD.m_Spectator.m_OverviewData.insetWindowWidth) + XRES(gHUD.m_Spectator.m_OverviewData.insetWindowX);
+ 		startpos *= ScreenWidth / TrueWidth; // hud_scale adjust
+ 	}
+-	FillRGBABlend(startpos, 0, ScreenWidth - startpos, INT_YPOS(2), 0, 0, 0, 153);
+-	FillRGBABlend(0, ScreenHeight - INT_YPOS(2), ScreenWidth, INT_YPOS(2), 0, 0, 0, 153);
++	if( gEngfuncs.pfnGetCvarFloat( "hltv_native_spectator" ) == 0.0f )
++	{
++		FillRGBABlend(startpos, 0, ScreenWidth - startpos, INT_YPOS(2), 0, 0, 0, 153);
++		FillRGBABlend(0, ScreenHeight - INT_YPOS(2), ScreenWidth, INT_YPOS(2), 0, 0, 0, 153);
++	}
+ 
+ 	// divider
+ 	FillRGBABlend( INT_XPOS(12.5), INT_YPOS(2) * 0.25, 1, INT_YPOS(2) * 0.5, r, g, b, 255 );
+@@ -287,8 +290,12 @@ void CHudSpectatorGui::CalcAllNeededData( )
+ 		hud_player_info_t sInfo;
+ 		GetPlayerInfo( g_iUser2, &sInfo );
+ 
+-		snprintf( label.m_szNameAndHealth, sizeof( label.m_szNameAndHealth ),
+-				  "%s (%i)",  sInfo.name, g_PlayerExtraInfo[g_iUser2].health );
++		if( m_bReceivedSpecHealth[g_iUser2] )
++			snprintf( label.m_szNameAndHealth, sizeof( label.m_szNameAndHealth ),
++					  "%s (%i)", sInfo.name, g_PlayerExtraInfo[g_iUser2].health );
++		else
++			snprintf( label.m_szNameAndHealth, sizeof( label.m_szNameAndHealth ),
++					  "%s", sInfo.name );
+ 	}
+ 	else label.m_szNameAndHealth[0] = '\0';
+ }
+@@ -297,6 +304,7 @@ void CHudSpectatorGui::InitHUDData()
+ {
+ 	m_bBombPlanted = false;
+ 	label.m_szMap[0] = '\0';
++	memset( m_bReceivedSpecHealth, 0, sizeof m_bReceivedSpecHealth );
+ }
+ 
+ void CHudSpectatorGui::Reset()
+@@ -315,7 +323,11 @@ int CHudSpectatorGui::MsgFunc_SpecHealth(const char *pszName, int iSize, void *b
+ 
+ 	int health = reader.ReadByte();
+ 
+-	g_PlayerExtraInfo[g_iUser2].health = health;
++	if( g_iUser2 > 0 && g_iUser2 <= MAX_PLAYERS )
++	{
++		g_PlayerExtraInfo[g_iUser2].health = health;
++		m_bReceivedSpecHealth[g_iUser2] = true;
++	}
+ 	gHUD.m_Health.m_iPlayerLastPointedAt = g_iUser2;
+ 
+ 	return 1;
+@@ -328,7 +340,11 @@ int CHudSpectatorGui::MsgFunc_SpecHealth2(const char *pszName, int iSize, void *
+ 	int health = reader.ReadByte();
+ 	int client = reader.ReadByte();
+ 
+-	g_PlayerExtraInfo[client].health = health;
++	if( client > 0 && client <= MAX_PLAYERS )
++	{
++		g_PlayerExtraInfo[client].health = health;
++		m_bReceivedSpecHealth[client] = true;
++	}
+ 	gHUD.m_Health.m_iPlayerLastPointedAt = g_iUser2;
+ 
+ 	return 1;
+diff --git a/cl_dll/hud_redraw.cpp b/cl_dll/hud_redraw.cpp
+index 1f2ad59..7be2c69 100644
+--- a/cl_dll/hud_redraw.cpp
++++ b/cl_dll/hud_redraw.cpp
+@@ -106,6 +106,15 @@ int CHud :: Redraw( float flTime, int intermission )
+ 	{
+ 		for( HUDLIST *pList = m_pHudList; pList; pList = pList->pNext )
+ 		{
++			// The scoreboard owns its visibility state (Tab, death,
++			// intermission, or film controls). Evaluate it every frame instead of
++			// depending on ScoreInfo having set HUD_DRAW during legacy signon.
++			if( pList->p == &m_Scoreboard )
++			{
++				pList->p->Draw( flTime );
++				continue;
++			}
++
+ 			if( pList->p->m_iFlags & HUD_DRAW )
+ 			{
+ 				if( intermission && !(pList->p->m_iFlags & HUD_INTERMISSION) )
+diff --git a/cl_dll/hud_spectator.cpp b/cl_dll/hud_spectator.cpp
+index 2319f23..9cc8d9a 100644
+--- a/cl_dll/hud_spectator.cpp
++++ b/cl_dll/hud_spectator.cpp
+@@ -45,6 +45,11 @@ extern vec3_t v_angles;		// last view angle
+ extern vec3_t v_cl_angles;	// last client/mouse angle
+ extern vec3_t v_sim_org;	// last sim origin
+ 
++bool ReplayLabNativeHltv( void )
++{
++	return gEngfuncs.pfnGetCvarFloat( "hltv_native_spectator" ) != 0.0f;
++}
++
+ void SpectatorMode(void)
+ {
+ 	if ( gEngfuncs.Cmd_Argc() <= 1 )
+@@ -108,6 +113,28 @@ void SpectatorMenu( void )
+ 		gEngfuncs.Cvar_Set( name, gEngfuncs.Cmd_Argv(1) );
+ }
+ 
++void ReplayLabSpecPlayer( void )
++{
++	if( gEngfuncs.Cmd_Argc() != 2 )
++	{
++		gEngfuncs.Con_Printf( "usage: hltv_spec_player <slot>\n" );
++		return;
++	}
++
++	int target = atoi( gEngfuncs.Cmd_Argv( 1 ) );
++	if( target < 1 || target > MAX_PLAYERS )
++	{
++		gEngfuncs.Con_Printf( "Invalid HLTV player slot %i.\n", target );
++		return;
++	}
++
++	gEngfuncs.Cvar_SetValue( "hltv_native_spectator", 1.0f );
++	gHUD.m_Spectator.m_autoDirector->value = 0.0f;
++	g_iUser1 = OBS_IN_EYE;
++	g_iUser2 = target;
++	g_iUser3 = 0;
++}
++
+ void SpecDrawNames( void )
+ {
+ 	if ( gEngfuncs.Cmd_Argc() <= 1 )
+@@ -215,6 +242,7 @@ int CHudSpectator::Init()
+ 	gEngfuncs.pfnAddCommand ("spec_drawstatus", SpecDrawStatus );
+ 	gEngfuncs.pfnAddCommand ("spec_autodirector", SpecAutoDirector );
+ 	gEngfuncs.pfnAddCommand ("spec_pip", SpecPip );
++	gEngfuncs.pfnAddCommand ("hltv_spec_player", ReplayLabSpecPlayer );
+ 
+ 	m_drawnames		= gEngfuncs.pfnRegisterVariable("spec_drawnames_internal","1",0);
+ 	m_drawcone		= gEngfuncs.pfnRegisterVariable("spec_drawcone_internal","1",0);
+@@ -601,7 +629,11 @@ void CHudSpectator::DirectorMessage( int iSize, void *pbuf )
+ 	case DRC_CMD_MODE  :
+ 		if ( m_autoDirector->value )
+ 		{
+-			SetModes( reader.ReadByte(), -1 );
++			int directorMode = reader.ReadByte();
++			// Old HLTV chase cameras can remain embedded in a killed target.
++			// Replay Lab follows the director's target changes in first person;
++			// manual spectator input still disables the auto director normally.
++			SetModes( ReplayLabNativeHltv() ? OBS_IN_EYE : directorMode, -1 );
+ 		}
+ 		break;
+ 
+@@ -707,7 +739,7 @@ void CHudSpectator::FindNextPlayer(bool bReverse)
+ 	cl_entity_t * pEnt = NULL;
+ 
+ 	// if we are NOT in HLTV mode, spectator targets are set on server
+-	if ( !gEngfuncs.IsSpectateOnly() )
++	if ( !gEngfuncs.IsSpectateOnly() && !ReplayLabNativeHltv() )
+ 	{
+ 		char cmdstring[32];
+ 		// forward command to server
+@@ -763,6 +795,7 @@ void CHudSpectator::FindNextPlayer(bool bReverse)
+ 	}
+ 	else
+ 	{
++		gEngfuncs.Cvar_Set( "hltv_native_weapon", "" );
+ 		// use new entity position for roaming
+ 		VectorCopy ( pEnt->origin, vJumpOrigin );
+ 		VectorCopy ( pEnt->angles, vJumpAngles );
+@@ -788,7 +821,8 @@ void CHudSpectator::HandleButtonsDown( int ButtonPressed )
+ 		return; // don't do anything if not in spectator mode
+ 
+ 	// don't handle buttons during normal demo playback
+-	if ( gEngfuncs.pDemoAPI->IsPlayingback() && !gEngfuncs.IsSpectateOnly() )
++	if ( gEngfuncs.pDemoAPI->IsPlayingback() &&
++		!gEngfuncs.IsSpectateOnly() && !ReplayLabNativeHltv() )
+ 		return;
+ 	// Slow down mouse clicks.
+ 	if ( m_flNextObserverInput > time )
+@@ -807,7 +841,7 @@ void CHudSpectator::HandleButtonsDown( int ButtonPressed )
+ 	}
+ 
+ 	// if not in HLTV mode, buttons are handled server side
+-	if ( gEngfuncs.IsSpectateOnly() )
++	if ( gEngfuncs.IsSpectateOnly() || ReplayLabNativeHltv() )
+ 	{
+ 		// changing target or chase mode not in overviewmode without inset window
+ 
+@@ -907,7 +941,7 @@ void CHudSpectator::SetModes(int iNewMainMode, int iNewInsetMode)
+ 	if ( iNewMainMode != g_iUser1 )
+ 	{
+ 		// if we are NOT in HLTV mode, main spectator mode is set on server
+-		if ( !gEngfuncs.IsSpectateOnly() )
++		if ( !gEngfuncs.IsSpectateOnly() && !ReplayLabNativeHltv() )
+ 		{
+ 			return;
+ 		}
+diff --git a/cl_dll/menu.cpp b/cl_dll/menu.cpp
+index 582bf28..c68aed9 100644
+--- a/cl_dll/menu.cpp
++++ b/cl_dll/menu.cpp
+@@ -53,6 +53,7 @@ int CHudMenu :: Init( void )
+ 	HOOK_COMMAND( gHUD.m_Menu, "showvguimenu", ShowVGUIMenu );
+ 
+ 	_extended_menus = CVAR_CREATE("_extended_menus", "1", FCVAR_ARCHIVE);
++	hltv_replay_mode = CVAR_CREATE("hltv_replay_mode", "0", 0);
+ 
+ 	InitHUDData();
+ 
+@@ -149,6 +150,15 @@ void CHudMenu :: SelectMenuItem( int menu_item )
+ // if this message is never received, then scores will simply be the combined totals of the players.
+ int CHudMenu :: MsgFunc_ShowMenu( const char *pszName, int iSize, void *pbuf )
+ {
++	// A demo replays the server's menu messages, but it must never replay the
++	// viewer's menu input.  Suppress presentation here instead of sending a
++	// slot command: slot10 is also a real weapon command when no menu is open.
++	if( hltv_replay_mode && hltv_replay_mode->value != 0.0f )
++	{
++		UserCmd_OldStyleMenuClose();
++		return 1;
++	}
++
+ 	char *temp = NULL, *menustring;
+ 
+ 	BufferReader reader( pszName, pbuf, iSize );
+@@ -227,6 +237,12 @@ int CHudMenu :: MsgFunc_ShowMenu( const char *pszName, int iSize, void *pbuf )
+ 
+ int CHudMenu::MsgFunc_VGUIMenu( const char *pszName, int iSize, void *pbuf )
+ {
++	if( hltv_replay_mode && hltv_replay_mode->value != 0.0f )
++	{
++		UserCmd_OldStyleMenuClose();
++		return 1;
++	}
++
+ 	BufferReader reader( pszName, pbuf, iSize );
+ 
+ 	int menuType = reader.ReadByte();
+diff --git a/cl_dll/saytext.cpp b/cl_dll/saytext.cpp
+index 0df0291..daebbc3 100644
+--- a/cl_dll/saytext.cpp
++++ b/cl_dll/saytext.cpp
+@@ -129,9 +129,17 @@ int CHudSayText :: Draw( float flTime )
+ 		int current_x = LINE_START;
+ 		const char* text = g_szLineBuffer[i];
+ 		size_t length = strlen(text);
+-
+-		// default color if not set
+-		DrawUtils::SetConsoleTextColor(g_ColorYellow[0], g_ColorYellow[1], g_ColorYellow[2]);
++		const bool fallbackNameColor = g_pflNameColors[i] && g_iNameLengths[i] > 0
++			&& !strchr( text, '\x03' );
++		const size_t nameColorEnd = min( (size_t)g_iNameLengths[i], length );
++
++		// Newer SayText payloads carry explicit color controls. Early CS/HLTV
++		// payloads do not, but still identify the sender; reproduce the classic
++		// team-colored name followed by yellow message text.
++		if( fallbackNameColor )
++			DrawUtils::SetConsoleTextColor( g_pflNameColors[i][0], g_pflNameColors[i][1], g_pflNameColors[i][2] );
++		else
++			DrawUtils::SetConsoleTextColor(g_ColorYellow[0], g_ColorYellow[1], g_ColorYellow[2]);
+ 
+ 		// buffer for accumulating characters of the same color
+ 		char color_buffer[256] = {0};
+@@ -139,6 +147,17 @@ int CHudSayText :: Draw( float flTime )
+ 
+ 		for (size_t c = 0; c < length; c++)
+ 		{
++			if( fallbackNameColor && c == nameColorEnd )
++			{
++				if( buffer_pos > 0 )
++				{
++					color_buffer[buffer_pos] = '\x00';
++					current_x = DrawUtils::DrawConsoleString(current_x, y, color_buffer);
++					buffer_pos = 0;
++				}
++				DrawUtils::SetConsoleTextColor(g_ColorYellow[0], g_ColorYellow[1], g_ColorYellow[2]);
++			}
++
+ 			// color code parse
+ 			// '\x01' - normal (yellow); '\0x03' - teamcolor (R GREY B); '\x04' - green
+ 			if (text[c] == '\x01' || text[c] == '\x03' || text[c] == '\x04')
+@@ -403,11 +422,28 @@ void CHudSayText :: SayTextPrint( const char *pszBuf, int iBufSize, int clientIn
+ 
+ #if 1
+ 	// if it's a say message, search for the players name in the string
+-	if ( clientIndex > 0 )
++	gHUD.m_Scoreboard.GetAllPlayersInfo();
++	int colorClientIndex = clientIndex;
++	if( colorClientIndex <= 0 || colorClientIndex > MAX_PLAYERS )
++	{
++		// Early radio payloads use sender zero while embedding the exact player
++		// name. Resolve that name against the recorded player table.
++		for( int player = 1; player <= MAX_PLAYERS; player++ )
++		{
++			const char *candidate = g_PlayerInfoList[player].name;
++			if( candidate && candidate[0] && strstr( pszBuf, candidate ) )
++			{
++				colorClientIndex = player;
++				break;
++			}
++		}
++	}
++
++	if ( colorClientIndex > 0 && colorClientIndex <= MAX_PLAYERS )
+ 	{
+-		GetPlayerInfo( clientIndex, &g_PlayerInfoList[clientIndex] );
+-		const char *pName = g_PlayerInfoList[clientIndex].name;
+-		g_pflNameColors[i] = GetClientColor( clientIndex );
++		GetPlayerInfo( colorClientIndex, &g_PlayerInfoList[colorClientIndex] );
++		const char *pName = g_PlayerInfoList[colorClientIndex].name;
++		g_pflNameColors[i] = GetClientColor( colorClientIndex );
+ 
+ 		if ( pName )
+ 		{
+diff --git a/cl_dll/view.cpp b/cl_dll/view.cpp
+index 579b2d6..412198b 100644
+--- a/cl_dll/view.cpp
++++ b/cl_dll/view.cpp
+@@ -82,6 +82,18 @@ cvar_t	*cl_waterdist;
+ cvar_t	*cl_chasedist;
+ cvar_t	*cl_weaponlag;
+ cvar_t	*cl_quakeguns;
++cvar_t	*hltv_reconstruction_camera;
++cvar_t	*hltv_reconstruction_entity;
++cvar_t	*hltv_reconstruction_x;
++cvar_t	*hltv_reconstruction_y;
++cvar_t	*hltv_reconstruction_z;
++cvar_t	*hltv_reconstruction_pitch;
++cvar_t	*hltv_reconstruction_yaw;
++cvar_t	*hltv_reconstruction_roll;
++cvar_t	*hltv_native_spectator;
++cvar_t	*hltv_native_weapon;
++int		g_ReplayLabMuzzleSerial = 0;
++float	g_ReplayLabMuzzleTime = 0.0f;
+ 
+ // These cvars are not registered (so users can't cheat), so set the ->value field directly
+ // Register these cvars in V_Init() if needed for easy tweaking
+@@ -506,7 +518,8 @@ void V_CalcIntermissionRefdef ( struct ref_params_s *pparams )
+ 
+ 	V_AddIdle ( pparams );
+ 
+-	if ( gEngfuncs.IsSpectateOnly() )
++	if ( gEngfuncs.IsSpectateOnly() ||
++		( hltv_native_spectator && hltv_native_spectator->value != 0.0f ) )
+ 	{
+ 		// in HLTV we must go to 'intermission' position by ourself
+ 		VectorCopy( gHUD.m_Spectator.m_cameraOrigin, pparams->vieworg );
+@@ -696,7 +709,8 @@ void V_CalcNormalRefdef ( struct ref_params_s *pparams )
+ 	vec3_t camAngles, camForward, camRight, camUp;
+ 	cl_entity_t *pwater;
+ 
+-	if ( gEngfuncs.IsSpectateOnly() )
++	if ( gEngfuncs.IsSpectateOnly() ||
++		( hltv_native_spectator && hltv_native_spectator->value != 0.0f ) )
+ 	{
+ 		ent = gEngfuncs.GetEntityByIndex( g_iUser2 );
+ 	}
+@@ -1587,9 +1601,25 @@ V_CalcSpectatorRefdef
+ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+ {
+ 	static vec3_t			velocity ( 0.0f, 0.0f, 0.0f);
++	static vec3_t			nativeRoamingOrigin ( 0.0f, 0.0f, 0.0f );
++	static bool				nativeRoamingActive = false;
+ 
+ 	static int lastWeaponModelIndex = 0;
+ 	static int lastViewModelIndex = 0;
++	if( hltv_native_spectator && hltv_native_spectator->value != 0.0f )
++	{
++		// HLTV demo packets may restore the stock inset/PIP state after the app
++		// has disabled it.  If a previous frame requested the second render pass,
++		// its reduced viewport also survives into the next frame.  Native replay
++		// mode is deliberately single-camera, so reset both pieces of state here.
++		gHUD.m_Spectator.m_pip->value = 0.0f;
++		gHUD.m_Spectator.m_iDrawCycle = 0;
++		pparams->nextView = 0;
++		pparams->viewport[0] = 0;
++		pparams->viewport[1] = 0;
++		pparams->viewport[2] = ScreenWidth;
++		pparams->viewport[3] = ScreenHeight;
++	}
+ 
+ 	cl_entity_t	 * ent = gEngfuncs.GetEntityByIndex( g_iUser2 );
+ 
+@@ -1602,6 +1632,8 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+ 	VectorCopy ( pparams->cl_viewangles, v_cl_angles );
+ 	VectorCopy ( pparams->viewangles, v_angles );
+ 	VectorCopy ( pparams->vieworg, v_origin );
++	if( g_iUser1 != OBS_ROAMING )
++		nativeRoamingActive = false;
+ 
+ 	if ( ( g_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) && ent )
+ 	{
+@@ -1622,7 +1654,8 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+ 		}
+ 
+ 		// predict missing client data and set weapon model ( in HLTV mode or inset in eye mode )
+-		if ( gEngfuncs.IsSpectateOnly() )
++		if ( gEngfuncs.IsSpectateOnly() ||
++			( hltv_native_spectator && hltv_native_spectator->value != 0.0f ) )
+ 		{
+ 			V_GetInEyePos( g_iUser2, pparams->simorg, pparams->cl_viewangles );
+ 
+@@ -1652,7 +1685,11 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+ 			{
+ 				gunModel->model = IEngineStudio.GetModelByIndex( lastViewModelIndex );
+ 				gunModel->curstate.modelindex = lastViewModelIndex;
+-				gunModel->curstate.frame = 0;
++				// The stock spectator path keeps the inferred viewmodel on its
++				// first frame. Replay Lab receives real weapon events, so resetting
++				// it every render would replay the same muzzle studio event forever.
++				if( !hltv_native_spectator || hltv_native_spectator->value == 0.0f )
++					gunModel->curstate.frame = 0;
+ 				gunModel->curstate.colormap = 0;
+ 				gunModel->index = g_iUser2;
+ 			}
+@@ -1687,7 +1724,32 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+ 
+ 		case OBS_ROAMING:
+ 			VectorCopy (v_cl_angles, v_angles);
+-			VectorCopy (v_sim_org, v_origin);
++			if( hltv_native_spectator && hltv_native_spectator->value != 0.0f )
++			{
++				if( !nativeRoamingActive )
++				{
++					VectorCopy( vJumpOrigin, nativeRoamingOrigin );
++					nativeRoamingActive = true;
++				}
++				if( pparams->cmd )
++				{
++					vec3_t forward, right, up;
++					AngleVectors( v_cl_angles, forward, right, up );
++					float frameTime = min( pparams->frametime, 0.1f );
++					VectorMA( nativeRoamingOrigin, pparams->cmd->forwardmove * frameTime,
++						forward, nativeRoamingOrigin );
++					VectorMA( nativeRoamingOrigin, pparams->cmd->sidemove * frameTime,
++						right, nativeRoamingOrigin );
++					VectorMA( nativeRoamingOrigin, pparams->cmd->upmove * frameTime,
++						up, nativeRoamingOrigin );
++				}
++				VectorCopy( nativeRoamingOrigin, v_origin );
++			}
++			else
++			{
++				nativeRoamingActive = false;
++				VectorCopy (v_sim_org, v_origin);
++			}
+ 			break;
+ 
+ 		case OBS_IN_EYE:
+@@ -1860,6 +1922,72 @@ void DLLEXPORT V_CalcRefdef( struct ref_params_s *pparams )
+ 	{
+ 		V_CalcNormalRefdef ( pparams );
+ 	}
++
++	// Local HLDEMO playback is not marked spectate-only by the engine. Its
++	// recorded local-player muzzle bit would otherwise be copied back onto the
++	// selected HLTV viewmodel every frame, turning a one-frame flash permanent.
++	if( hltv_native_spectator && hltv_native_spectator->value != 0.0f )
++	{
++		cl_entity_t *localPlayer = gEngfuncs.GetLocalPlayer();
++		if( localPlayer )
++			localPlayer->curstate.effects &= ~EF_MUZZLEFLASH;
++	}
++
++	// Replay Lab can briefly inspect a camera reconstructed from a teammate's
++	// recorded entity origin and angles. This is opt-in and presentation-only;
++	// it does not claim to recreate weapon state or unseen network entities.
++	if( hltv_reconstruction_camera && hltv_reconstruction_camera->value != 0.0f )
++	{
++		int entityIndex = hltv_reconstruction_entity ? (int)hltv_reconstruction_entity->value : 0;
++		cl_entity_t *entity = entityIndex > 0 ? gEngfuncs.GetEntityByIndex( entityIndex ) : NULL;
++		if( entity && entity->player )
++		{
++			V_GetInEyePos( entityIndex, pparams->vieworg, pparams->viewangles );
++		}
++		else
++		{
++			pparams->vieworg[0] = hltv_reconstruction_x->value;
++			pparams->vieworg[1] = hltv_reconstruction_y->value;
++			pparams->vieworg[2] = hltv_reconstruction_z->value;
++			pparams->viewangles[PITCH] = hltv_reconstruction_pitch->value;
++			pparams->viewangles[YAW] = hltv_reconstruction_yaw->value;
++			pparams->viewangles[ROLL] = hltv_reconstruction_roll->value;
++		}
++		VectorCopy( pparams->vieworg, v_origin );
++		VectorCopy( pparams->viewangles, v_angles );
++	}
++
++	// Normal local-demo view calculation restores the recorded client's gun
++	// after the spectator pass. Reapply the selected HLTV frag weapon last.
++	if( hltv_native_spectator && hltv_native_spectator->value != 0.0f &&
++		hltv_native_weapon && hltv_native_weapon->string[0] )
++	{
++		static int appliedMuzzleSerial = 0;
++		int requestedViewModelIndex = 0;
++		char requestedViewModelPath[MAX_MODEL_NAME];
++		snprintf( requestedViewModelPath, sizeof( requestedViewModelPath ),
++			"models/v_%s.mdl", hltv_native_weapon->string );
++		model_t *requestedViewModel = gEngfuncs.CL_LoadModel(
++			requestedViewModelPath, &requestedViewModelIndex );
++		cl_entity_t *gunModel = gEngfuncs.GetViewModel();
++		if( requestedViewModel && gunModel )
++		{
++			// Only replace the model identity. The event system owns sequence,
++			// frame and animtime; resetting frame here on every rendered frame
++			// freezes the firing animation and retriggers its studio events.
++			gunModel->model = requestedViewModel;
++			if( gunModel->curstate.modelindex != requestedViewModelIndex )
++				gunModel->curstate.modelindex = requestedViewModelIndex;
++			gunModel->curstate.colormap = 0;
++			gunModel->index = g_iUser2;
++			if( appliedMuzzleSerial != g_ReplayLabMuzzleSerial )
++			{
++				appliedMuzzleSerial = g_ReplayLabMuzzleSerial;
++				gunModel->curstate.animtime = g_ReplayLabMuzzleTime;
++				gunModel->curstate.frame = 0.0f;
++			}
++		}
++	}
+ }
+ 
+ /*
+@@ -1886,4 +2014,15 @@ void V_Init (void)
+ 
+ 	cl_quakeguns		= gEngfuncs.pfnRegisterVariable( "cl_quakeguns", "0", FCVAR_ARCHIVE );
+ 	cl_weaponlag		= gEngfuncs.pfnRegisterVariable( "cl_weaponlag", "0", FCVAR_ARCHIVE );
++
++	hltv_reconstruction_camera = gEngfuncs.pfnRegisterVariable( "hltv_reconstruction_camera", "0", 0 );
++	hltv_reconstruction_entity = gEngfuncs.pfnRegisterVariable( "hltv_reconstruction_entity", "0", 0 );
++	hltv_reconstruction_x = gEngfuncs.pfnRegisterVariable( "hltv_reconstruction_x", "0", 0 );
++	hltv_reconstruction_y = gEngfuncs.pfnRegisterVariable( "hltv_reconstruction_y", "0", 0 );
++	hltv_reconstruction_z = gEngfuncs.pfnRegisterVariable( "hltv_reconstruction_z", "0", 0 );
++	hltv_reconstruction_pitch = gEngfuncs.pfnRegisterVariable( "hltv_reconstruction_pitch", "0", 0 );
++	hltv_reconstruction_yaw = gEngfuncs.pfnRegisterVariable( "hltv_reconstruction_yaw", "0", 0 );
++	hltv_reconstruction_roll = gEngfuncs.pfnRegisterVariable( "hltv_reconstruction_roll", "0", 0 );
++	hltv_native_spectator = gEngfuncs.pfnRegisterVariable( "hltv_native_spectator", "0", 0 );
++	hltv_native_weapon = gEngfuncs.pfnRegisterVariable( "hltv_native_weapon", "", 0 );
+ }
+diff --git a/common/interface.cpp b/common/interface.cpp
+index a13a9fd..6e87f96 100644
+--- a/common/interface.cpp
++++ b/common/interface.cpp
+@@ -14,7 +14,7 @@
+ #include <unistd.h>
+ #define VRTLD_LIBDL_COMPAT
+ #include <vrtld.h>
+-#elif XASH_APPLE == 1
++#elif XASH_APPLE == 1 || XASH_EMSCRIPTEN == 1
+ #include <dlfcn.h>
+ #include <unistd.h>
+ #endif
+@@ -273,4 +273,4 @@ CreateInterfaceFn Sys_GetFactory( const char *pModuleName )
+ 	// so lets use the old style cast.
+ 	return (CreateInterfaceFn)( Sys_GetProcAddress( pModuleName, CREATEINTERFACE_PROCNAME ) );
+ #endif
+-}
+\ No newline at end of file
++}
+diff --git a/common/interface.h b/common/interface.h
+index 05e8b61..402194a 100644
+--- a/common/interface.h
++++ b/common/interface.h
+@@ -23,7 +23,7 @@
+ 
+ #include "build.h"
+ 
+-#if XASH_LINUX == 1
++#if XASH_LINUX == 1 || XASH_EMSCRIPTEN == 1
+ #include <dlfcn.h> // dlopen,dlclose, et al
+ #include <unistd.h>
+ #endif
+@@ -131,4 +131,4 @@ extern void Sys_UnloadModule( CSysModule *pModule );
+ 
+ extern CreateInterfaceFn Sys_GetFactory( CSysModule *pModule );
+ 
+-#endif // __INTERFACE_H__
+\ No newline at end of file
++#endif // __INTERFACE_H__
+diff --git a/common/port.h b/common/port.h
+index 1bafdef..470fd16 100644
+--- a/common/port.h
++++ b/common/port.h
+@@ -26,7 +26,7 @@ GNU General Public License for more details.
+ #endif
+ 
+ #ifndef _WIN32
+-	#if XASH_LINUX == 1
++	#if XASH_LINUX == 1 || XASH_EMSCRIPTEN == 1
+ 	#include <limits.h>
+ 	#include <dlfcn.h>
+ 	#endif

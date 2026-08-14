@@ -1,6 +1,7 @@
 import { type Xash3D } from 'xash3d-fwgs';
 import { type Xash3DWebRTC } from '/@/services/xash-webrtc.ts';
 import type { FilesWithPath } from '/@/utils/directory-open.ts';
+import type { GameAssetEntry } from '/@/services/local-asset-mount.ts';
 import type { ConsoleCallback, Enumify } from '/@/types.ts';
 import { unzipSync } from 'fflate';
 import { getZip } from '/@/utils/zip-helpers';
@@ -12,8 +13,10 @@ import { DEFAULT_GAME_DIR } from '/@/services/save-manager.ts';
 // Xash WASM Imports
 // @ts-ignore -- vite url imports
 import filesystemURL from 'xash3d-fwgs/filesystem_stdio.wasm?url';
+// Locally rebuilt from the same upstream commit/toolchain as the npm wrapper;
+// see engine-patches/README.md for source and reproducible protocol 46 patch.
 // @ts-ignore -- vite url imports
-import xashURL from 'xash3d-fwgs/xash.wasm?url';
+import xashURL from '../../engine-patches/xash-protocol46.wasm?url';
 // @ts-ignore -- vite url imports
 import menuURL from 'xash3d-fwgs/libmenu.wasm?url';
 // @ts-ignore -- vite url imports
@@ -26,33 +29,34 @@ import HLClientURL from 'hlsdk-portable/cl_dlls/client_emscripten_wasm32.wasm?ur
 import HLServerURL from 'hlsdk-portable/dlls/hl_emscripten_wasm32.wasm?url';
 // @ts-ignore -- vite url imports
 import CSMenuURL from 'cs16-client/cl_dll/menu_emscripten_wasm32.wasm?url';
+// Locally rebuilt from CS16Client with a runtime-selectable legacy scoreboard;
+// modern protocol profiles keep the upstream HP/Money columns.
 // @ts-ignore -- vite url imports
-import CSClientURL from 'cs16-client/cl_dll/client_emscripten_wasm32.wasm?url';
+import CSClientURL from '../../engine-patches/cs16-client-hltv-v12.wasm?url';
 // @ts-ignore -- vite url imports
 import CSServerURL from 'cs16-client/dlls/cs_emscripten_wasm32.wasm?url';
 
 const XASH_BASE_DIR = '/rodir/';
 
+// The wrapper already loads filesystem, menu, client, server and renderer.
+// Repeating them here makes Emscripten try the same side modules again after
+// Xash has changed cwd to /rodir, producing scary but non-fatal dlopen errors.
+// The wrapper preloads the selected server module under Half-Life's default
+// DLL name. Counter-Strike later asks Emscripten for its real name, which
+// otherwise triggers a synchronous second fetch and a blocking Xash warning.
 const DYNAMIC_LIBRARIES = [
-  'filesystem_stdio.wasm',
-  'libref_webgl2.wasm',
-  'cl_dlls/client_emscripten_wasm32.wasm',
-  // hl
-  'cl_dlls/menu_emscripten_wasm32.wasm',
-  'dlls/hl_emscripten_wasm32.wasm',
-  // bshift
-  'dlls/bshift_emscripten_wasm32.wasm',
-  // opfor
-  'dlls/opfor_emscripten_wasm32.wasm',
-  // cs
+  // Demo assets live under /rodir, so libc resolves the engine's first
+  // filesystem dlopen against that cwd. Preload the absolute alias as well as
+  // the wrapper's normal basename to keep startup fully asynchronous.
+  '/rodir/filesystem_stdio.wasm',
   'dlls/cs_emscripten_wasm32.wasm',
-  'dlls/mp_emscripten_wasm32.wasm',
 ];
 
 export interface GameLoaderOptions {
   canvas: HTMLCanvasElement;
   selectedGame: Enumify<typeof GAME_SETTINGS>;
   launchArgs: string[];
+  onLog?: (message: string, isError: boolean) => void;
 }
 
 export interface LoadProgress {
@@ -194,31 +198,37 @@ class XashLoader {
       onError: XashLoader.removeReloadListener,
       module: {
         arguments: options.launchArgs,
+        print: (message: string) => options.onLog?.(message, false),
+        printErr: (message: string) => options.onLog?.(message, true),
         locateFile: (path: string) => {
-          console.log(path);
-          switch (path) {
+          // dlopen resolves libraries relative to the virtual cwd after startup
+          // (for example /rodir/filesystem_stdio.wasm). Match both those paths
+          // and Emscripten's initial bare filenames.
+          const filename = path.split('/').pop() || path;
+          switch (filename) {
             case 'xash.wasm':
               return xashURL;
             case 'filesystem_stdio.wasm':
               return filesystemURL;
-            case 'cl_dlls/menu_emscripten_wasm32.wasm':
-              return menuURL;
-            case 'dlls/hl_emscripten_wasm32.wasm':
-              return HLServerURL;
+            case 'menu_emscripten_wasm32.wasm':
+              return options.selectedGame.libraries.menu;
+            case 'hl_emscripten_wasm32.wasm':
+              return options.selectedGame.libraries.server;
             // bshift fix
-            case 'dlls/bshift_emscripten_wasm32.wasm':
+            case 'bshift_emscripten_wasm32.wasm':
               return HLServerURL;
             //opfor fix
-            case 'dlls/opfor_emscripten_wasm32.wasm':
+            case 'opfor_emscripten_wasm32.wasm':
               return HLServerURL;
-            case 'cl_dlls/client_emscripten_wasm32.wasm':
-              return HLClientURL;
+            case 'client_emscripten_wasm32.wasm':
+              return options.selectedGame.libraries.client;
             // cs
-            case 'dlls/cs_emscripten_wasm32.wasm':
+            case 'cs_emscripten_wasm32.wasm':
               return CSServerURL;
-            case 'dlls/mp_emscripten_wasm32.wasm':
+            case 'mp_emscripten_wasm32.wasm':
               return CSServerURL;
             case 'libref_webgl2.wasm':
+            case 'libref_webgl.wasm':
               return webgl2URL;
             // Check this (not supported yet)
             case 'libvgui_support.wasm':
@@ -293,6 +303,59 @@ class XashLoader {
       onProgress?.({ current, total: filesArray.length });
     }
 
+    xash.em.FS.chdir(XASH_BASE_DIR);
+  }
+
+  /** Mounts either browser-selected Files or files exposed by the private
+   * local asset server into Emscripten's in-memory filesystem. */
+  public async processAssetEntries(
+    entries: GameAssetEntry[],
+    xash: Xash3D,
+    onProgress?: (progress: LoadProgress) => void,
+  ): Promise<void> {
+    if (!entries.length) throw new Error('Inga Counter-Strike-resurser hittades.');
+
+    xash.em.FS.mkdirTree(XASH_BASE_DIR);
+    const firstPath = entries[0].path.replace(/\\/g, '/');
+    const rootEnd = firstPath.indexOf('/');
+    const prefix = rootEnd === -1 ? '' : firstPath.slice(0, rootEnd + 1);
+    const jobs = entries.map((entry) => ({
+      entry,
+      relativePath: entry.path.replace(/\\/g, '/').slice(prefix.length),
+    })).filter((job) =>
+      job.relativePath &&
+      !job.relativePath.includes('../') &&
+      ('file' in job.entry ? job.entry.file.size > 0 : job.entry.size > 0),
+    );
+
+    for (const { relativePath } of jobs) {
+      const path = XASH_BASE_DIR + relativePath;
+      const slash = path.lastIndexOf('/');
+      if (slash > 0) xash.em.FS.mkdirTree(path.slice(0, slash));
+    }
+
+    let current = 0;
+    const mount = async ({ entry, relativePath }: (typeof jobs)[number]) => {
+      const data = 'file' in entry
+        ? await entry.file.arrayBuffer()
+        : await fetch(entry.url).then((response) => {
+            if (!response.ok) throw new Error(`Kunde inte läsa ${relativePath}.`);
+            return response.arrayBuffer();
+          });
+      xash.em.FS.writeFile(XASH_BASE_DIR + relativePath, new Uint8Array(data));
+      current += 1;
+      onProgress?.({ current, total: jobs.length });
+    };
+
+    // A small pool avoids hundreds of serial HTTP round-trips without spiking
+    // WebAssembly memory with every asset at once.
+    const pending = [...jobs];
+    await Promise.all(Array.from({ length: Math.min(12, pending.length) }, async () => {
+      while (pending.length) {
+        const job = pending.shift();
+        if (job) await mount(job);
+      }
+    }));
     xash.em.FS.chdir(XASH_BASE_DIR);
   }
 

@@ -1,0 +1,903 @@
+diff --git a/engine/client/cl_demo.c b/engine/client/cl_demo.c
+index f14da55..4155513 100644
+--- a/engine/client/cl_demo.c
++++ b/engine/client/cl_demo.c
+@@ -78,6 +78,31 @@ typedef struct
+ 	char		description[64];	// entry description
+ } demoentry_t;
+ 
++#pragma pack( push, 1 )
++typedef struct
++{
++	char		stamp[8];		// "HLDEMO\0\0"
++	int		dem_protocol;		// GoldSrc demo protocol 5
++	int		net_protocol;		// GoldSrc network protocol 46
++	char		mapname[260];
++	char		gamedir[260];
++	uint32_t	map_checksum;
++	int		directory_offset;
++} goldsrc_demoheader_t;
++
++typedef struct
++{
++	int		entrytype;
++	char		description[64];
++	int		flags;
++	int		cdtrack;
++	float		playback_time;
++	int		playback_frames;
++	int		offset;
++	int		length;
++} goldsrc_demoentry_t;
++#pragma pack( pop )
++
+ typedef struct
+ {
+ 	demoentry_t	*entries;		// track entry info
+@@ -88,7 +113,9 @@ typedef struct
+ typedef struct
+ {
+ 	float		starttime;
++	vec3_t		vieworigin;
+ 	vec3_t		viewangles;
++	qboolean	has_vieworigin;
+ } demoangle_t;
+ 
+ // private demo states
+@@ -103,6 +130,7 @@ struct
+ 	float		timestamp;
+ 	float		lasttime;
+ 	int		entryIndex;
++	qboolean	goldsrc_layout;
+ 
+ 	// interpolation stuff
+ 	demoangle_t	cmds[ANGLE_BACKUP];
+@@ -135,6 +163,7 @@ static connprotocol_t CL_GetProtocolFromDemo( int net_protocol )
+ 	case PROTOCOL_VERSION_QUAKE:
+ 		return PROTO_QUAKE;
+ 	case PROTOCOL_GOLDSRC_VERSION_DEMO:
++	case 46: // legacy GoldSrc/HLTV demos recorded before protocol 47
+ 		return PROTO_GOLDSRC;
+ 	}
+ 
+@@ -651,6 +680,7 @@ static void CL_ReadDemoUserCmd( qboolean discard )
+ 			// record update
+ 			a->starttime = demo.timestamp;
+ 			VectorCopy( pcmd->cmd.viewangles, a->viewangles );
++			a->has_vieworigin = false;
+ 			demo.lasttime = demo.timestamp;
+ 		}
+ 
+@@ -737,6 +767,11 @@ static void CL_DemoStartPlayback( int mode )
+ 	CL_SetupNetchanForProtocol( cls.legacymode );
+ 
+ 	memset( demo.cmds, 0, sizeof( demo.cmds ));
++	memset( cls.demo_player_dead, 0, sizeof( cls.demo_player_dead ));
++	memset( cls.demo_player_hide_time, 0, sizeof( cls.demo_player_hide_time ));
++	memset( cls.demo_player_death_state, 0, sizeof( cls.demo_player_death_state ));
++	memset( cls.demo_player_corpse_seen, 0, sizeof( cls.demo_player_corpse_seen ));
++	memset( cls.demo_player_headshot, 0, sizeof( cls.demo_player_headshot ));
+ 	demo.angle_position = 1;
+ 	demo.framecount = 0;
+ 	cls.lastoutgoingcommand = -1;
+@@ -893,6 +928,7 @@ static qboolean CL_DemoReadMessageQuake( byte *buffer, size_t *length )
+ 		// record update
+ 		a->starttime = demo.timestamp;
+ 		VectorCopy( viewangles, a->viewangles );
++		a->has_vieworigin = false;
+ 		demo.lasttime = demo.timestamp;
+ 	}
+ 
+@@ -929,6 +965,175 @@ static qboolean CL_DemoReadMessageQuake( byte *buffer, size_t *length )
+ 	return true;
+ }
+ 
++static void CL_RecordGoldSrcView( float timestamp, const vec3_t vieworigin, const vec3_t viewangles )
++{
++	demoangle_t *a;
++	float sectiontime;
++
++	if( demo.entryIndex == 0 )
++		return; // the loading section has no playable camera timeline
++
++	// Playback timing is relative to the first packet in the directory entry,
++	// while HLDEMO stores absolute timestamps inside its demo_info blocks.
++	sectiontime = Q_max( timestamp - demo.realstarttime, 0.0001f );
++	if( demo.lasttime == sectiontime )
++		return;
++
++	demo.angle_position = (demo.angle_position + 1) & ANGLE_MASK;
++	a = &demo.cmds[demo.angle_position];
++	a->starttime = sectiontime;
++	VectorCopy( vieworigin, a->vieworigin );
++	VectorCopy( viewangles, a->viewangles );
++	a->has_vieworigin = true;
++	VectorCopy( viewangles, cl.cmd.viewangles );
++	demo.lasttime = sectiontime;
++}
++
++/*
++=================
++CL_DemoReadMessageGoldSrc
++
++Reads the original HLDEMO protocol 5 frame layout.  GoldSrc packet frames
++contain a tick number and a 464-byte demo_info block before the network
++message, while Xash's native demo format stores only the netchan sequences.
++=================
++*/
++static qboolean CL_DemoReadMessageGoldSrc( byte *buffer, size_t *length )
++{
++	for( ;; )
++	{
++		byte cmd;
++		float timestamp;
++		uint32_t tick, blockLength;
++		vec3_t vieworigin, viewangles;
++		size_t curpos = FS_Tell( cls.demofile );
++		float elapsed, sectiontime, fastforward_target;
++
++		if( FS_Read( cls.demofile, &cmd, sizeof( cmd )) != sizeof( cmd )
++			|| FS_Read( cls.demofile, &timestamp, sizeof( timestamp )) != sizeof( timestamp )
++			|| FS_Read( cls.demofile, &tick, sizeof( tick )) != sizeof( tick ))
++		{
++			CL_DemoCompleted();
++			return false;
++		}
++
++		if( cmd > 9 )
++		{
++			Con_Printf( S_ERROR "GoldSrc demo cmd %u > 9, file offset = %d\n",
++				cmd, (int)FS_Tell( cls.demofile ));
++			CL_DemoCompleted();
++			return false;
++		}
++
++		demo.timestamp = timestamp;
++
++		switch( cmd )
++		{
++		case 0: // dem_signon
++		case 1: // dem_packet
++		{
++			// GoldSrc timestamps are absolute server times. Normalize playback
++			// against the first packet in each directory section instead of using
++			// Xash's server-frame clock, which is not initialized during signon.
++			if( demo.entryIndex != 0 && !cls.timedemo )
++			{
++				if( demo.framecount == 0 )
++				{
++					demo.realstarttime = timestamp;
++					demo.starttime = CL_GetDemoPlaybackClock();
++				}
++				else
++				{
++					sectiontime = timestamp - demo.realstarttime;
++					fastforward_target = Cvar_VariableValue( "hltv_fastforward" );
++					if( fastforward_target > 0.0f )
++					{
++						if( sectiontime >= fastforward_target )
++						{
++							Cvar_SetValue( "hltv_fastforward", 0.0f );
++							demo.starttime = CL_GetDemoPlaybackClock() - sectiontime;
++							Con_Printf( "ReplayLab fast-forward complete at %.3f seconds.\n", sectiontime );
++						}
++					}
++					else
++					{
++						elapsed = CL_GetDemoPlaybackClock() - demo.starttime;
++						if( sectiontime > elapsed )
++						{
++							FS_Seek( cls.demofile, curpos, SEEK_SET );
++							return false;
++						}
++					}
++				}
++			}
++
++			// GoldSrc records the exact spectator camera origin and orientation
++			// together at the start of demo_info. Keep both on the same timeline;
++			// reconstructing the origin from the network player state makes the
++			// crosshair ray visibly miss narrow gaps in old HLTV recordings.
++			FS_Seek( cls.demofile, curpos + 9 + 4, SEEK_SET );
++			FS_Read( cls.demofile, vieworigin, sizeof( vieworigin ));
++			FS_Read( cls.demofile, viewangles, sizeof( viewangles ));
++			CL_RecordGoldSrcView( timestamp, vieworigin, viewangles );
++
++			// GoldSrc stores 436 bytes of camera/demo state followed by seven
++			// netchan integers and then the message length. Seek from the frame
++			// start so an implementation-specific FS cursor cannot accumulate an
++			// offset error between these fixed-width fields.
++			FS_Seek( cls.demofile, curpos + 9 + 436, SEEK_SET );
++			demo.framecount++;
++			CL_ReadDemoSequence( false );
++			FS_Seek( cls.demofile, curpos + 9 + 464, SEEK_SET );
++			return CL_ReadRawNetworkData( buffer, length );
++		}
++		case 2: // dem_synctick
++			break;
++		case 3: // dem_consolecmd
++			FS_Seek( cls.demofile, 64, SEEK_CUR );
++			break;
++		case 4: // dem_clientdata
++			FS_Seek( cls.demofile, 32, SEEK_CUR );
++			break;
++		case 5: // dem_nextsection
++			CL_DemoMoveToNextSection();
++			return false;
++		case 6: // dem_event
++		{
++			uint32_t flags, eventIndex;
++			float delay;
++			event_args_t args;
++
++			FS_Read( cls.demofile, &flags, sizeof( flags ));
++			FS_Read( cls.demofile, &eventIndex, sizeof( eventIndex ));
++			FS_Read( cls.demofile, &delay, sizeof( delay ));
++			FS_Read( cls.demofile, &args, sizeof( args ));
++			CL_PlaybackEvent( flags, NULL, (word)eventIndex, delay,
++				args.origin, args.angles, args.fparam1, args.fparam2,
++				args.iparam1, args.iparam2, args.bparam1, args.bparam2 );
++			break;
++		}
++		case 7: // dem_weaponanim
++		{
++			int animation, body;
++
++			FS_Read( cls.demofile, &animation, sizeof( animation ));
++			FS_Read( cls.demofile, &body, sizeof( body ));
++			CL_WeaponAnim( animation, body );
++			break;
++		}
++		case 8: // dem_sound
++			FS_Seek( cls.demofile, 4, SEEK_CUR ); // channel
++			FS_Read( cls.demofile, &blockLength, sizeof( blockLength ));
++			FS_Seek( cls.demofile, blockLength + 16, SEEK_CUR );
++			break;
++		case 9: // dem_demobuffer
++			FS_Read( cls.demofile, &blockLength, sizeof( blockLength ));
++			FS_Seek( cls.demofile, blockLength, SEEK_CUR );
++			break;
++		}
++	}
++}
++
+ /*
+ =================
+ CL_DemoReadMessage
+@@ -952,6 +1157,11 @@ qboolean CL_DemoReadMessage( byte *buffer, size_t *length )
+ 		return false;
+ 	}
+ 
++	// Original Valve HLDEMO files have their own frame container. Keep that
++	// adapter isolated so native Xash and Quake demos still use their readers.
++	if( demo.goldsrc_layout )
++		return CL_DemoReadMessageGoldSrc( buffer, length );
++
+ 	if(( !cl.background && ( cl.paused || cls.key_dest != key_game )) || cls.key_dest == key_console )
+ 	{
+ 		demo.starttime += host.frametime;
+@@ -1145,6 +1355,44 @@ void CL_DemoInterpolateAngles( void )
+ 	else VectorCopy( cl.cmd.viewangles, cl.viewangles );
+ }
+ 
++/*
++==============
++CL_DemoInterpolateView
++
++Returns the final camera origin and orientation embedded in a legacy GoldSrc
++demo. Applying both after the client DLL's CalcRefdef avoids adding modern
++view punch a second time to an already rendered HLTV camera angle.
++==============
++*/
++qboolean CL_DemoInterpolateView( vec3_t vieworigin, vec3_t viewangles )
++{
++	demoangle_t *prev = NULL, *next = NULL;
++	float frac = 0.0f;
++	float curtime;
++
++	if( !cls.demoplayback || !demo.goldsrc_layout )
++		return false;
++
++	curtime = (CL_GetDemoPlaybackClock() - demo.starttime) - host.frametime;
++	if( curtime > demo.timestamp )
++		curtime = demo.timestamp;
++
++	CL_DemoFindInterpolatedViewAngles( curtime, &frac, &prev, &next );
++	if( !prev || !next || !prev->has_vieworigin || !next->has_vieworigin )
++		return false;
++
++	VectorLerp( prev->vieworigin, frac, next->vieworigin, vieworigin );
++	{
++		vec4_t q, q1, q2;
++
++		AngleQuaternion( next->viewangles, q1, false );
++		AngleQuaternion( prev->viewangles, q2, false );
++		QuaternionSlerp( q2, q1, frac, q );
++		QuaternionAngle( q, viewangles );
++	}
++	return true;
++}
++
+ /*
+ ==============
+ CL_FinishTimeDemo
+@@ -1475,7 +1723,7 @@ static qboolean CL_ParseDemoHeader( const char *callee, const char *filename, fi
+ 		return false;
+ 	}
+ 
+-	if( hdr->net_protocol != PROTOCOL_VERSION && hdr->net_protocol != PROTOCOL_GOLDSRC_VERSION_DEMO )
++	if( hdr->net_protocol != PROTOCOL_VERSION && hdr->net_protocol != PROTOCOL_GOLDSRC_VERSION_DEMO && hdr->net_protocol != 46 )
+ 	{
+ 		Con_Printf( S_ERROR "%s: net protocol outdated (%i should be %i or %i)\n",
+ 			callee, hdr->net_protocol, PROTOCOL_VERSION, PROTOCOL_GOLDSRC_VERSION );
+@@ -1511,6 +1759,7 @@ void CL_PlayDemo_f( void )
+ {
+ 	char	filename[MAX_QPATH];
+ 	char	demoname[MAX_QPATH];
++	char	magic[8];
+ 	int	i, ident;
+ 
+ 	if( Cmd_Argc() < 2 )
+@@ -1521,6 +1770,7 @@ void CL_PlayDemo_f( void )
+ 
+ 	if( cls.demoplayback )
+ 		CL_StopPlayback();
++	demo.goldsrc_layout = false;
+ 
+ 	if( cls.demorecording )
+ 	{
+@@ -1551,10 +1801,72 @@ void CL_PlayDemo_f( void )
+ 	Q_strncpy( cls.demoname, demoname, sizeof( cls.demoname ));
+ 	Q_strncpy( gameui.globals->demoname, demoname, sizeof( gameui.globals->demoname ));
+ 
+-	FS_Read( cls.demofile, &ident, sizeof( int ));
++	FS_Read( cls.demofile, magic, sizeof( magic ));
++	memcpy( &ident, magic, sizeof( ident ));
+ 	FS_Seek( cls.demofile, 0, SEEK_SET ); // rewind back to start
+ 	cls.forcetrack = 0;
+ 
++	// Original Half-Life/Counter-Strike demos use an eight-byte HLDEMO stamp,
++	// a 544-byte protocol-5 header and a different directory entry layout than
++	// Xash's IDEM format. Parse and normalize that metadata before playback.
++	if( !memcmp( magic, "HLDEMO", 6 ))
++	{
++		goldsrc_demoheader_t goldHeader;
++
++		if( FS_Read( cls.demofile, &goldHeader, sizeof( goldHeader )) != sizeof( goldHeader )
++			|| goldHeader.dem_protocol != 5
++			|| goldHeader.net_protocol < 46 || goldHeader.net_protocol > PROTOCOL_GOLDSRC_VERSION
++			|| FS_Seek( cls.demofile, goldHeader.directory_offset, SEEK_SET ) < 0
++			|| FS_Read( cls.demofile, &demo.directory.numentries, sizeof( int )) != sizeof( int )
++			|| demo.directory.numentries < 1 || demo.directory.numentries > 1024 )
++		{
++			Con_Printf( S_ERROR "%s: invalid GoldSrc HLDEMO header or directory\n", Cmd_Argv( 0 ));
++			CL_DemoAborted();
++			return;
++		}
++
++		memset( &demo.header, 0, sizeof( demo.header ));
++		demo.header.id = IDEMOHEADER;
++		demo.header.dem_protocol = DEMO_PROTOCOL;
++		demo.header.net_protocol = goldHeader.net_protocol;
++		demo.header.host_fps = host_maxfps.value;
++		Q_strncpy( demo.header.mapname, goldHeader.mapname, sizeof( demo.header.mapname ));
++		Q_strncpy( demo.header.gamedir, goldHeader.gamedir, sizeof( demo.header.gamedir ));
++
++		demo.directory.entries = Mem_Calloc( cls.mempool,
++			sizeof( *demo.directory.entries ) * demo.directory.numentries );
++		for( i = 0; i < demo.directory.numentries; i++ )
++		{
++			goldsrc_demoentry_t source;
++			demoentry_t *entry = &demo.directory.entries[i];
++
++			if( FS_Read( cls.demofile, &source, sizeof( source )) != sizeof( source ))
++			{
++				Con_Printf( S_ERROR "%s: GoldSrc demo entry %i is corrupted\n", Cmd_Argv( 0 ), i );
++				CL_DemoAborted();
++				return;
++			}
++
++			entry->entrytype = source.entrytype;
++			entry->playback_time = source.playback_time;
++			entry->playback_frames = source.playback_frames;
++			entry->offset = source.offset;
++			entry->length = source.length;
++			entry->flags = source.flags;
++			Q_strncpy( entry->description, source.description, sizeof( entry->description ));
++		}
++
++		demo.entryIndex = 0;
++		demo.entry = &demo.directory.entries[0];
++		demo.goldsrc_layout = true;
++		CL_DemoStartPlayback( DEMO_XASH3D );
++		cls.legacymode = PROTO_GOLDSRC;
++		cls.demo_net_protocol = goldHeader.net_protocol;
++		FS_Seek( cls.demofile, demo.entry->offset, SEEK_SET );
++		Q_strncpy( cls.servername, demoname, sizeof( cls.servername ));
++		return;
++	}
++
+ 	// check for quake demos
+ 	if( ident != IDEMOHEADER )
+ 	{
+@@ -1607,6 +1919,10 @@ void CL_PlayDemo_f( void )
+ 
+ 	// must be after DemoStartPlayback, as CL_Disconnect_f resets the protocol
+ 	cls.legacymode = CL_GetProtocolFromDemo( demo.header.net_protocol );
++	cls.demo_net_protocol = demo.header.net_protocol;
++	// CL_DemoStartPlayback disconnects the current client and may move the demo
++	// file cursor while tearing down state. Restore the directory's first frame.
++	FS_Seek( cls.demofile, demo.entry->offset, SEEK_SET );
+ 
+ 	// g-cont. is this need?
+ 	Q_strncpy( cls.servername, demoname, sizeof( cls.servername ));
+diff --git a/engine/client/cl_frame.c b/engine/client/cl_frame.c
+index b0b66ad..a30fe29 100644
+--- a/engine/client/cl_frame.c
++++ b/engine/client/cl_frame.c
+@@ -1036,6 +1036,51 @@ Create visible entities in the correct position
+ for all current players
+ =============
+ */
++static void CL_CreateMissingDemoCorpse( int player )
++{
++	byte data[128];
++	sizebuf_t msg;
++	entity_state_t *death = &cls.demo_player_death_state[player];
++	model_t *model;
++	const char *modelname;
++	int sequence;
++
++	if( !cls.demoplayback || cls.demo_net_protocol >= 47
++		|| !cls.demo_player_dead[player]
++		|| cls.demo_player_corpse_seen[player]
++		|| cl.time < cls.demo_player_hide_time[player]
++		|| !death->modelindex )
++		return;
++
++	model = CL_ModelHandle( death->modelindex );
++	modelname = model && model->name[0] ? model->name : cl.players[player - 1].model;
++	if( !modelname[0] )
++		return;
++
++	// Modern CS player models share death1..death3 at 101..103 and the
++	// dedicated headshot animation at 104.  Build the same ClCorpse payload
++	// that the server would have sent, so gravity, collision and animation are
++	// handled by the real client instead of freezing a network player in place.
++	sequence = cls.demo_player_headshot[player] ? 104 : 101 + ( player % 3 );
++	MSG_Init( &msg, "legacy demo corpse", data, sizeof( data ));
++	MSG_WriteString( &msg, modelname );
++	MSG_WriteLong( &msg, death->origin[0] * 128.0f );
++	MSG_WriteLong( &msg, death->origin[1] * 128.0f );
++	MSG_WriteLong( &msg, death->origin[2] * 128.0f );
++	MSG_WriteCoord( &msg, death->angles[0] );
++	MSG_WriteCoord( &msg, death->angles[1] );
++	MSG_WriteCoord( &msg, death->angles[2] );
++	MSG_WriteLong( &msg, 0 );
++	MSG_WriteByte( &msg, sequence );
++	MSG_WriteByte( &msg, death->body );
++	MSG_WriteByte( &msg, death->team );
++	MSG_WriteByte( &msg, player );
++
++	cls.demo_player_corpse_seen[player] = true;
++	cls.demo_player_hide_time[player] = cl.time;
++	CL_DispatchUserMessage( "ClCorpse", MSG_GetNumBytesWritten( &msg ), data );
++}
++
+ static void CL_LinkPlayers( frame_t *frame )
+ {
+ 	entity_state_t	*state;
+@@ -1045,15 +1090,23 @@ static void CL_LinkPlayers( frame_t *frame )
+ 	ent = CL_GetLocalPlayer();
+ 
+ 	// apply muzzleflash to weaponmodel
+-	if( ent && FBitSet( ent->curstate.effects, EF_MUZZLEFLASH ))
++	if( ent && FBitSet( ent->curstate.effects, EF_MUZZLEFLASH )
++		&& Cvar_VariableValue( "hltv_native_spectator" ) == 0.0f )
+ 		SetBits( clgame.viewent.curstate.effects, EF_MUZZLEFLASH );
+ 
+ 	// check all the clients but add only visible
+ 	for( i = 0, state = frame->playerstate; i < MAX_CLIENTS; i++, state++ )
+ 	{
++		CL_CreateMissingDemoCorpse( i + 1 );
++
+ 		if( state->messagenum != cl.parsecount )
+ 			continue;	// not present this frame
+ 
++		if( cls.demoplayback && cls.demo_net_protocol < 47
++			&& cls.demo_player_dead[i + 1]
++			&& cl.time >= cls.demo_player_hide_time[i + 1] )
++			continue;	// stale pre-1.6 player entity after DeathMsg
++
+ 		if( !state->modelindex || FBitSet( state->effects, EF_NODRAW ))
+ 			continue;
+ 
+diff --git a/engine/client/cl_gameui.c b/engine/client/cl_gameui.c
+index d8f938f..64b6090 100644
+--- a/engine/client/cl_gameui.c
++++ b/engine/client/cl_gameui.c
+@@ -84,6 +84,15 @@ void UI_SetActiveMenu( qboolean fActive )
+ {
+ 	movie_state_t	*cin_state;
+ 
++	// Counter-Strike can request GameUI again after a GoldSrc demo signon or a
++	// hidden seek.  ReplayLab owns the surrounding controls, so keep demo input
++	// and rendering in the game instead of covering the replay with MainUI.
++	if( fActive && cls.demoplayback && Cvar_VariableValue( "hltv_replay_mode" ) != 0.0f )
++	{
++		Key_SetKeyDest( key_game );
++		return;
++	}
++
+ 	if( !gameui.hInstance )
+ 	{
+ 		if( !fActive )
+diff --git a/engine/client/cl_main.c b/engine/client/cl_main.c
+index 1cc40ae..cac107a 100644
+--- a/engine/client/cl_main.c
++++ b/engine/client/cl_main.c
+@@ -218,18 +218,6 @@ static void CL_CheckClientState( void )
+ 		Cvar_SetValue( "scr_loading", 0.0f );	// reset progress bar
+ 		Netchan_ReportFlow( &cls.netchan );
+ 
+-		if( cls.legacymode == PROTO_GOLDSRC )
+-		{
+-			CL_ServerCommand(true, "specmode 4\n");
+-			CL_ServerCommand(true, "specmode 4\n");
+-			CL_ServerCommand(true, "unpause\n");
+-			CL_ServerCommand(true, "unpause\n");
+-			CL_ServerCommand(true, "unpause\n");
+-			CL_ServerCommand(true, "unpause\n");
+-			CL_ServerCommand(true, "specmode 4\n");
+-			CL_ServerCommand(true, "specmode 4\n");
+-		}
+-
+ 		Con_DPrintf( "client connected at %.2f sec\n", Platform_DoubleTime() - cls.timestart );
+ 	}
+ }
+@@ -3302,6 +3290,24 @@ static void CL_Escape_f( void )
+ 	else UI_SetActiveMenu( true );
+ }
+ 
++/*
++=================
++CL_ReplayLabCloseMenu_f
++
++Close GameUI without emulating Escape or a menu slot.  GoldSrc demo signon and
++hidden fast-forward can leave key focus in GameUI; using slot10 to close it also
++changes the recorded player's weapon selection.
++=================
++*/
++static void CL_ReplayLabCloseMenu_f( void )
++{
++	if( !cls.demoplayback )
++		return;
++
++	UI_SetActiveMenu( false );
++	Key_SetKeyDest( key_game );
++}
++
+ static void CL_ListMessages_f( void )
+ {
+ 	int i;
+@@ -3454,6 +3460,7 @@ static void CL_InitLocal( void )
+ 	Cmd_AddCommand ("info", NULL, "collect info about local servers with specified protocol" );
+ 	Cmd_AddCommand ("escape", CL_Escape_f, "escape from game to menu" );
+ 	Cmd_AddCommand ("togglemenu", CL_Escape_f, "toggle between game and menu" );
++	Cmd_AddCommand ("hltv_closemenu", CL_ReplayLabCloseMenu_f, "close GameUI during ReplayLab demo playback" );
+ 	Cmd_AddCommand ("pointfile", CL_ReadPointFile_f, "show leaks on a map (if present of course)" );
+ 	Cmd_AddCommand ("linefile", CL_ReadLineFile_f, "show leaks on a map (if present of course)" );
+ 	Cmd_AddCommand ("fullserverinfo", CL_FullServerinfo_f, "sent by server when serverinfo changes" );
+diff --git a/engine/client/cl_parse.c b/engine/client/cl_parse.c
+index 990b56d..ce81663 100644
+--- a/engine/client/cl_parse.c
++++ b/engine/client/cl_parse.c
+@@ -541,8 +541,11 @@ void CL_BatchResourceRequest( qboolean initialize )
+ 			CL_RegisterResources( &msg, cls.legacymode );
+ 		}
+ 
+-		Netchan_CreateFragments( &cls.netchan, &msg );
+-		Netchan_FragSend( &cls.netchan );
++		if( !cls.demoplayback )
++		{
++			Netchan_CreateFragments( &cls.netchan, &msg );
++			Netchan_FragSend( &cls.netchan );
++		}
+ 	}
+ }
+ 
+@@ -867,7 +870,9 @@ void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
+ 	switch( proto )
+ 	{
+ 	case PROTO_GOLDSRC:
+-		required_version = PROTOCOL_GOLDSRC_VERSION;
++		required_version = cls.demoplayback && cls.demo_net_protocol >= 46
++			&& cls.demo_net_protocol <= PROTOCOL_GOLDSRC_VERSION
++			? cls.demo_net_protocol : PROTOCOL_GOLDSRC_VERSION;
+ 		Con_Reportf( "GoldSrc serverdata packet received.\n" );
+ 		break;
+ 	default:
+@@ -917,7 +922,13 @@ void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
+ 			Con_Printf( "Server map cycle: %s\n", s ); // VALVEWHY?
+ 
+ 		if( MSG_ReadByte( msg ))
++		{
+ 			Con_Printf( "Uh, server says it's VAC2 secured.\n" );
++			// Protocol 46 demo serverdata carries a 21-byte legacy security
++			// payload after this flag.  Newer GoldSrc packets omit it.
++			if( cls.demoplayback && cls.demo_net_protocol == 46 )
++				MSG_SeekToBit( msg, 21 << 3, SEEK_CUR );
++		}
+ 
+ 		background = false;
+ 		clgame.maxEntities = GI->max_edicts + (( cl.maxclients - 1 ) * 15 );
+@@ -1203,7 +1214,8 @@ void CL_ParseClientData( sizebuf_t *msg, connprotocol_t proto )
+ 		if( !MSG_ReadOneBit( msg )) break;
+ 
+ 		// read the weapon idx
+-		idx = MSG_ReadUBitLong( msg, MAX_WEAPON_BITS );
++		idx = MSG_ReadUBitLong( msg,
++			cls.demoplayback && cls.demo_net_protocol < 47 ? 5 : MAX_WEAPON_BITS );
+ 
+ 		if( proto == PROTO_GOLDSRC )
+ 			Delta_ReadGSFields( msg, DT_WEAPONDATA_T, &from_wd[idx], &to_wd[idx], cl.mtime[0] );
+@@ -1963,7 +1975,15 @@ CL_ParseVoiceInit
+ void CL_ParseVoiceInit( sizebuf_t *msg )
+ {
+ 	char *pszCodec = MSG_ReadString( msg );
+-	int quality = MSG_ReadByte( msg );
++	int quality;
++
++	// Protocol 46 demos only store the codec name here. Browser playback has
++	// no live voice stream to decode, and trying to initialize the extinct
++	// voice_miles codec only emits a misleading warning.
++	if( cls.demoplayback && cls.demo_net_protocol < 47 )
++		return;
++
++	quality = MSG_ReadByte( msg );
+ 
+ 	Voice_Init( pszCodec, quality, false ); // init requested codec and the device
+ }
+@@ -2068,6 +2088,13 @@ void CL_ParseHLTV( sizebuf_t *msg )
+ 			MSG_ReadWord( msg );
+ 		break;
+ 	case HLTV_LISTEN:
++		if( cls.demoplayback && cls.demo_net_protocol == 46 )
++		{
++			// Early HLTV protocol 46 stores an opaque 8-byte listen payload,
++			// not the null-terminated multicast address used by protocol 48.
++			MSG_SeekToBit( msg, 8 << 3, SEEK_CUR );
++			break;
++		}
+ 		cls.signon = SIGNONS;
+ #if 1
+ 		MSG_ReadString( msg );
+@@ -2386,11 +2413,71 @@ void CL_ParseUserMessage( sizebuf_t *msg, int svc_num, connprotocol_t proto )
+ 	// parse user message into buffer
+ 	MSG_ReadBytes( msg, pbuf, iSize );
+ 
+-	if( cl_trace_messages.value )
++	if( cls.demoplayback && cls.demo_net_protocol < 47 )
+ 	{
++		// The old stream may keep a killed player's network entity on its last
++		// animation frame. ScoreAttrib is authoritative when present; DeathMsg
++		// closes the small gap before the matching scoreboard update arrives.
++		if( !Q_stricmp( clgame.msg[i].name, "ScoreAttrib" ) && iSize >= 2 )
++		{
++			int player = pbuf[0];
++			if( player > 0 && player <= MAX_CLIENTS )
++			{
++				qboolean dead = FBitSet( pbuf[1], BIT( 0 ));
++				if( dead && !cls.demo_player_dead[player] )
++				{
++					cls.demo_player_hide_time[player] = cl.time + 0.1f;
++					cls.demo_player_death_state[player] = clgame.entities[player].curstate;
++				}
++				else if( !dead )
++				{
++					cls.demo_player_hide_time[player] = 0.0f;
++					memset( &cls.demo_player_death_state[player], 0, sizeof( cls.demo_player_death_state[player] ));
++					cls.demo_player_corpse_seen[player] = false;
++					cls.demo_player_headshot[player] = false;
++				}
++				cls.demo_player_dead[player] = dead;
++			}
++		}
++		else if( !Q_stricmp( clgame.msg[i].name, "DeathMsg" ) && iSize >= 2 )
++		{
++			int victim = pbuf[1];
++			if( victim > 0 && victim <= MAX_CLIENTS )
++			{
++				cls.demo_player_dead[victim] = true;
++				if( !cls.demo_player_corpse_seen[victim] )
++					cls.demo_player_hide_time[victim] = cl.time + 0.1f;
++				if( !cls.demo_player_death_state[victim].modelindex )
++					cls.demo_player_death_state[victim] = clgame.entities[victim].curstate;
++				cls.demo_player_headshot[victim] = iSize >= 3 && pbuf[2] != 0;
++			}
++		}
++		else if( !Q_stricmp( clgame.msg[i].name, "ClCorpse" ) && iSize >= 4 )
++		{
++			int player = pbuf[iSize - 1];
++			if( player > 0 && player <= MAX_CLIENTS )
++			{
++				if( cls.demo_player_corpse_seen[player] )
++					return;
++				cls.demo_player_corpse_seen[player] = true;
++				cls.demo_player_hide_time[player] = cl.time;
++			}
++		}
++
++		// Old HLTV recordings can omit GameMode even though TeamInfo and
++		// ScoreInfo are present. The modern CS scoreboard then falls back to
++		// its non-team list and deliberately hides frags/deaths. Reassert the
++		// recorded match's team mode whenever legacy team data arrives.
++		if( !Q_stricmp( clgame.msg[i].name, "TeamInfo" ))
++		{
++			byte teamplay = 1;
++			CL_DispatchUserMessage( "GameMode", sizeof( teamplay ), &teamplay );
++		}
++	}
++
++	if( cl_trace_messages.value )
+ 		Con_Reportf( "^3USERMSG %s SIZE %i SVC_NUM %i\n",
+ 			clgame.msg[i].name, iSize, clgame.msg[i].number );
+-	}
+ 
+ 	if( clgame.msg[i].func )
+ 	{
+diff --git a/engine/client/cl_parse_gs.c b/engine/client/cl_parse_gs.c
+index 60bc294..41cad05 100644
+--- a/engine/client/cl_parse_gs.c
++++ b/engine/client/cl_parse_gs.c
+@@ -602,7 +602,10 @@ void CL_ParseGoldSrcServerMessage( sizebuf_t *msg )
+ 			break;
+ 		case svc_goldsrc_version:
+ 			param1 = MSG_ReadLong( msg );
+-			if( param1 != PROTOCOL_GOLDSRC_VERSION )
++			if( param1 != PROTOCOL_GOLDSRC_VERSION &&
++				!( cls.demoplayback && cls.demo_net_protocol >= 46
++				&& cls.demo_net_protocol <= PROTOCOL_GOLDSRC_VERSION
++				&& param1 == cls.demo_net_protocol ))
+ 				Host_Error( "Server use invalid protocol (%i should be %i)\n", param1, PROTOCOL_GOLDSRC_VERSION );
+ 			break;
+ 		case svc_setview:
+diff --git a/engine/client/cl_view.c b/engine/client/cl_view.c
+index 0a35b73..9b26d08 100644
+--- a/engine/client/cl_view.c
++++ b/engine/client/cl_view.c
+@@ -372,6 +372,7 @@ void V_RenderView( void )
+ 	// not really critical but allows client.dll to take address of refdef and don't trigger ASan
+ 	static ref_params_t	rp;
+ 	ref_viewpass_t	rvp;
++	vec3_t		demo_vieworigin, demo_viewangles;
+ 	int		viewnum = 0;
+ 
+ 	if( !cl.video_prepped || ( !ui_renderworld.value && UI_IsVisible() && !cl.background ))
+@@ -388,6 +389,42 @@ void V_RenderView( void )
+ 	{
+ 		clgame.dllFuncs.pfnCalcRefdef( &rp );
+ 		V_GetRefParams( &rp, &rvp );
++		// Replay Lab's native HLTV spectator camera is calculated by the client
++		// DLL. Do not replace it with the camera embedded in the demo frame.
++		if( Cvar_VariableValue( "hltv_native_spectator" ) == 0.0f
++			&& CL_DemoInterpolateView( demo_vieworigin, demo_viewangles ))
++		{
++			cl_entity_t *viewmodel = &clgame.viewent;
++			vec3_t origin_delta;
++			float pitch_delta, yaw_delta, roll_delta;
++
++			// The client DLL has already positioned the first-person model around
++			// rp.vieworg/rp.viewangles. Move that same model into the recorded
++			// HLDEMO camera before replacing the world view, otherwise the world
++			// turns correctly while the weapon remains outside the new frustum.
++			VectorSubtract( demo_vieworigin, rp.vieworg, origin_delta );
++			VectorAdd( viewmodel->origin, origin_delta, viewmodel->origin );
++
++			pitch_delta = demo_viewangles[PITCH] - rp.viewangles[PITCH];
++			yaw_delta = demo_viewangles[YAW] - rp.viewangles[YAW];
++			roll_delta = demo_viewangles[ROLL] - rp.viewangles[ROLL];
++			while( pitch_delta > 180.0f ) pitch_delta -= 360.0f;
++			while( pitch_delta < -180.0f ) pitch_delta += 360.0f;
++			while( yaw_delta > 180.0f ) yaw_delta -= 360.0f;
++			while( yaw_delta < -180.0f ) yaw_delta += 360.0f;
++			while( roll_delta > 180.0f ) roll_delta -= 360.0f;
++			while( roll_delta < -180.0f ) roll_delta += 360.0f;
++			viewmodel->angles[PITCH] -= pitch_delta;
++			viewmodel->angles[YAW] += yaw_delta;
++			viewmodel->angles[ROLL] += roll_delta;
++			VectorCopy( viewmodel->origin, viewmodel->curstate.origin );
++			VectorCopy( viewmodel->origin, viewmodel->latched.prevorigin );
++			VectorCopy( viewmodel->angles, viewmodel->curstate.angles );
++			VectorCopy( viewmodel->angles, viewmodel->latched.prevangles );
++
++			VectorCopy( demo_vieworigin, rvp.vieworigin );
++			VectorCopy( demo_viewangles, rvp.viewangles );
++		}
+ 		V_RefApplyOverview( &rvp );
+ 
+ 		if( viewnum == 0 && FBitSet( rvp.flags, RF_ONLY_CLIENTDRAW ))
+diff --git a/engine/client/client.h b/engine/client/client.h
+index c57603a..2fc7768 100644
+--- a/engine/client/client.h
++++ b/engine/client/client.h
+@@ -639,6 +639,18 @@ typedef struct
+ 
+ 	// multiprotocol support
+ 	connprotocol_t legacymode;
++	// Original network protocol stored in a GoldSrc demo header.  This is
++	// deliberately separate from legacymode: protocol 46 and 48 both use the
++	// GoldSrc message parser, but a few bit widths and optional fields differ.
++	int demo_net_protocol;
++	// Protocol-46 demos can leave the network player entity on its final frame
++	// after DeathMsg. Hide that stale actor while the client renders the proper
++	// ClCorpse death animation in its place.
++	qboolean demo_player_dead[MAX_CLIENTS + 1];
++	float demo_player_hide_time[MAX_CLIENTS + 1];
++	entity_state_t demo_player_death_state[MAX_CLIENTS + 1];
++	qboolean demo_player_corpse_seen[MAX_CLIENTS + 1];
++	qboolean demo_player_headshot[MAX_CLIENTS + 1];
+ 	int extensions;
+ 
+ 	netadr_t serveradr;
+@@ -788,6 +800,7 @@ void CL_WriteDemoMessage( qboolean startup, int start, sizebuf_t *msg );
+ void CL_WriteDemoUserMessage( int size, byte *buffer );
+ qboolean CL_DemoReadMessage( byte *buffer, size_t *length );
+ void CL_DemoInterpolateAngles( void );
++qboolean CL_DemoInterpolateView( vec3_t vieworigin, vec3_t viewangles );
+ void CL_CheckStartupDemos( void );
+ void CL_WriteDemoJumpTime( void );
+ void CL_CloseDemoHeader( void );
+diff --git a/engine/common/net_ws.c b/engine/common/net_ws.c
+index cf983d7..3d4a4bb 100644
+--- a/engine/common/net_ws.c
++++ b/engine/common/net_ws.c
+@@ -1692,6 +1692,12 @@ void NET_SendPacketEx( netsrc_t sock, size_t length, const void *data, netadr_t
+ 		if( !NET_IsSocketValid( net_socket ))
+ 			return;
+ 	}
++	else if( type == NA_UNDEFINED )
++	{
++		// Offline demo playback has no remote peer. Resource verification may
++		// still flush a netchan acknowledgement; there is nowhere to send it.
++		return;
++	}
+ 	else
+ 	{
+ 		Host_Error( "%s: bad address type %i (%i, %i)\n", __func__, to.type, to.ip6_0[0], to.ip6_0[1] );
+@@ -2280,4 +2286,3 @@ void NET_Shutdown( void )
+ 	net.initialized = false;
+ }
+ 
+-
+diff --git a/engine/common/net_ws.h b/engine/common/net_ws.h
+index 791bff7..6943a11 100644
+--- a/engine/common/net_ws.h
++++ b/engine/common/net_ws.h
+@@ -37,7 +37,9 @@ typedef enum
+ #define MAX_MULTICAST		8192	// some mods spamming for rain effect
+ 
+ 
+-#if !XASH_LOW_MEMORY
++#if XASH_EMSCRIPTEN
++#define MAX_INIT_MSG		0x80000	// large local GoldSrc demo signon blocks
++#elif !XASH_LOW_MEMORY
+ #define MAX_INIT_MSG		0x30000	// max length of possible message
+ #else
+ #define MAX_INIT_MSG		0x8000
+diff --git a/engine/platform/sdl2/vid_sdl2.c b/engine/platform/sdl2/vid_sdl2.c
+index 2cf6a78..14a1a8f 100644
+--- a/engine/platform/sdl2/vid_sdl2.c
++++ b/engine/platform/sdl2/vid_sdl2.c
+@@ -717,9 +717,9 @@ static qboolean VID_CreateWindow( const int input_width, const int input_height,
+ 	const qboolean position_undefined = rect.x < 0 || rect.y < 0;
+ 
+ 	// TODO: disabled for Windows for now
+-#if !XASH_WIN32
++#if !XASH_WIN32 && !XASH_EMSCRIPTEN
+ 	SetBits( flags, SDL_WINDOW_ALLOW_HIGHDPI );
+-#endif // !XASH_WIN32
++#endif // !XASH_WIN32 && !XASH_EMSCRIPTEN
+ 
+ 	if( !glw_state.software )
+ 		SetBits( flags, SDL_WINDOW_OPENGL );

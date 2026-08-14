@@ -1,136 +1,93 @@
-# WebXash
+# HLTV Replay Lab
 
-https://x8bitrain.github.io/webXash/
+Lokal webbläsarspelare för gamla Counter-Strike/GoldSrc-demos. Spelaren väljer
+kompatibilitetsprofil och exakt kartversion från varje demos header. Den är
+verifierad med tre separata inspelningar:
 
-Play Half-Life 1 and Counter-Strike 1.6 in your browser with [Xash3d-FWGS-webassembly](https://github.com/yohimik/webxash3d-fwgs)!
+- `r60_sthlm.dem`: HLTV, `de_train`, CRC `d870b4a8`
+- `smidig2.dem`: POV, `de_train`, CRC `d870b4a8`
+- `phil_eco.dem`: POV, historiska `de_inferno`, CRC `e7e42f71`
+- renderade spelarmodeller, handhållna vapen, viewmodel, radar och CS-HUD
 
-![image](https://github.com/user-attachments/assets/46d9265a-8e1a-4f80-8419-f7b04aa7925b)
+Demot och spelresurserna läses från datorn och körs lokalt i WebAssembly. De
+laddas inte upp till någon extern tjänst.
 
-Please read the [FAQs](https://github.com/x8BitRain/webXash/blob/main/README.md#faqs) before you start!
-
-## How to use
-
-You must provide your own game files (e.g., from Steam):
-
-```shell
-steamcmd +force_install_dir ./hl +login your_steam_username +app_update 70 validate +quit
-```
-
-Or from your `valve` or `cstrike` folders located in your steamapps directory.
-
-### Loading from a folder
-
-Click the `Open game folder` button and select your Half-Life or Counter-Strike ROOT folder, the folder should always contain a `valve` and or `cstrike` directory, for example:
-
-```shell
-/Half-Life 1
-├──┬/valve                  
-│  ├───/file1           
-│  └───/file2...  
-└──┬/cstrike                  
-   ├───/file1           
-   └───/file2...  
-```
-
-After selecting the folder you'll see a list of game directories to choose from, this basically sets the launch argument `-game bshift`, for example. You can use the `-game` launch arg in the settings box to override this behavior.
-
-Selecting this folder will persist across visits if you allow permission for the site to access the files. WebXash does not write anything to the selected filesystem folder, it only reads game files and transfers them into a WASM filesystem that lives in memory in the browser during the play session.
-
-### Loading from Zip files
-
-Zip and and copy the `valve` folder from your Half-Life installation into the `public/valve.zip`.
-Note: zip contents should be like this:
-```shell
-/valve.zip
-├──┬/valve                  
-│  ├───/file1           
-│  └───/file2...  
-└──┬/cstrike                  
-   ├───/file1           
-   └───/file2...  
-```
-
-The click `open zip` to select this zip, if done correctly the game will launch as soon as you've selected the zip.
-
-### Running Mods
-
-If you are running a Half-Life mod or expansion like Opposing Force, the `valve` folder should always be present in the folder you select, the mod or expandion should be next to your `valve` folder in the folder you select or compress into a zip. For example:
-
-```shell
-/Half-Life Blue Shift
-├──┬/valve                  
-│  ├───/file1           
-│  └───/file2...  
-└──┬/bshift                  
-   ├───/file1           
-   └───/file2...  
-```
-
-Before you select the folder you need to specify which game folder to launch using the `LAUNCH OPTIONS` window, in this example, I would run Blue Shift with `-game bshift`
-
-## Multiplayer
-
-For multiplayer setups you need to use the following servers in docker containers from webxash3d-fwgs:
-
-For HL1DM use [hl-web-server](https://github.com/yohimik/webxash3d-fwgs/tree/main/docker/hl-web-server) 
-
-For CS 1.6 use [cs-web-server](https://github.com/yohimik/webxash3d-fwgs/tree/main/docker/cs-web-server)
-
-These servers work over the internet and over LAN.
-
-Once you have set up the server you can enter the server's <ins>***websocket***</ins> IP and port into the MULTIPLAYER IP input.
-
-The server's websocket address will be `<ip>:27016` by default.
-
-Launch the game and find it in the in-game menu under MULTIPLAYER -> LAN Game.
-
-## Save manager
-
-The save manager captures saves when they're made in-game and stores them in indexedDB, then categorizes them by the game/mod name it was created under.
-
-Saves added via the save button will be categorized under `xash-custom-saves`.
-
-When you launch a game, the saves under the matching game/mod name will be transferred into the game for you to load. Saves under `xash-custom-saves` will also be transferred into any game/mod launched.
-
-The download button will save the selected save to your local FS.
-
-### Using saves with zipped games.
-
-If you launch a zipped folder of HL1 or play any of the zipped demos, the save system still works, if you use, for example, `-game bshift` in the launch arguments, that will tell the save system to capture saves from the corresponding game name, so it would be `bshift/save`.
-
-## Other stuff
-
-- Writing `quit` or `exit` in the console _should_ reload the page. If it doesn't, refresh manually.
-- Pressing Ctrl+W (crouch jumping) tries to close the page on most browsers, the only thing possible to prevent the tab from closing is to show a warning message where you can cancel the close. I recommend playing with fullscreen enabled because as Ctrl+W does not close the tab in fullscreen. 
-- Save manager is disabled when CS 1.6 is selected.
-
-## FAQs
-
-#### Why doesn't multiplayer internet server discovery work?
-
-If you want to play multiplayer over the internet like on Steam you should use this version of [Half-Life: Deathmatch on dos.zone](https://dos.zone/hldm/) for now as it's the closest thing to it. Currently you need to provide the IP address directly.
-
-#### Why doesn't my mod work?
-
-If Xash3d doesn't explicitly support it then it probably won't work, you can see their incompatibility list here: https://github.com/FWGS/xash3d-fwgs/blob/master/Documentation/not-supported-mod-list-and-reasons-why.md
-
-#### Why doesn't it work on mobile?
-
-You'd be better off downloading the xash3D [mobile ports](https://github.com/FWGS/xash3d/releases) rather than using this. You need a keyboard and mouse attached to play this xash port properly.
-
-#### There is a bug in this game port, do I submit a bug report here?
-
-Nope, I'm not the maintainer of this port, I just wrote a frontend for it, please submit issues to the engine port repo instead: https://github.com/yohimik/webxash3d-fwgs
-
-## Building/developing
-Clone the repo:
+## Kör på Mac
 
 ```bash
-git clone https://github.com/x8BitRain/webXash.git
-
-cd webXash
-
-./setup-xash.sh
-
-npm run dev
+cd /Users/ldmnt/Code/hltv/app
+pnpm install
+pnpm build
+pnpm serve
 ```
+
+Öppna `http://127.0.0.1:4173` och klicka **Spela matchen**. Servern hittar det
+medföljande demot och `game-assets/` automatiskt. Sätt exempelvis
+`HLTV_PORT=43173 pnpm serve` om du vill använda en annan port.
+
+Det gamla 32-bitars Windows-spelet behöver inte kunna startas på datorn. Det är
+Xash3D-FWGS och CS16Client som kör Counter-Strike-klienten i WebGL2.
+
+## Arkitektur
+
+- `src/demo/goldsrc-demo.ts` läser metadata ur GoldSrc-filen med HTTP Range.
+- `src/demo/goldsrc-map-crc.ts` verifierar lokalt valda BSP-filer med GoldSrcs
+  riktiga multiplayer-CRC, inte filnamn eller generella filhashar.
+- `src/analysis/demo-analyzer.ts` återanvänder den protokollkompatibla parsern
+  för att bygga ett versionsmärkt eventindex med spelarsessioner, ronder, frags,
+  evidensnivåer och stabila källpositioner.
+- `src/analysis/round-alive-reducer.ts` härleder testbart rond- och alive-state.
+- `src/analysis/highlight-analyzer.ts` bygger förklarbara FragScore, moments och
+  lagvisa RoundScore 0–100. POV-demos filtreras automatiskt till inspelarens lag.
+- `src/analysis/analysis-worker.ts` läser, hashberäknar, cachar och analyserar
+  demot utanför UI-tråden samt rapporterar byte-, katalog- och frame-progress.
+- Analysindex cachas lokalt i IndexedDB efter demo-SHA-256, parser-/WASM-version
+  och analyskonfiguration. Samma index driver den filtrerbara fraglistan.
+- `src/services/demo-engine.ts` monterar demot och startar det i Xash3D.
+- Fragklick i HLTV-demos låser native in-eye på dödarens entity-slot och visar
+  fraggets observerade vapen; POV-demos fortsätter använda sin inspelade vy.
+- Vald plats snabbspolas internt av HLDEMO-läsaren utan den tidigare 15×-
+  väggklockegränsen; ett hopp till 40:14 verifieras lokalt på cirka sju sekunder
+  inklusive motorstart och montering av resurser.
+- Under HLTV-uppspelning växlar `Space` spectatorläge, `WASD + mus` styr Free
+  Look och Mus1/Mus2 väljer nästa/föregående levande spelare. Kontrollerna
+  aktiveras inte för POV-demos.
+- `engine-patches/xash3d-protocol46.patch` är den reproducerbara motorpatchen
+  för GoldSrc demoformat 5, protokoll 46 och offline-HLTV-uppspelning.
+- `engine-patches/xash-protocol46.wasm` är den byggda motorn; SHA-256:
+  `7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4`.
+- `server.mjs` strömmar det stora demot och bara de spelresurser uppspelningen
+  behöver. Kartor i `game-assets/map-library/` indexeras efter sin beräknade
+  GoldSrc-CRC, så flera historiska versioner av samma kartnamn kan samexistera.
+- Vite-pluginen i `vite.config.ts` beräknar den ombyggda motorns `EM_ASM`-
+  relokering mot den låsta npm-versionen och exponerar motsvarande alias åt
+  sidomodulerna.
+
+## Nästa steg
+
+Fragindex, highlight-ranking och den första restart/snabbspolnings-sökningen är
+implementerade.
+Den tekniska produktplanen för tidslinje, checkpoints, automatisk
+highlight-ranking och dynamiska CS-filmer finns i
+[docs/TIMELINE_HIGHLIGHTS_AND_MOVIES.md](docs/TIMELINE_HIGHLIGHTS_AND_MOVIES.md).
+Ett kort nuläge för byte av Codex-session finns i
+[docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
+
+## Verifiering
+
+```bash
+pnpm test
+pnpm run check
+pnpm run build
+```
+
+Den anpassade parsern har även körts genom hela demots katalog: en sammanhängande
+replay på 3 168,69 sekunder och 317 katalogsegment. Godtycklig seek och
+checkpointing ingår i nästa utvecklingsetapp.
+
+## Licenser
+
+Xash3D-FWGS, CS16Client och övriga tredjepartskomponenter behåller sina egna
+licenser i respektive paket. Counter-Strike, Half-Life och GoldSrc tillhör
+Valve. Spelresurser ska användas från en installation som användaren har rätt
+att använda.

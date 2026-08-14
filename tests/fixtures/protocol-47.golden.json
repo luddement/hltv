@@ -1,0 +1,41 @@
+{
+  "protocol": 47,
+  "durationMs": 10000,
+  "frames": [
+    {
+      "time": 1,
+      "messages": [
+        { "type": 13, "data": { "clientIndex": 0, "clientUserId": 10, "clientUserInfo": "\\name\\Old" } },
+        { "type": 13, "data": { "clientIndex": 1, "clientUserId": 20, "clientUserInfo": "\\name\\Ally" } },
+        { "type": 64, "data": { "name": "TeamInfo", "payload": [1, 67, 84, 0] } },
+        { "type": 64, "data": { "name": "TeamInfo", "payload": [2, 67, 84, 0] } },
+        { "type": 64, "data": { "name": "RoundTime", "payload": [180, 0] } }
+      ]
+    },
+    {
+      "time": 2,
+      "messages": [
+        { "type": 64, "data": { "name": "DeathMsg", "payload": [1, 2, 0, 116, 101, 97, 109, 109, 97, 116, 101, 0] } }
+      ]
+    },
+    {
+      "time": 3,
+      "messages": [
+        { "type": 13, "data": { "clientIndex": 0, "clientUserId": 10, "clientUserInfo": "" } },
+        { "type": 13, "data": { "clientIndex": 0, "clientUserId": 30, "clientUserInfo": "\\name\\New" } },
+        { "type": 64, "data": { "name": "TeamInfo", "payload": [1, 84, 69, 82, 82, 79, 82, 73, 83, 84, 0] } }
+      ]
+    }
+  ],
+  "expected": {
+    "diagnostics": { "deathEvents": 1, "roundCount": 1, "playerSessions": 3, "unknownPlayerReferences": 0 },
+    "players": [
+      { "playerId": "player-1", "userId": 10, "joinedAtMs": 1000, "leftAtMs": 3000, "names": ["Old"], "teams": ["CT"] },
+      { "playerId": "player-2", "userId": 20, "joinedAtMs": 1000, "leftAtMs": 10000, "names": ["Ally"], "teams": ["CT"] },
+      { "playerId": "player-3", "userId": 30, "joinedAtMs": 3000, "leftAtMs": 10000, "names": ["New"], "teams": ["TERRORIST"] }
+    ],
+    "deaths": [
+      { "demoTimeMs": 2000, "killerPlayerId": "player-1", "victimPlayerId": "player-2", "weapon": "teammate", "headshot": false, "teamKill": { "value": true, "evidence": "observed" }, "worldKill": false, "suicide": false }
+    ]
+  }
+}
