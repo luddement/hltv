@@ -25,6 +25,26 @@ pnpm serve
 medföljande demot och `game-assets/` automatiskt. Sätt exempelvis
 `HLTV_PORT=43173 pnpm serve` om du vill använda en annan port.
 
+### Reparera ofullständigt avslutade GoldSrc-demos
+
+Om ett demo har en intakt frame-ström men saknar slutkatalog kan den katalogen
+byggas om utan att originalfilen ändras. Torrkör först:
+
+```bash
+./scripts/repair-goldsrc-demos.py /sökväg/match.dem
+```
+
+Skriv därefter en separat `match.repaired.dem`:
+
+```bash
+./scripts/repair-goldsrc-demos.py --execute /sökväg/match.dem
+```
+
+För att söka igenom ett helt demoarkiv används `--root /sökväg/demos`, först
+utan och sedan med `--execute`. Verktyget kopierar endast kompletta frames,
+lägger till en säker avslutningsframe vid behov och verifierar den nya katalogen
+innan resultatet godkänns. Befintliga filer skrivs aldrig över.
+
 Det gamla 32-bitars Windows-spelet behöver inte kunna startas på datorn. Det är
 Xash3D-FWGS och CS16Client som kör Counter-Strike-klienten i WebGL2.
 
