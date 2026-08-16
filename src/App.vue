@@ -342,14 +342,64 @@
                 <button
                   type="button"
                   :disabled="!canStartFragReel || movieExportRunning"
-                  @click="playFragReel"
+                  @click="() => playFragReel()"
                 ><span class="play-icon"></span> Only Frags · {{ fragReelTeamShortLabel }} · {{ fragReelDeaths.length }}</button>
               </div>
             </div>
 
+            <div class="frag-list" role="table" aria-label="Frag list">
+              <div class="frag-header" role="row">
+                <span>Movie</span><span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span>
+              </div>
+              <div
+                v-for="(death, index) in filteredDeaths"
+                :key="death.eventId"
+                :class="['frag-row', { selected: selectedFragId === death.eventId, disabled: !canLaunch }]"
+                role="row"
+                :tabindex="canLaunch ? 0 : -1"
+                :aria-disabled="!canLaunch"
+                @click="canLaunch && playFrag(death)"
+                @keydown.enter="canLaunch && playFrag(death)"
+                @keydown.space.prevent="canLaunch && playFrag(death)"
+              >
+                <label
+                  class="movie-frag-checkbox"
+                  :title="movieSelectableFragIds.has(death.eventId) ? 'Include this frag in the movie' : 'This frag cannot be exported from the recorded POV'"
+                  @click.stop
+                >
+                  <input
+                    type="checkbox"
+                    :checked="isMovieFragSelected(death.eventId)"
+                    :disabled="!movieSelectableFragIds.has(death.eventId) || movieExportRunning"
+                    :aria-label="`Include frag ${index + 1} in movie`"
+                    @change="onMovieFragCheckbox(death.eventId, $event)"
+                  />
+                </label>
+                <span class="frag-number">{{ index + 1 }}</span>
+                <time>{{ formatEventTime(death.demoTimeMs) }}</time>
+                <span class="frag-players">
+                  <b :class="teamClass(death.killerPlayerId, death.demoTimeMs)">{{ death.worldKill ? 'World' : playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot) }}</b>
+                  <i>→</i>
+                  <b :class="teamClass(death.victimPlayerId, death.demoTimeMs)">{{ playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot) }}</b>
+                  <em v-if="death.headshot">HS</em>
+                </span>
+                <span class="frag-weapon">{{ death.weapon || 'unknown' }}</span>
+                <span>{{ roundLabel(death.roundId) }}</span>
+                <span class="frag-score">
+                  <b>{{ fragRatingById.get(death.eventId)?.score ?? '–' }}</b>
+                  <i>▶</i>
+                </span>
+              </div>
+              <p v-if="!filteredDeaths.length" class="empty-frags">No frags match the filters.</p>
+            </div>
+            <p class="analysis-footnote">
+              {{ analysisCacheHit ? 'Loaded from the local index.' : 'Analyzed and saved locally.' }}
+              Click a frag to start three seconds before the event.
+            </p>
+
             <section class="movie-export-section" aria-labelledby="movie-export-heading">
               <div class="movie-export-copy">
-                <span>Movie export</span>
+                <span>Movie export · {{ movieFragDeaths.length }}/{{ fragReelDeaths.length }} frags selected</span>
                 <strong id="movie-export-heading">Create a high-quality Only Frags movie</strong>
                 <small>
                   {{ formatDuration((fragMovieTimeline.durationMs + (movieIncludeIntro ? MOVIE_INTRO_DURATION_MS : 0)) / 1_000) }} · approximately {{ formatBytes(movieEstimatedBytes) }}
@@ -358,6 +408,10 @@
                 <small v-if="movieExportError" class="movie-export-error">{{ movieExportError }}</small>
               </div>
               <div class="movie-export-controls">
+                <div class="movie-selection-actions">
+                  <button type="button" :disabled="movieExportRunning" @click="selectAllMovieFrags">Select all</button>
+                  <button type="button" :disabled="movieExportRunning" @click="clearMovieFrags">Clear all</button>
+                </div>
                 <label class="movie-quality-select">
                   <span>Export quality</span>
                   <select v-model="movieQualityId" :disabled="movieExportRunning">
@@ -378,46 +432,11 @@
                 <button
                   class="movie-export-button"
                   type="button"
-                  :disabled="!canStartFragReel || !movieExportSupported || movieExportRunning"
+                  :disabled="!canStartMovieExport || !movieExportSupported || movieExportRunning"
                   @click="exportFragMovie"
                 >Create movie</button>
               </div>
             </section>
-
-            <div class="frag-list" role="table" aria-label="Frag list">
-              <div class="frag-header" role="row">
-                <span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span>
-              </div>
-              <button
-                v-for="(death, index) in filteredDeaths"
-                :key="death.eventId"
-                :class="['frag-row', { selected: selectedFragId === death.eventId }]"
-                type="button"
-                role="row"
-                :disabled="!canLaunch"
-                @click="playFrag(death)"
-              >
-                <span class="frag-number">{{ index + 1 }}</span>
-                <time>{{ formatEventTime(death.demoTimeMs) }}</time>
-                <span class="frag-players">
-                  <b :class="teamClass(death.killerPlayerId, death.demoTimeMs)">{{ death.worldKill ? 'World' : playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot) }}</b>
-                  <i>→</i>
-                  <b :class="teamClass(death.victimPlayerId, death.demoTimeMs)">{{ playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot) }}</b>
-                  <em v-if="death.headshot">HS</em>
-                </span>
-                <span class="frag-weapon">{{ death.weapon || 'unknown' }}</span>
-                <span>{{ roundLabel(death.roundId) }}</span>
-                <span class="frag-score">
-                  <b>{{ fragRatingById.get(death.eventId)?.score ?? '–' }}</b>
-                  <i>▶</i>
-                </span>
-              </button>
-              <p v-if="!filteredDeaths.length" class="empty-frags">No frags match the filters.</p>
-            </div>
-            <p class="analysis-footnote">
-              {{ analysisCacheHit ? 'Loaded from the local index.' : 'Analyzed and saved locally.' }}
-              Click a frag to start three seconds before the event.
-            </p>
           </template>
         </section>
 
@@ -575,7 +594,7 @@
         <div class="movie-export-card">
           <span>HQ-EXPORT · {{ movieQuality.label }}</span>
           <strong>{{ movieExportStatusLabel }}</strong>
-          <p>{{ fragReelTeamLabel }} · {{ fragReelIndex + 1 }}/{{ fragReelDeaths.length }} frags</p>
+          <p>{{ fragReelTeamLabel }} · {{ fragReelIndex + 1 }}/{{ activeFragReelDeaths.length }} frags</p>
           <div class="movie-export-progress"><i :style="{ width: `${movieExportProgress}%` }"></i></div>
           <small>
             {{ Math.round(movieExportProgress) }}% · {{ formatBytes(movieExportBytes) }} written
@@ -613,7 +632,7 @@
           {{ engineStarted ? 'Engine running' : 'Starting…' }}
         </div>
         <div v-if="fragReelActive" class="frag-reel-status">
-          <span>ONLY FRAGS · {{ fragReelTeamLabel }} <strong>{{ fragReelIndex + 1 }}/{{ fragReelDeaths.length }}</strong></span>
+          <span>ONLY FRAGS · {{ fragReelTeamLabel }} <strong>{{ fragReelIndex + 1 }}/{{ activeFragReelDeaths.length }}</strong></span>
           <i aria-hidden="true"></i>
           <span>SCORE <strong>{{ activeFragReelScore }}/100</strong></span>
         </div>
@@ -795,6 +814,7 @@
   const interfaceTheme = ref<InterfaceTheme>('replay');
   const scoreboardHeld = ref(false);
   const fragReelActive = ref(false);
+  const fragReelSource = ref<'playback' | 'movie'>('playback');
   const fragReelSeeking = ref(false);
   const fragReelIndex = ref(0);
   const hudPlaybackStartMs = ref(0);
@@ -804,6 +824,7 @@
   const nativeWeaponId = ref(0);
   const movieQualityId = ref<MovieQualityId>('720p');
   const movieIncludeIntro = ref(true);
+  const movieExcludedFragIds = ref<Set<string>>(new Set());
   const movieExportState = ref<MovieExportState>('idle');
   const movieExportError = ref('');
   const movieExportNotice = ref('');
@@ -882,12 +903,14 @@
       case 'precision_one_shot': return '1 shot to kill';
       case 'precision_two_shots': return '2 shots to kill';
       case 'precision_short_burst': return `${numbers[0] ?? '?'} shots to kill`;
+      case 'precision_controlled_burst': return `${numbers[0] ?? '?'} shots to kill`;
       case 'spray_penalty': return `${numbers[0] ?? '?'}-shot spray`;
       case 'fast_kill': return `Kill in ${numbers[0] ?? '?'} ms`;
       case 'spray_transfer': return 'Spray transfer to a new target';
       case 'kill_streak': return `Frag ${numbers[0] ?? '?'} in quick succession`;
       case 'trade': return 'Quick trade';
       case 'wallbang': return 'Wallbang';
+      case 'long_distance': return `Long distance · ${numbers[0] ?? '?'} units`;
       case 'best_frag': return `Best frag ${numbers[0] ?? '?'}/100`;
       case 'multi_kill': return `${numbers[0] ?? '?'} frags in ${(numbers[1] ?? '?').replace(',', '.')} s`;
       case 'tempo': return 'High tempo';
@@ -946,14 +969,14 @@
         fragRatingById.value.get(death.eventId)?.visibility === 'recorded_pov')
     : deathEvents.value);
   const activeHudDeath = computed(() => selectHudTimelineEvent(
-    fragReelActive.value ? fragReelDeaths.value : hudDeathEvents.value,
+    fragReelActive.value ? activeFragReelDeaths.value : hudDeathEvents.value,
     hudDemoTimeMs.value,
   ));
   const activeHudRating = computed(() => activeHudDeath.value
     ? fragRatingById.value.get(activeHudDeath.value.eventId)
     : undefined);
   const activeFragReelScore = computed(() => {
-    const death = fragReelDeaths.value[fragReelIndex.value];
+    const death = activeFragReelDeaths.value[fragReelIndex.value];
     return death ? fragRatingById.value.get(death.eventId)?.score ?? '–' : '–';
   });
   const hudFragLanded = computed(() => activeHudDeath.value
@@ -1114,13 +1137,21 @@
       ))
       .sort((left, right) => left.demoTimeMs - right.demoTimeMs);
   });
+  const movieSelectableFragIds = computed(() => new Set(
+    fragReelDeaths.value.map((death) => death.eventId),
+  ));
+  const movieFragDeaths = computed(() => fragReelDeaths.value.filter((death) =>
+    !movieExcludedFragIds.value.has(death.eventId)));
+  const activeFragReelDeaths = computed(() => fragReelSource.value === 'movie'
+    ? movieFragDeaths.value
+    : fragReelDeaths.value);
   const movieScoreboardEvents = computed(() => {
     const focusTeam = fragPlayer.value !== 'all'
       ? logicalTeamIdForPlayer(fragPlayer.value)
       : highlightTeam.value !== 'all'
         ? highlightTeam.value
         : 'team-1';
-    return fragReelDeaths.value.map((death) => ({
+    return movieFragDeaths.value.map((death) => ({
       demoTimeMs: death.demoTimeMs,
       side: logicalTeamIdForSideAt('TERRORIST', death.demoTimeMs) === focusTeam
         ? 'TERRORIST' as const
@@ -1137,7 +1168,7 @@
     : highlightTeam.value === 'all'
       ? 'Both'
       : logicalTeamName(highlightTeam.value));
-  const fragMovieTimeline = computed(() => buildFragMovieTimeline(fragReelDeaths.value));
+  const fragMovieTimeline = computed(() => buildFragMovieTimeline(movieFragDeaths.value));
   const movieMatchDateLabel = computed(() => {
     const inferred = inferDemoMatchDate(demoSource.value.name);
     if (!inferred) return '';
@@ -1224,6 +1255,8 @@
   );
   const canStartFragReel = computed(() =>
     canLaunch.value && fragReelDeaths.value.length > 0);
+  const canStartMovieExport = computed(() =>
+    canLaunch.value && movieFragDeaths.value.length > 0);
   const loadingLabel = computed(() =>
     loadingProgress.value ? 'Mounting Counter-Strike' : 'Starting Xash3D',
   );
@@ -1255,6 +1288,29 @@
   };
   const saveMovieIntroPreference = () => {
     window.localStorage.setItem(MOVIE_INTRO_PREFERENCE_KEY, String(movieIncludeIntro.value));
+  };
+  const isMovieFragSelected = (eventId: string): boolean =>
+    movieSelectableFragIds.value.has(eventId) && !movieExcludedFragIds.value.has(eventId);
+  const toggleMovieFrag = (eventId: string, selected: boolean) => {
+    const next = new Set(movieExcludedFragIds.value);
+    if (selected) next.delete(eventId);
+    else next.add(eventId);
+    movieExcludedFragIds.value = next;
+  };
+  const onMovieFragCheckbox = (eventId: string, event: Event) => {
+    toggleMovieFrag(eventId, (event.target as HTMLInputElement).checked);
+  };
+  const selectAllMovieFrags = () => {
+    const selectable = movieSelectableFragIds.value;
+    movieExcludedFragIds.value = new Set(
+      [...movieExcludedFragIds.value].filter((eventId) => !selectable.has(eventId)),
+    );
+  };
+  const clearMovieFrags = () => {
+    movieExcludedFragIds.value = new Set([
+      ...movieExcludedFragIds.value,
+      ...movieSelectableFragIds.value,
+    ]);
   };
   const weaponLabel = fragWeaponLabel;
 
@@ -1344,7 +1400,7 @@
   };
 
   const startMovieAutomaticScoreboard = (): boolean => {
-    const death = fragReelDeaths.value[fragReelIndex.value];
+    const death = activeFragReelDeaths.value[fragReelIndex.value];
     const event = movieScoreboardEvents.value[fragReelIndex.value];
     if (movieExportState.value !== 'recording'
       || !death
@@ -1417,7 +1473,7 @@
   const currentMovieHudFrame = (): MovieHudFrame | undefined => {
     if (scoreboardHeld.value) return undefined;
     const activeDeath = activeHudDeath.value;
-    const death = activeDeath ?? fragReelDeaths.value[fragReelIndex.value];
+    const death = activeDeath ?? activeFragReelDeaths.value[fragReelIndex.value];
     if (!death) return undefined;
     const rating = fragRatingById.value.get(death.eventId);
     const reasons = rating?.reasons.slice(0, 4) ?? [];
@@ -1622,7 +1678,7 @@
       if (backpressure === 'pause') pauseMovieForEncoder(now);
       else if (backpressure === 'resume') resumeMovieAfterEncoderCatchup(now);
     }
-    const death = fragReelDeaths.value[fragReelIndex.value];
+    const death = activeFragReelDeaths.value[fragReelIndex.value];
     const timeline = fragMovieTimeline.value;
     if (!death || timeline.durationMs <= 0) return;
     const clipIndex = timeline.clips.findIndex((clip) => clip.eventIds.includes(death.eventId));
@@ -1713,6 +1769,8 @@
     selectedFragId.value = '';
     fragPlayer.value = 'all';
     highlightTeam.value = 'all';
+    fragReelSource.value = 'playback';
+    movieExcludedFragIds.value = new Set();
     const run = analyzeDemoInWorker(selectedDemo, source, (progress) => {
       if (request === analysisRequest) analysisProgress.value = progress;
     });
@@ -2090,9 +2148,11 @@
     void launchDemo();
   };
 
-  const playFragReel = () => {
-    const first = fragReelDeaths.value[0];
-    if (!canStartFragReel.value || !first) return;
+  const playFragReel = (source: 'playback' | 'movie' = 'playback') => {
+    fragReelSource.value = source;
+    const first = activeFragReelDeaths.value[0];
+    const canStart = source === 'movie' ? canStartMovieExport.value : canStartFragReel.value;
+    if (!canStart || !first) return;
     fragReelActive.value = true;
     fragReelSeeking.value = false;
     fragReelIndex.value = 0;
@@ -2108,7 +2168,7 @@
   };
 
   const exportFragMovie = async () => {
-    if (!canStartFragReel.value || movieExportRunning.value) return;
+    if (!canStartMovieExport.value || movieExportRunning.value) return;
     movieExportError.value = '';
     movieExportNotice.value = '';
     movieExportBytes.value = 0;
@@ -2136,7 +2196,7 @@
       preparedMovieOutput = await prepareMovieOutput(temporaryName.replace(/\.tmp$/, ''));
       movieExportNotice.value = `Exporting directly to ${preparedMovieOutput.filename}.`;
       recordMovieExportDiagnostic('output-prepared', movieExportNotice.value);
-      playFragReel();
+      playFragReel('movie');
     } catch (error) {
       movieExportState.value = 'idle';
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -2299,14 +2359,14 @@
       || !engineStarted.value) return;
 
     const action = nextFragReelAction(
-      fragReelDeaths.value,
+      activeFragReelDeaths.value,
       fragReelIndex.value,
       hudDemoTimeMs.value,
     );
     if (action.type === 'wait') return;
     if (startMovieAutomaticScoreboard()) return;
     if (action.type === 'complete') {
-      addLog(`Only Frags complete: ${fragReelDeaths.value.length} frags shown.`, false);
+      addLog(`Only Frags complete: ${activeFragReelDeaths.value.length} frags shown.`, false);
       const completion = movieCompletionAction(movieExportState.value);
       if (completion === 'finish') {
         void finishMovieExport();
@@ -2326,7 +2386,7 @@
     }
 
     fragReelIndex.value = action.index;
-    const next = fragReelDeaths.value[action.index];
+    const next = activeFragReelDeaths.value[action.index];
     if (next) selectedFragId.value = next.eventId;
     if (action.type === 'advance') {
       focusFragReelDeath(next);

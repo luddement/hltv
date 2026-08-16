@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { DemoAnalysisIndex } from '/@/analysis/schema';
+import type { DeathEvent, DemoAnalysisIndex } from '/@/analysis/schema';
 import { buildLogicalTeamIndex } from '/@/analysis/team-identity';
 import { inspectDemoFile } from '/@/demo/goldsrc-demo';
 
@@ -165,6 +165,27 @@ describe('local binary demo goldens', () => {
       expect(deaths.every((death) =>
         death.victimPlayerId !== null
         && (death.worldKill || death.killerPlayerId !== null))).toBe(true);
+    },
+    30_000,
+  );
+
+  const bajzlanDemo = 'demos/2004/bajzlan_mix-0411092222-de_nuke.dem';
+  it.runIf(existsSync(resolve(workspaceRoot, bajzlanDemo)))(
+    'attributes zero-based HLTV shot events to the correct player slot',
+    async () => {
+      const index = await analyzeLocalDemo(bajzlanDemo);
+      const luddi = index.players.find((player) => player.sessions.some((session) =>
+        session.names.some((name) => name.value === '[BajZLan] luddi')));
+      const death = index.events.find((event): event is DeathEvent =>
+        event.type === 'death'
+        && event.killerPlayerId === luddi?.playerId
+        && Math.abs(event.demoTimeMs - 614_816) < 100);
+      const rating = index.fragRatings.find((entry) => entry.eventId === death?.eventId);
+
+      expect(rating?.reasons).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'precision_two_shots', points: 15 }),
+        expect.objectContaining({ code: 'long_distance', points: 12 }),
+      ]));
     },
     30_000,
   );

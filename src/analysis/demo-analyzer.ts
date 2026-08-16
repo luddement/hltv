@@ -18,7 +18,7 @@ import type {
   TeamChangeEvent,
 } from '/@/analysis/schema';
 
-export const ANALYZER_VERSION = '2.5.5';
+export const ANALYZER_VERSION = '2.5.6';
 
 const PARSER_VERSION = 'hlviewer-0.8.5-hltv-analysis-7';
 const ENGINE_WASM_VERSION = '7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4';
@@ -248,7 +248,15 @@ export const normalizeParsedAnalysis = (
             : event.eventData && typeof event.eventData === 'object'
               ? event.eventData as Record<string, unknown>
               : undefined;
-          const slot = Number(delta?.entindex ?? event.packetIndex ?? 0);
+          const explicitSlot = Number(delta?.entindex ?? 0);
+          const packetIndex = Number(event.packetIndex);
+          // svc_event packet indices are zero-based, unlike the one-based
+          // player slots used by DeathMsg and explicit event entindex values.
+          const slot = Number.isInteger(explicitSlot) && explicitSlot > 0
+            ? explicitSlot
+            : Number.isInteger(packetIndex) && packetIndex >= 0
+              ? packetIndex + 1
+              : 0;
           if (Number.isInteger(slot) && slot > 0) observedShots.push({ demoTimeMs: atMs, slot, weapon });
         }
         return;

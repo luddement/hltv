@@ -206,12 +206,17 @@ describe('highlight scoring', () => {
     ]);
 
     const oneShot = result.fragRatings.find((rating) => rating.eventId === 'death-1');
+    const twoShot = result.fragRatings.find((rating) => rating.eventId === 'death-2');
     const transfer = result.fragRatings.find((rating) => rating.eventId === 'death-3');
     const spray = result.fragRatings.find((rating) => rating.eventId === 'death-4');
     expect(oneShot?.reasons).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'precision_one_shot', points: 15 }),
+      expect.objectContaining({ code: 'precision_one_shot', points: 20 }),
       expect.objectContaining({ code: 'fast_kill', points: 5 }),
     ]));
+    expect(twoShot?.reasons).toContainEqual(expect.objectContaining({
+      code: 'precision_two_shots',
+      points: 15,
+    }));
     expect(transfer?.reasons).toContainEqual(expect.objectContaining({
       code: 'spray_transfer',
       points: 12,
@@ -220,6 +225,29 @@ describe('highlight scoring', () => {
       code: 'spray_penalty',
       points: -1,
     }));
+  });
+
+  it('rewards verified long-distance bullet frags but not grenades', () => {
+    const fixture = input({
+      kind: 'hltv',
+      focusPlayerIds: [],
+      focusTeamHistory: [],
+      evidence: 'unknown',
+    });
+    const bullet = fixture.events.find((event): event is DeathEvent =>
+      event.type === 'death' && event.eventId === 'death-1');
+    const grenade = fixture.events.find((event): event is DeathEvent =>
+      event.type === 'death' && event.eventId === 'death-2');
+    if (!bullet || !grenade) throw new Error('Fixture deaths missing');
+    bullet.entityObservation.victim.positionValue = [1_200, 200, 300];
+    grenade.entityObservation.victim.positionValue = [1_200, 200, 300];
+    grenade.weapon = 'grenade';
+
+    const result = buildHighlightAnalysis(fixture);
+    expect(result.fragRatings.find((entry) => entry.eventId === bullet.eventId)?.reasons)
+      .toContainEqual(expect.objectContaining({ code: 'long_distance', points: 12 }));
+    expect(result.fragRatings.find((entry) => entry.eventId === grenade.eventId)?.reasons
+      .some((entry) => entry.code === 'long_distance')).toBe(false);
   });
 
   it('does not inflate a grenade opening kill with an automatic weapon bonus', () => {

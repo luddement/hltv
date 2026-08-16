@@ -99,6 +99,31 @@ const normalizedWeapon = (weapon: string): string => {
   return normalized;
 };
 
+const distanceReason = (death: DeathEvent): ScoreReason | undefined => {
+  const weapon = normalizedWeapon(death.weapon);
+  if (['knife', 'grenade', 'hegrenade', 'world'].includes(weapon)) return undefined;
+  const killer = death.entityObservation.killer.positionValue;
+  const victim = death.entityObservation.victim.positionValue;
+  if (!killer?.every(Number.isFinite) || !victim?.every(Number.isFinite)) return undefined;
+  const distance = Math.hypot(
+    killer[0] - victim[0],
+    killer[1] - victim[1],
+    killer[2] - victim[2],
+  );
+  const points = distance >= 1_000
+    ? 12
+    : distance >= 750
+      ? 8
+      : distance >= 500
+        ? 5
+        : distance >= 350
+          ? 3
+          : 0;
+  return points
+    ? reason('long_distance', `Långdistans · ${Math.round(distance)} units`, points)
+    : undefined;
+};
+
 const precisionReasons = (
   death: DeathEvent,
   deaths: DeathEvent[],
@@ -124,11 +149,13 @@ const precisionReasons = (
   const timeToKillMs = Math.max(0, death.demoTimeMs - burst[0].demoTimeMs);
   const reasons: ScoreReason[] = [];
   if (shotsToKill === 1) {
-    reasons.push(reason('precision_one_shot', '1 skott till kill', 15, 'observed'));
+    reasons.push(reason('precision_one_shot', '1 skott till kill', 20, 'observed'));
   } else if (shotsToKill === 2) {
-    reasons.push(reason('precision_two_shots', '2 skott till kill', 10, 'observed'));
+    reasons.push(reason('precision_two_shots', '2 skott till kill', 15, 'observed'));
   } else if (shotsToKill <= 4) {
-    reasons.push(reason('precision_short_burst', `${shotsToKill} skott till kill`, 5, 'observed'));
+    reasons.push(reason('precision_short_burst', `${shotsToKill} skott till kill`, 10, 'observed'));
+  } else if (shotsToKill <= 6) {
+    reasons.push(reason('precision_controlled_burst', `${shotsToKill} skott till kill`, 5, 'observed'));
   } else if (shotsToKill >= 9) {
     reasons.push(reason(
       'spray_penalty',
@@ -240,6 +267,8 @@ export const buildHighlightAnalysis = (
     if (round?.winner.value === team) reasons.push(reason('round_win', 'Bidrar till vunnen rond', 10));
     const bonus = weaponBonus(death.weapon);
     if (bonus) reasons.push(bonus);
+    const distanceBonus = distanceReason(death);
+    if (distanceBonus) reasons.push(distanceBonus);
     reasons.push(...precisionReasons(death, deaths, observedShots));
 
     const streak = streaks.get(killerPlayerId);
