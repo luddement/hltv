@@ -10,6 +10,7 @@ import XashLoader, {
 } from '/@/services/xash-loader';
 import type { GameAssetEntry } from '/@/services/local-asset-mount';
 import type { MovieAudioCapture, MoviePcmBlock } from '/@/movie/movie-recorder';
+import { hiddenSeekHudCommands } from '/@/demo/seek-hud';
 
 const XASH_BASE_DIR = '/rodir';
 const DEMO_FILENAME = 'hltv_replay.dem';
@@ -49,6 +50,12 @@ class DemoEngine {
   private runtimeSeekCompletion?: () => void;
   private runtimeSeekTimer?: number;
   private lifecycleTimers = new Set<number>();
+
+  private setHiddenSeekHud(xash: Xash3D, hidden: boolean): void {
+    for (const command of hiddenSeekHudCommands(hidden)) {
+      xash.Cmd_ExecuteString(command);
+    }
+  }
 
   private scheduleFor(
     xash: Xash3D,
@@ -197,6 +204,7 @@ class DemoEngine {
         );
         xash.Cmd_ExecuteString('volume 0');
         xash.Cmd_ExecuteString('r_norefresh 1');
+        this.setHiddenSeekHud(xash, true);
         xash.Cmd_ExecuteString('sys_timescale 1');
         xash.Cmd_ExecuteString(`set hltv_fastforward ${(startAtMs / 1_000).toFixed(3)}`);
       }
@@ -213,6 +221,7 @@ class DemoEngine {
           if (!this.running) return;
           xash.Cmd_ExecuteString('sys_timescale 1');
           xash.Cmd_ExecuteString('r_norefresh 0');
+          this.setHiddenSeekHud(xash, false);
           xash.Cmd_ExecuteString('volume 0.08');
           // A +showscores packet consumed during the hidden seek can otherwise
           // leave the scoreboard latched over the selected highlight.
@@ -396,6 +405,7 @@ class DemoEngine {
         if (xash.running) {
           xash.Cmd_ExecuteString('sys_timescale 1');
           xash.Cmd_ExecuteString('r_norefresh 0');
+          this.setHiddenSeekHud(xash, false);
           xash.Cmd_ExecuteString('volume 0.08');
           xash.Cmd_ExecuteString('-showscores');
           xash.Cmd_ExecuteString('hltv_closemenu');
@@ -406,6 +416,7 @@ class DemoEngine {
       this.runtimeSeekCompletion = finish;
       xash.Cmd_ExecuteString('volume 0');
       xash.Cmd_ExecuteString('r_norefresh 1');
+      this.setHiddenSeekHud(xash, true);
       xash.Cmd_ExecuteString('sys_timescale 1');
       xash.Cmd_ExecuteString(`set hltv_fastforward ${(Math.max(0, targetMs) / 1_000).toFixed(3)}`);
       if (restartDemo) {
