@@ -9,6 +9,7 @@ import XashLoader, {
   type LoadProgress,
 } from '/@/services/xash-loader';
 import type { GameAssetEntry } from '/@/services/local-asset-mount';
+import type { MovieAudioCapture, MoviePcmBlock } from '/@/movie/movie-recorder';
 
 const XASH_BASE_DIR = '/rodir';
 const DEMO_FILENAME = 'hltv_replay.dem';
@@ -22,6 +23,8 @@ export type DemoEngineOptions = {
   demoBuffer?: ArrayBuffer;
   compatibilityProfile: DemoCompatibilityProfile;
   isHltv: boolean;
+  captureFrames?: boolean;
+  renderSize?: { width: number; height: number };
   startAtMs?: number;
   reconstructionCamera?: {
     origin: [number, number, number];
@@ -35,6 +38,8 @@ export type DemoEngineOptions = {
   };
   onSeekStateChange?: (seeking: boolean) => void;
   onReconstructionStateChange?: (active: boolean) => void;
+  onNativeFovChange?: (fov: number) => void;
+  onNativeWeaponChange?: (weaponId: number) => void;
   onLog: (message: string, isError: boolean) => void;
   onProgress: (progress: LoadProgress) => void;
 };
@@ -43,6 +48,21 @@ class DemoEngine {
   private xash?: Xash3D;
   private runtimeSeekCompletion?: () => void;
   private runtimeSeekTimer?: number;
+  private lifecycleTimers = new Set<number>();
+
+  private scheduleFor(
+    xash: Xash3D,
+    callback: () => void,
+    delayMs: number,
+  ): number {
+    const timer = window.setTimeout(() => {
+      this.lifecycleTimers.delete(timer);
+      if (this.xash !== xash || !xash.running) return;
+      callback();
+    }, delayMs);
+    this.lifecycleTimers.add(timer);
+    return timer;
+  }
 
   get running(): boolean {
     return this.xash?.running ?? false;
@@ -57,6 +77,10 @@ class DemoEngine {
     let rendererStarted = false;
     let completeSeek: (() => void) | undefined;
     const handleEngineLog = (message: string, isError: boolean) => {
+      const nativeFov = message.match(/ReplayLab native FOV:\s*(\d+)/i);
+      if (nativeFov) options.onNativeFovChange?.(Number(nativeFov[1]));
+      const nativeWeapon = message.match(/ReplayLab native weapon:\s*(\d+)/i);
+      if (nativeWeapon) options.onNativeWeaponChange?.(Number(nativeWeapon[1]));
       if (message.includes('Setting up renderer')) rendererStarted = true;
       if (message.includes('ReplayLab fast-forward complete')) {
         window.setTimeout(() => {
@@ -72,12 +96,22 @@ class DemoEngine {
       '-windowed',
       '-ref',
       'webgl2',
+      ...(options.renderSize ? [
+        '-width',
+        String(options.renderSize.width),
+        '-height',
+        String(options.renderSize.height),
+      ] : []),
       '+_vgui_menus',
       '0',
       '+hud_scale',
       compatibility.legacyScoreboard ? '2.5' : '0',
       '+con_notifytime',
       '0',
+      '+fps_override',
+      '1',
+      '+fps_max',
+      '100',
       '+volume',
       '0.08',
       '+playdemo',
@@ -86,10 +120,19 @@ class DemoEngine {
 
     options.onLog('Initierar Xash3D WebAssembly…', false);
     options.onLog(`Kompatibilitetsprofil: ${compatibility.label}.`, false);
+    if (options.renderSize) {
+      options.canvas.width = options.renderSize.width;
+      options.canvas.height = options.renderSize.height;
+      options.onLog(
+        `Låser renderingsytan till ${options.renderSize.width}×${options.renderSize.height} för filmexport.`,
+        false,
+      );
+    }
     const xash = await XashLoader.initXash({
       canvas: options.canvas,
       selectedGame: GAME_SETTINGS.CS,
       launchArgs,
+      preserveDrawingBuffer: options.captureFrames,
       onLog: handleEngineLog,
     });
 
@@ -116,7 +159,7 @@ class DemoEngine {
     // Some installations do not ship a game .rc containing `stuffcmds`, so
     // the +playdemo argument is not consumed. Execute it again once CS16Client
     // has registered its demo commands.
-    window.setTimeout(() => {
+    this.scheduleFor(xash, () => {
       options.onLog('Kör playdemo efter klientinitiering.', false);
       if (compatibility.legacyScoreboard) {
         xash.Cmd_ExecuteString('cl_corpsestay 10');
@@ -179,7 +222,7 @@ class DemoEngine {
           options.onLog('Dold snabbspolning klar; normal uppspelning återupptas.', false);
           const camera = options.reconstructionCamera;
           if (camera) {
-            window.setTimeout(() => {
+            this.scheduleFor(xash, () => {
               if (!this.running) return;
               if (camera.nativeHltv) {
                 if (!options.isHltv) {
@@ -222,7 +265,7 @@ class DemoEngine {
               xash.Cmd_ExecuteString('hltv_reconstruction_camera 1');
               options.onReconstructionStateChange?.(true);
               options.onLog(`Dödarens POV-kamera aktiv: ${camera.label}.`, false);
-              window.setTimeout(() => {
+              this.scheduleFor(xash, () => {
                 if (!this.running) return;
                 xash.Cmd_ExecuteString('hltv_reconstruction_camera 0');
                 xash.Cmd_ExecuteString('r_drawviewmodel 1');
@@ -235,7 +278,8 @@ class DemoEngine {
         };
         // Safety timeout for a missing completion marker. The production engine
         // normally emits the marker immediately after reaching the target.
-        window.setTimeout(
+        this.scheduleFor(
+          xash,
           () => completeSeek?.(),
           Math.max(10_000, startAtMs / 15 + DEMO_SEEK_STARTUP_COMPENSATION_MS),
         );
@@ -245,7 +289,7 @@ class DemoEngine {
     // Some original demos take longer to complete the initial client signon.
     // Retry only when no map renderer has appeared, avoiding a restart of a
     // replay that is already running.
-    window.setTimeout(() => {
+    this.scheduleFor(xash, () => {
       if (!rendererStarted) {
         options.onLog('Ingen karta efter signon; försöker starta demot igen.', false);
         xash.Cmd_ExecuteString('playdemo hltv_replay');
@@ -256,7 +300,7 @@ class DemoEngine {
     // cvars while the recording settles. Do not send slot commands here: when
     // no menu is open, `slot10` can holster the recorded player's viewmodel.
     for (let delay = 6_500; delay <= 24_500; delay += 2_000) {
-      window.setTimeout(() => {
+      this.scheduleFor(xash, () => {
         xash.Cmd_ExecuteString('hltv_replay_mode 1');
         xash.Cmd_ExecuteString('cl_hide_motd 1');
         xash.Cmd_ExecuteString(`set hltv_native_spectator ${options.isHltv ? 1 : 0}`);
@@ -284,6 +328,54 @@ class DemoEngine {
       throw new Error('Motorn har inte startat.');
     }
     this.xash.Cmd_ExecuteString(command);
+  }
+
+  createAudioCapture(): MovieAudioCapture | undefined {
+    const module = this.xash?.em?.Module as unknown as {
+      SDL2?: {
+        audioContext?: AudioContext;
+        audio?: { scriptProcessorNode?: ScriptProcessorNode };
+      };
+    } | undefined;
+    const context = module?.SDL2?.audioContext;
+    const output = module?.SDL2?.audio?.scriptProcessorNode;
+    if (!context || context.state === 'closed' || !output) return undefined;
+    if (context.state === 'suspended') void context.resume();
+    const originalAudioProcess = output.onaudioprocess;
+    if (!originalAudioProcess) return undefined;
+    let listener: ((block: MoviePcmBlock) => void) | undefined;
+    const captureAudioProcess = function (
+      this: ScriptProcessorNode,
+      event: AudioProcessingEvent,
+    ) {
+      originalAudioProcess.call(this, event);
+      if (!listener) return;
+      const buffer = event.outputBuffer;
+      const channels = Array.from(
+        { length: buffer.numberOfChannels },
+        (_, index) => buffer.getChannelData(index).slice(),
+      );
+      listener({ sampleRate: buffer.sampleRate, channels });
+    };
+    output.onaudioprocess = captureAudioProcess;
+    return {
+      sampleRate: context.sampleRate,
+      // ScriptProcessorNode may report zero before its first callback even
+      // though SDL opened Counter-Strike's mixer with stereo output.
+      numberOfChannels: Math.max(1, output.channelCount || 2),
+      subscribe: (nextListener) => {
+        listener = nextListener;
+        return () => {
+          if (listener === nextListener) listener = undefined;
+        };
+      },
+      close: () => {
+        listener = undefined;
+        if (output.onaudioprocess === captureAudioProcess) {
+          output.onaudioprocess = originalAudioProcess;
+        }
+      },
+    };
   }
 
   seekTo(targetMs: number): Promise<void> {
@@ -321,14 +413,17 @@ class DemoEngine {
   }
 
   stop(): void {
+    for (const timer of this.lifecycleTimers) window.clearTimeout(timer);
+    this.lifecycleTimers.clear();
     if (this.runtimeSeekTimer) window.clearTimeout(this.runtimeSeekTimer);
     this.runtimeSeekTimer = undefined;
     this.runtimeSeekCompletion = undefined;
-    this.xash?.Cmd_ExecuteString('hltv_reconstruction_camera 0');
-    this.xash?.Cmd_ExecuteString('hud_draw 1');
-    this.xash?.Cmd_ExecuteString('r_drawviewmodel 1');
-    this.xash?.quit();
+    const xash = this.xash;
     this.xash = undefined;
+    // No presentation commands are needed immediately before destroying the
+    // entire WASM runtime. Sending them into GoldSrc's command allocator while
+    // shutdown begins can race command teardown and trigger a double free.
+    if (xash?.running) xash.quit();
   }
 }
 

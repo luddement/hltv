@@ -146,13 +146,26 @@ const protocol46AsmCompatibilityPlugin = (): Plugin => ({
     }
     return withAliases.replace(
       callMarker,
-      'if(!ASM_CONSTS[emAsmAddr]){console.error(`[HLTV] Okänd EM_ASM-adress: ${emAsmAddr}`)}return ASM_CONSTS[emAsmAddr](...args)',
+      // Side modules normally use the upstream runtime's data addresses, which
+      // the aliases above cover. Some builds instead retain their own EM_ASM
+      // string address. Recover that callback directly from the module memory,
+      // just like loadWebAssemblyModule() does for a dynamically loaded module.
+      // This keeps an address mismatch from taking the renderer down mid-replay.
+      'var callback=ASM_CONSTS[emAsmAddr];if(!callback){var body=UTF8ToString(emAsmAddr);if(body){var params=[];for(var arity=0;;arity++){var argName="$"+arity;if(!body.includes(argName))break;params.push(argName)}try{callback=ASM_CONSTS[emAsmAddr]=eval(`(${params.join(",")}) => { ${body} };`)}catch(error){console.error(`[HLTV] Kunde inte återskapa EM_ASM ${emAsmAddr}: ${error}`)}}}if(typeof callback!=="function"){throw new Error(`[HLTV] Okänd EM_ASM-adress: ${emAsmAddr}`)}return callback(...args)',
     );
   },
 });
 
 export default defineConfig({
   base: '/',
+  // Xash3D imports its generated glue via a relative module path. Vite's
+  // dependency optimizer otherwise bundles that import before resolve.alias
+  // runs, which makes the dev server use the npm glue with the locally patched
+  // protocol-46 WASM binary. Keep it as normal source so the alias below is
+  // applied in development as well as in production builds.
+  optimizeDeps: {
+    exclude: ['xash3d-fwgs'],
+  },
   worker: {
     format: 'es',
   },

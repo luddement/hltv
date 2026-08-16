@@ -4,6 +4,7 @@ import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { DemoAnalysisIndex } from '/@/analysis/schema';
+import { buildLogicalTeamIndex } from '/@/analysis/team-identity';
 import { inspectDemoFile } from '/@/demo/goldsrc-demo';
 
 const workerDocument = {
@@ -152,6 +153,8 @@ describe('local binary demo goldens', () => {
         'starfighter',
         'aoH ? Grogge',
       ]));
+      expect(buildLogicalTeamIndex(index.players).teams.map((team) => team.name))
+        .toEqual(['crapoffline', 'aoH']);
       const deaths = index.events.filter((event) => event.type === 'death');
       expect({
         headshots: deaths.filter((death) => death.headshot).length,

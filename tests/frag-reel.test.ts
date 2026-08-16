@@ -33,10 +33,18 @@ describe('only frags timeline', () => {
     ], 0, 13_000)).toEqual({ type: 'seek', index: 1, targetMs: 9_000 });
   });
 
-  it('only includes frags with a real POV for each demo perspective', () => {
+  it('rewinds overlapping frags so every frag gets its full lead-in', () => {
+    expect(nextFragReelAction([
+      { eventId: 'a', demoTimeMs: 10_000, killerPlayerId: 'player-a' },
+      { eventId: 'b', demoTimeMs: 12_000, killerPlayerId: 'player-a' },
+    ], 0, 13_000)).toEqual({ type: 'seek', index: 1, targetMs: 9_000 });
+  });
+
+  it('includes every rated HLTV frag while keeping POV reels to recorded POV', () => {
     expect(isFragReelEligible('pov', 'recorded_pov')).toBe(true);
     expect(isFragReelEligible('pov', 'hltv_replay')).toBe(false);
     expect(isFragReelEligible('hltv', 'hltv_replay')).toBe(true);
-    expect(isFragReelEligible('hltv', 'hltv_director')).toBe(false);
+    expect(isFragReelEligible('hltv', 'hltv_director')).toBe(true);
+    expect(isFragReelEligible('hltv', 'unknown')).toBe(false);
   });
 });

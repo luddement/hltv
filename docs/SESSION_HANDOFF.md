@@ -122,7 +122,7 @@ Viktiga filer:
 app/engine-patches/xash3d-protocol46.patch
 app/engine-patches/xash-protocol46.wasm
 app/engine-patches/cs16-client-hltv.patch
-app/engine-patches/cs16-client-hltv-v12.wasm
+app/engine-patches/cs16-client-hltv-v14.wasm
 app/src/vendor/xash-protocol46.js
 ```
 

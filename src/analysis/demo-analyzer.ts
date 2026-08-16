@@ -22,7 +22,7 @@ export const ANALYZER_VERSION = '2.5.3';
 
 const PARSER_VERSION = 'hlviewer-0.8.5-hltv-analysis-7';
 const ENGINE_WASM_VERSION = '7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4';
-const CLIENT_WASM_VERSION = 'f1300277c00e1baf99f842a8b77d34fd708e2f982c319c2e37c3151c3577a864';
+const CLIENT_WASM_VERSION = '77a2a892a598c6c14a5214fe41a92a85ac38af099665f7660bcc33e4f47c2995';
 const ANALYSIS_CONFIG = {
   roundStartMinimumSeconds: 120,
   roundStartDebounceMs: 5_000,

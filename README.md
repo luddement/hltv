@@ -70,6 +70,9 @@ implementerade.
 Den tekniska produktplanen för tidslinje, checkpoints, automatisk
 highlight-ranking och dynamiska CS-filmer finns i
 [docs/TIMELINE_HIGHLIGHTS_AND_MOVIES.md](docs/TIMELINE_HIGHLIGHTS_AND_MOVIES.md).
+Målarkitektur, Infrastructure as Code, leverantörsval, säkerhet och en daterad
+kostnadsmodell för serverbaserad Endast frags-rendering finns i
+[docs/CLOUD_RENDERING_IAC_AND_COSTS.md](docs/CLOUD_RENDERING_IAC_AND_COSTS.md).
 Ett kort nuläge för byte av Codex-session finns i
 [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
 

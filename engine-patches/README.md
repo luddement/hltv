@@ -32,7 +32,7 @@ WASM and glue together: the numeric EM_ASM addresses are build-specific.
 The Vite compatibility transform calculates the relocation against the pinned
 upstream runtime and aliases its side-module addresses dynamically.
 
-`cs16-client-hltv-v12.wasm` is rebuilt from CS16Client `15278ca`. It adds the
+`cs16-client-hltv-v14.wasm` is rebuilt from CS16Client `15278ca`. It adds the
 `hltv_legacy_scoreboard` cvar, retaining the upstream CS 1.6 scoreboard by
 default and selecting the compact Score/Deaths/Latency layout only for the
 protocol-46 profile. It also keeps scoreboard visibility in the HUD traversal
@@ -49,8 +49,9 @@ The camera follows the killer's live player entity when it is present in the
 recorded packet and falls back to the indexed frag position otherwise. HLTV
 replays expose `hltv_spec_player <slot>` for native in-eye spectator mode,
 including when Xash local demo playback does not set GoldSrc's spectate-only
-flag. Replay Lab supplies the selected frag weapon to avoid stale HLTV entity
-viewmodels.
+flag. Replay Lab supplies the selected frag weapon as a fallback for sparse
+legacy entity packets. When the followed entity carries its live weapon model,
+native playback follows every switch, including knife and grenade.
 Native HLTV mode also preserves local spectator state during demo prediction,
 enabling first-person/chase/free-look modes, WASD free-flight, and next/previous
 player cycling without affecting POV demos. In-eye highlight playback suppresses
@@ -69,7 +70,12 @@ animation time to recorded weapon events. Native HLTV supplies one animation
 clock and one muzzle token per real first-person weapon event, so missing local
 clientdata cannot pin a firing studio event to every rendered frame. A
 frag-selected weapon is applied independently of the recorded observer mode.
+Per-player FOV updates from the HLTV stream drive native in-eye playback, so
+recorded sniper zoom and the scope overlay follow the selected player instead
+of the director camera. Custom presentation modes draw a weapon-dependent CS
+crosshair from that same live model; knife, grenades and sniper rifles suppress
+the regular sight, while firearms retain their period-specific base gap.
 The app keeps all native spectator cvars disabled for POV demos, which
 retain the original CS/Xash view, animation and weapon pipeline.
 Its SHA-256 is
-`f1300277c00e1baf99f842a8b77d34fd708e2f982c319c2e37c3151c3577a864`.
+`77a2a892a598c6c14a5214fe41a92a85ac38af099665f7660bcc33e4f47c2995`.

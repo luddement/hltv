@@ -22,9 +22,17 @@ bombhändelser, POV-perspektiv, FragScore, RoundScore och highlight-moments samt
 visa filtrerbara topplistor. Fragklick har en första restart/snabbspolningslösning.
 Vanliga fragklick kan använda inspelad POV för fokusspelarens egna frags och
 automatiskt följa dödarens player-entity för andra frags med komplett underlag;
-den indexerade killer-positionen är fallback när entityn saknas. Protocol-47-POV spelar nu i motorn efter utökat lokalt
-signonblock och komplett standard-CS-resursmanifest. Checkpointbaserad seek,
-sammanhängande POV-entitytäckning och filmexport återstår.
+den indexerade killer-positionen är fallback när entityn saknas. Protocol-47-POV
+spelar nu i motorn efter utökat lokalt signonblock och komplett
+standard-CS-resursmanifest. Browserbaserad Endast frags-export med strömmande
+filskrivning, kvalitetsprofiler och FPS-visning är implementerad. Original/ren
+HUD tas direkt från WebGL-canvas; special-HUD komponeras på en separat canvas.
+WebCodecs/H.264 och Mediabunny skapar MP4 med fasta frame-timestamps. Exporten
+godkänns endast när varje fångad frame också har kodats, och en ihållande
+kodningskö stoppar jobbet.
+Checkpointbaserad seek, sammanhängande POV-entitytäckning och reproducerbar
+serverrendering återstår. Molnarkitektur, IaC och kostnadsmodell beskrivs i
+[CLOUD_RENDERING_IAC_AND_COSTS.md](CLOUD_RENDERING_IAC_AND_COSTS.md).
 
 ## Produktmål
 
@@ -806,7 +814,8 @@ Den första vertikala skivan blev:
 
 Det bevisar hela kedjan från rå demo till användbar navigation. Förklarbar
 scoring och POV-/HLTV-perspektiv är därefter implementerade; fria kameror,
-checkpoints och filmrendering återstår.
+checkpoints och serverbaserad filmrendering återstår. En första lokal
+browserexport för Endast frags är implementerad.
 
 ## Beslut som bör vara konfigurerbara
 

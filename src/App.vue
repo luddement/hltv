@@ -271,7 +271,7 @@
                     <strong>{{ playerLabel(moment.killerPlayerId, moment.startTimeMs) }} · {{ moment.eventIds.length }} {{ moment.eventIds.length === 1 ? 'frag' : 'frags' }}</strong>
                     <small>{{ moment.rating.reasons.slice(0, 2).map((entry) => entry.label).join(' · ') }}</small>
                   </span>
-                  <span class="highlight-meta">{{ teamLabel(moment.team) }} · {{ momentVisibilityLabel(moment) }}</span>
+                  <span class="highlight-meta">{{ logicalTeamNameForPlayer(moment.killerPlayerId) }} · {{ momentVisibilityLabel(moment) }}</span>
                 </button>
               </section>
               <section>
@@ -289,7 +289,7 @@
                 >
                   <span class="score-badge">{{ rating.score }}</span>
                   <span class="highlight-copy">
-                    <strong>{{ roundLabel(rating.roundId) }} · {{ teamLabel(rating.team) }}</strong>
+                    <strong>{{ roundLabel(rating.roundId) }} · {{ roundTeamLabel(rating) }}</strong>
                     <small>{{ rating.reasons.slice(0, 2).map((entry) => entry.label).join(' · ') || 'Låg informationsnivå' }}</small>
                   </span>
                   <span class="highlight-meta">{{ Math.round(rating.confidence * 100) }} % säkerhet</span>
@@ -299,16 +299,17 @@
 
             <div class="frag-filters">
               <label v-if="analysisIndex.demo.perspective.kind === 'hltv'">
-                <span>Lag</span>
-                <select v-model="highlightTeam">
-                  <option value="all">Båda lag</option>
-                  <option value="TERRORIST">T</option>
-                  <option value="CT">CT</option>
+                <span>Lag · styr Endast frags</span>
+                <select :value="highlightTeam" @change="onHighlightTeamSelect">
+                  <option value="all">{{ logicalMatchupLabel }}</option>
+                  <option v-for="team in logicalTeamIndex.teams" :key="team.id" :value="team.id">
+                    {{ team.name }}
+                  </option>
                 </select>
               </label>
               <label>
-                <span>Spelare</span>
-                <select v-model="fragPlayer">
+                <span>Spelare · styr Endast frags</span>
+                <select :value="fragPlayer" @change="onFragPlayerSelect">
                   <option value="all">Alla spelare</option>
                   <option v-for="player in killerPlayers" :key="player.playerId" :value="player.playerId">
                     {{ playerLabel(player.playerId) }}
@@ -334,19 +335,49 @@
             </div>
 
             <div class="frag-reel-launcher">
-              <div>
+              <div class="frag-reel-copy">
                 <span>Snabbgranskning</span>
-                <strong>Se filtrerade POV-frags i följd</strong>
+                <strong>Se alla frags för vald spelare eller valt lag i följd</strong>
                 <small v-if="analysisIndex.demo.perspective.kind === 'hltv'">
-                  First person följer killern · endast frags med verifierad HLTV-POV
+                  {{ fragReelTeamLabel }} · first person följer killern · 3 s före och efter
                 </small>
                 <small v-else>3 s före och efter · luckor över 10 s hoppas över</small>
+                <small class="movie-estimate">
+                  Film: {{ formatDuration((fragMovieTimeline.durationMs + (movieIncludeIntro ? MOVIE_INTRO_DURATION_MS : 0)) / 1_000) }} · cirka {{ formatBytes(movieEstimatedBytes) }}
+                </small>
+                <small v-if="movieExportNotice" class="movie-export-notice">{{ movieExportNotice }}</small>
+                <small v-if="movieExportError" class="movie-export-error">{{ movieExportError }}</small>
               </div>
-              <button
-                type="button"
-                :disabled="!canStartFragReel"
-                @click="playFragReel"
-              ><span class="play-icon"></span> Endast frags · {{ fragReelDeaths.length }}</button>
+              <div class="frag-reel-controls">
+                <label class="movie-quality-select">
+                  <span>Exportkvalitet</span>
+                  <select v-model="movieQualityId" :disabled="movieExportRunning">
+                    <option v-for="quality in MOVIE_QUALITIES" :key="quality.id" :value="quality.id">
+                      {{ quality.label }}
+                    </option>
+                  </select>
+                </label>
+                <label class="movie-intro-toggle">
+                  <input
+                    v-model="movieIncludeIntro"
+                    type="checkbox"
+                    :disabled="movieExportRunning"
+                    @change="saveMovieIntroPreference"
+                  />
+                  <span>Filmintro med matchinfo</span>
+                </label>
+                <button
+                  type="button"
+                  :disabled="!canStartFragReel || movieExportRunning"
+                  @click="playFragReel"
+                ><span class="play-icon"></span> Endast frags · {{ fragReelTeamShortLabel }} · {{ fragReelDeaths.length }}</button>
+                <button
+                  class="movie-export-button"
+                  type="button"
+                  :disabled="!canStartFragReel || !movieExportSupported || movieExportRunning"
+                  @click="exportFragMovie"
+                >Skapa film</button>
+              </div>
             </div>
 
             <div class="frag-list" role="table" aria-label="Fraglista">
@@ -455,9 +486,13 @@
 
       <div
         v-if="customCrosshairVisible"
-        class="replay-crosshair"
+        :class="['replay-crosshair', nativeCrosshairClass]"
         aria-hidden="true"
       ><i></i><i></i><i></i><i></i></div>
+
+      <div v-if="nativeScopeVisible" class="replay-scope" aria-hidden="true">
+        <i></i>
+      </div>
 
       <div
         v-if="customHudVisible && activeHudDeath"
@@ -531,6 +566,41 @@
         </div>
       </div>
 
+      <div v-if="movieExportRunning" class="movie-export-overlay">
+        <div class="movie-export-card">
+          <span>HQ-EXPORT · {{ movieQuality.label }}</span>
+          <strong>{{ movieExportStatusLabel }}</strong>
+          <p>{{ fragReelTeamLabel }} · {{ fragReelIndex + 1 }}/{{ fragReelDeaths.length }} frags</p>
+          <div class="movie-export-progress"><i :style="{ width: `${movieExportProgress}%` }"></i></div>
+          <small>
+            {{ Math.round(movieExportProgress) }} % · {{ formatBytes(movieExportBytes) }} skrivna
+            · {{ movieRenderFps ? `${movieRenderFps.toFixed(1)} kodade FPS` : 'startar kodaren…' }}
+            · {{ movieRecorder?.encodingBacklogFrames ?? 0 }} frames i kö
+          </small>
+          <small v-if="movieEncoderCatchingUp">
+            Spelet är tillfälligt fryst medan kodaren tömmer kön. Filmens tid och ljud är pausade tillsammans.
+          </small>
+          <small v-else>Filmen renderas bakom denna vy. Håll denna browserflik öppen och aktiv.</small>
+          <button
+            type="button"
+            :disabled="movieExportState === 'finalizing'"
+            @click="() => cancelMovieExport()"
+          >{{ movieExportState === 'finalizing' ? 'Sparar filen…' : 'Avsluta och spara del' }}</button>
+        </div>
+      </div>
+
+      <div v-else-if="movieExportState === 'error'" class="movie-export-overlay">
+        <div class="movie-export-card">
+          <span>HQ-EXPORT AVBRUTEN</span>
+          <strong>Exporten kunde inte slutföras</strong>
+          <p class="movie-export-error">{{ movieExportError }}</p>
+          <small v-if="movieExportNotice">{{ movieExportNotice }}</small>
+          <small v-else>Ingen film godkändes. Detaljerna finns kvar här så felet kan felsökas.</small>
+          <button type="button" @click="downloadMovieExportDiagnostics">Ladda ner fellogg</button>
+          <button type="button" @click="closeEngine">← Tillbaka</button>
+        </div>
+      </div>
+
       <div class="engine-toolbar">
         <button type="button" @click="closeEngine">← Tillbaka</button>
         <div>
@@ -538,12 +608,14 @@
           {{ engineStarted ? 'Motor igång' : 'Startar…' }}
         </div>
         <div v-if="fragReelActive" class="frag-reel-status">
-          ENDAST FRAGS <strong>{{ fragReelIndex + 1 }}/{{ fragReelDeaths.length }}</strong>
+          <span>ENDAST FRAGS · {{ fragReelTeamLabel }} <strong>{{ fragReelIndex + 1 }}/{{ fragReelDeaths.length }}</strong></span>
+          <i aria-hidden="true"></i>
+          <span>SCORE <strong>{{ activeFragReelScore }}/100</strong></span>
         </div>
         <button v-if="fragReelActive" type="button" @click="stopFragReel">Avsluta fragsläge</button>
         <label class="engine-hud-select">
           <span>HUD</span>
-          <select :value="hudPreset" @change="onHudSelect">
+          <select :value="hudPreset" :disabled="movieExportRunning" @change="onHudSelect">
             <option v-for="preset in hudPresets" :key="preset.id" :value="preset.id">{{ preset.label }}</option>
           </select>
         </label>
@@ -568,6 +640,12 @@
     type WorkerAnalysisRun,
   } from '/@/analysis/analysis-worker-client';
   import type { AnalysisProgress } from '/@/analysis/analysis-worker-protocol';
+  import {
+    buildLogicalTeamIndex,
+    logicalTeamForSideAt,
+    type CompetitiveSide,
+    type LogicalTeamId,
+  } from '/@/analysis/team-identity';
   import type {
     DeathEvent,
     DemoAnalysisIndex,
@@ -603,13 +681,54 @@
     isFragReelEligible,
     nextFragReelAction,
   } from '/@/demo/frag-reel';
+  import {
+    MOVIE_QUALITIES,
+    MOVIE_INTRO_DURATION_MS,
+    buildFragMovieTimeline,
+    estimatedMovieBytes,
+    inferDemoMatchDate,
+    movieBackpressureAction,
+    movieCompletionAction,
+    movieScoreboardCueAt,
+    safeMovieFilename,
+    type MovieExportState,
+    type MovieQualityId,
+  } from '/@/movie/movie-project';
+  import type {
+    MovieCrosshairStyle,
+    MovieHudFrame,
+    MovieIntroCard,
+  } from '/@/movie/movie-hud-renderer';
+  import {
+    MovieRecorder,
+    preferredMovieContainer,
+    prepareMovieOutput,
+    type PreparedMovieOutput,
+    type MovieCaptureMode,
+  } from '/@/movie/movie-recorder';
   import type { GameAssetEntry } from '/@/services/local-asset-mount';
   import DemoEngine, { type DemoEngineOptions } from '/@/services/demo-engine';
   import openDirectory from '/@/utils/directory-open';
 
   type LogLine = { message: string; error: boolean };
+  type MovieExportDiagnostic = {
+    at: string;
+    event: string;
+    message: string;
+    filename: string;
+    quality: string;
+    progressPercent: number;
+    bytesWritten: number;
+    capturedFrames: number;
+    encodedFrames: number;
+    backlogFrames: number;
+    pageVisible: boolean;
+  };
   type HudPreset = 'original' | 'cinematic' | 'analyst' | 'movie' | 'clean';
   type InterfaceTheme = 'replay' | 'quakenet';
+
+  const MOVIE_EXPORT_DIAGNOSTICS_KEY = 'replay-lab-movie-export-diagnostics-v1';
+  const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
 
   const hudPresets: Array<{
     id: HudPreset;
@@ -654,7 +773,7 @@
   const analysisCacheHit = ref(false);
   const analysisProgress = ref<AnalysisProgress>();
   const fragPlayer = ref('all');
-  const highlightTeam = ref<'all' | 'TERRORIST' | 'CT'>('all');
+  const highlightTeam = ref<'all' | LogicalTeamId>('all');
   const fragSearch = ref('');
   const headshotsOnly = ref(false);
   const fragSort = ref<'time' | 'score'>('time');
@@ -668,15 +787,57 @@
   const hudPlaybackStartMs = ref(0);
   const hudPlaybackStartedAt = ref(0);
   const hudNow = ref(0);
+  const nativeFov = ref(90);
+  const nativeWeaponId = ref(0);
+  const movieQualityId = ref<MovieQualityId>('720p');
+  const movieIncludeIntro = ref(true);
+  const movieExportState = ref<MovieExportState>('idle');
+  const movieExportError = ref('');
+  const movieExportNotice = ref('');
+  const movieExportBytes = ref(0);
+  const movieExportProgress = ref(0);
+  const movieRenderFps = ref(0);
+  const movieEncoderCatchingUp = ref(false);
+  const movieExportDiagnostics = ref<MovieExportDiagnostic[]>([]);
   let hudClockFrame = 0;
   let analysisRequest = 0;
   let assetRequest = 0;
   let activeAnalysisRun: WorkerAnalysisRun | undefined;
+  let movieRecorder: MovieRecorder | undefined;
+  let movieRecorderStarting = false;
+  let preparedMovieOutput: PreparedMovieOutput | undefined;
+  let movieCaptureMode: MovieCaptureMode = 'composited';
+  let movieCaptureWaitStartedAt = 0;
+  let movieEncoderLastProgressAt = 0;
+  let movieEncoderLastEncodedFrames = 0;
+  let movieLastDiagnosticProgressBucket = -1;
+  let movieAutomaticScoreboardVisible = false;
 
   const deathEvents = computed(() => analysisIndex.value?.events.filter(isDeathEvent) ?? []);
   const fragRatingById = computed(() => new Map(
     analysisIndex.value?.fragRatings.map((rating) => [rating.eventId, rating]) ?? [],
   ));
+  const logicalTeamIndex = computed(() => buildLogicalTeamIndex(
+    analysisIndex.value?.players ?? [],
+  ));
+  const logicalMatchupLabel = computed(() =>
+    logicalTeamIndex.value.teams.map((team) => team.name).join(' vs '));
+  const logicalTeamName = (teamId: LogicalTeamId): string =>
+    logicalTeamIndex.value.teams.find((team) => team.id === teamId)?.name
+      ?? (teamId === 'team-1' ? 'Team 1' : 'Team 2');
+  const logicalTeamIdForPlayer = (playerId: string | null): LogicalTeamId | undefined =>
+    playerId ? logicalTeamIndex.value.teamIdByPlayerId.get(playerId) : undefined;
+  const logicalTeamNameForPlayer = (playerId: string | null): string => {
+    const teamId = logicalTeamIdForPlayer(playerId);
+    return teamId ? logicalTeamName(teamId) : 'Okänt lag';
+  };
+  const logicalTeamIdForSideAt = (side: CompetitiveSide, atMs: number): LogicalTeamId =>
+    logicalTeamForSideAt(
+      logicalTeamIndex.value,
+      analysisIndex.value?.players ?? [],
+      side,
+      atMs,
+    );
   const customHudVisible = computed(() =>
     !launching.value
     && !seeking.value
@@ -688,7 +849,26 @@
     && !seeking.value
     && !scoreboardHeld.value
     && hudPreset.value !== 'clean'
+    && (analysisIndex.value?.demo.perspective.kind !== 'hltv'
+      || (nativeFov.value > 40 && ![0, 3, 4, 6, 9, 13, 18, 24, 25, 29]
+        .includes(nativeWeaponId.value)))
     && engineStarted.value);
+  const nativeScopeVisible = computed(() =>
+    !launching.value
+    && !seeking.value
+    && !scoreboardHeld.value
+    && hudPreset.value !== 'clean'
+    && hudPreset.value !== 'original'
+    && analysisIndex.value?.demo.perspective.kind === 'hltv'
+    && nativeFov.value <= 40
+    && engineStarted.value);
+  const nativeCrosshairStyle = computed<MovieCrosshairStyle>(() => {
+    if ([1, 2, 10, 11, 16, 17, 26].includes(nativeWeaponId.value)) return 'pistol';
+    if ([7, 12, 19, 23, 30].includes(nativeWeaponId.value)) return 'smg';
+    if ([5, 20, 21].includes(nativeWeaponId.value)) return 'heavy';
+    return 'rifle';
+  });
+  const nativeCrosshairClass = computed(() => `crosshair-${nativeCrosshairStyle.value}`);
   const hudDemoTimeMs = computed(() => hudPlaybackStartedAt.value
     ? hudPlaybackStartMs.value + Math.max(0, hudNow.value - hudPlaybackStartedAt.value)
     : hudPlaybackStartMs.value);
@@ -703,6 +883,10 @@
   const activeHudRating = computed(() => activeHudDeath.value
     ? fragRatingById.value.get(activeHudDeath.value.eventId)
     : undefined);
+  const activeFragReelScore = computed(() => {
+    const death = fragReelDeaths.value[fragReelIndex.value];
+    return death ? fragRatingById.value.get(death.eventId)?.score ?? '–' : '–';
+  });
   const hudFragLanded = computed(() => activeHudDeath.value
     ? hudDemoTimeMs.value >= activeHudDeath.value.demoTimeMs
     : false);
@@ -739,7 +923,7 @@
     }
     if (highlightTeam.value === 'all') return deathEvents.value;
     return deathEvents.value.filter((death) =>
-      fragRatingById.value.get(death.eventId)?.team === highlightTeam.value);
+      logicalTeamIdForPlayer(death.killerPlayerId) === highlightTeam.value);
   });
   const playerById = computed(() => new Map(
     analysisIndex.value?.players.map((player) => [player.playerId, player]) ?? [],
@@ -788,17 +972,27 @@
   };
   const teamLabel = (team: 'TERRORIST' | 'CT'): string =>
     team === 'TERRORIST' ? 'T' : 'CT';
+  const roundTeamLabel = (rating: RoundRating): string => {
+    const round = analysisIndex.value?.rounds.find((entry) => entry.roundId === rating.roundId);
+    const teamId = logicalTeamIdForSideAt(rating.team, round?.startTimeMs ?? 0);
+    return logicalTeamName(teamId);
+  };
   const topMoments = computed(() => [...(analysisIndex.value?.moments ?? [])]
     .filter((moment) => {
       const visibility = fragRatingById.value.get(moment.eventIds[0])?.visibility;
       return visibility === 'hltv_replay' || visibility === 'recorded_pov';
     })
-    .filter((moment) => highlightTeam.value === 'all' || moment.team === highlightTeam.value)
+    .filter((moment) => highlightTeam.value === 'all'
+      || logicalTeamIdForPlayer(moment.killerPlayerId) === highlightTeam.value)
     .sort((left, right) => right.rating.score - left.rating.score)
     .slice(0, 5));
   const topRounds = computed(() => [...(analysisIndex.value?.roundRatings ?? [])]
     .filter((rating) => rating.score > 0)
-    .filter((rating) => highlightTeam.value === 'all' || rating.team === highlightTeam.value)
+    .filter((rating) => {
+      if (highlightTeam.value === 'all') return true;
+      const round = analysisIndex.value?.rounds.find((entry) => entry.roundId === rating.roundId);
+      return logicalTeamIdForSideAt(rating.team, round?.startTimeMs ?? 0) === highlightTeam.value;
+    })
     .sort((left, right) => right.score - left.score)
     .slice(0, 5));
   const analysisPerspectiveLabel = computed(() => {
@@ -850,6 +1044,77 @@
         fragRatingById.value.get(death.eventId)?.visibility,
       ))
       .sort((left, right) => left.demoTimeMs - right.demoTimeMs);
+  });
+  const movieScoreboardEvents = computed(() => {
+    const focusTeam = fragPlayer.value !== 'all'
+      ? logicalTeamIdForPlayer(fragPlayer.value)
+      : highlightTeam.value !== 'all'
+        ? highlightTeam.value
+        : 'team-1';
+    return fragReelDeaths.value.map((death) => ({
+      demoTimeMs: death.demoTimeMs,
+      side: logicalTeamIdForSideAt('TERRORIST', death.demoTimeMs) === focusTeam
+        ? 'TERRORIST' as const
+        : 'CT' as const,
+    }));
+  });
+  const fragReelTeamLabel = computed(() => fragPlayer.value !== 'all'
+    ? playerLabel(fragPlayer.value)
+    : highlightTeam.value === 'all'
+      ? logicalMatchupLabel.value
+      : logicalTeamName(highlightTeam.value));
+  const fragReelTeamShortLabel = computed(() => fragPlayer.value !== 'all'
+    ? playerLabel(fragPlayer.value)
+    : highlightTeam.value === 'all'
+      ? 'Båda'
+      : logicalTeamName(highlightTeam.value));
+  const fragMovieTimeline = computed(() => buildFragMovieTimeline(fragReelDeaths.value));
+  const movieMatchDateLabel = computed(() => {
+    const inferred = inferDemoMatchDate(demoSource.value.name);
+    if (!inferred) return '';
+    const [year, month, day] = inferred.split('-').map(Number);
+    return new Intl.DateTimeFormat('sv-SE', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+  });
+  const movieIntroCard = computed<MovieIntroCard>(() => {
+    const teams = logicalTeamIndex.value.teams;
+    return {
+      teams: [teams[0]?.name ?? 'Team 1', teams[1]?.name ?? 'Team 2'],
+      matchDate: movieMatchDateLabel.value,
+      mapName: demoInfo.value?.mapName ?? 'Okänd karta',
+      focusKind: fragPlayer.value !== 'all'
+        ? 'player'
+        : highlightTeam.value !== 'all'
+          ? 'team'
+          : 'match',
+      focusLabel: fragPlayer.value !== 'all'
+        ? playerLabel(fragPlayer.value)
+        : highlightTeam.value !== 'all'
+          ? logicalTeamName(highlightTeam.value)
+          : 'Båda lagen',
+      durationSeconds: MOVIE_INTRO_DURATION_MS / 1_000,
+    };
+  });
+  const movieQuality = computed(() => MOVIE_QUALITIES.find((quality) =>
+    quality.id === movieQualityId.value) ?? MOVIE_QUALITIES[0]);
+  const movieEstimatedBytes = computed(() => estimatedMovieBytes(
+    fragMovieTimeline.value.durationMs + (movieIncludeIntro.value ? MOVIE_INTRO_DURATION_MS : 0),
+    movieQuality.value,
+  ));
+  const movieExportSupported = computed(() => Boolean(preferredMovieContainer()));
+  const movieExportRunning = computed(() => [
+    'starting', 'recording', 'finalizing',
+  ].includes(movieExportState.value));
+  const movieExportStatusLabel = computed(() => {
+    if (movieExportState.value === 'starting') return 'Startar den lokala renderaren';
+    if (movieEncoderCatchingUp.value) return 'Kodaren hämtar ikapp · spelet är pausat';
+    if (movieExportState.value === 'recording') return 'Renderar bild och ljud';
+    if (movieExportState.value === 'finalizing') return 'Slutför videofilen';
+    return '';
   });
 
   const normalizedGamePaths = computed(() =>
@@ -913,6 +1178,17 @@
     interfaceTheme.value = theme;
     window.localStorage.setItem('replay-lab-interface-theme', theme);
   };
+  const onHighlightTeamSelect = (event: Event) => {
+    highlightTeam.value = (event.target as HTMLSelectElement).value as 'all' | LogicalTeamId;
+    fragPlayer.value = 'all';
+  };
+  const onFragPlayerSelect = (event: Event) => {
+    fragPlayer.value = (event.target as HTMLSelectElement).value;
+    highlightTeam.value = 'all';
+  };
+  const saveMovieIntroPreference = () => {
+    window.localStorage.setItem(MOVIE_INTRO_PREFERENCE_KEY, String(movieIncludeIntro.value));
+  };
   const weaponLabel = fragWeaponLabel;
 
   const applyEngineHudPreset = () => {
@@ -932,6 +1208,7 @@
     if (event.code !== 'Tab' || !engineVisible.value || !engineStarted.value) return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    if (movieExportRunning.value) return;
     if (scoreboardHeld.value || event.repeat) return;
     scoreboardHeld.value = true;
     DemoEngine.execute('hud_draw 1');
@@ -954,7 +1231,47 @@
   };
   const hideScoreboardOnBlur = () => hideScoreboard();
 
+  const setMovieAutomaticScoreboard = (
+    visible: boolean,
+    cue?: 'side-start' | 'side-end',
+  ) => {
+    if (movieAutomaticScoreboardVisible === visible && scoreboardHeld.value === visible) return;
+    movieAutomaticScoreboardVisible = visible;
+    scoreboardHeld.value = visible;
+    if (!engineStarted.value) return;
+    if (visible) {
+      DemoEngine.execute('hud_draw 1');
+      DemoEngine.execute('+showscores');
+      recordMovieExportDiagnostic(
+        'scoreboard-shown',
+        cue === 'side-start'
+          ? 'Scoreboard visades i början av lagets sidfas.'
+          : 'Scoreboard visades i slutet av lagets sidfas.',
+      );
+      return;
+    }
+    DemoEngine.execute('-showscores');
+    applyEngineHudPreset();
+  };
+
+  const updateMovieAutomaticScoreboard = () => {
+    if (movieExportState.value !== 'recording'
+      || !fragReelActive.value
+      || fragReelSeeking.value
+      || seeking.value) {
+      setMovieAutomaticScoreboard(false);
+      return;
+    }
+    const cue = movieScoreboardCueAt(
+      movieScoreboardEvents.value,
+      fragReelIndex.value,
+      hudDemoTimeMs.value,
+    );
+    setMovieAutomaticScoreboard(Boolean(cue), cue);
+  };
+
   const setHudPreset = (preset: HudPreset) => {
+    if (movieExportRunning.value) return;
     hudPreset.value = preset;
     window.localStorage.setItem('replay-lab-hud-preset', preset);
     applyEngineHudPreset();
@@ -965,9 +1282,247 @@
     engineCanvas.value?.focus();
   };
 
+  const currentMovieHudFrame = (): MovieHudFrame | undefined => {
+    if (scoreboardHeld.value) return undefined;
+    const activeDeath = activeHudDeath.value;
+    const death = activeDeath ?? fragReelDeaths.value[fragReelIndex.value];
+    if (!death) return undefined;
+    const rating = fragRatingById.value.get(death.eventId);
+    const reasons = rating?.reasons.slice(0, 4) ?? [];
+    const weaponSummary = [
+      fragWeaponLabel(death.weapon),
+      ...rating?.reasons
+        .filter((reason) => [
+          'precision_one_shot', 'precision_two_shots', 'fast_kill', 'headshot', 'clutch_kill',
+        ].includes(reason.code))
+        .slice(0, 3)
+        .map((reason) => reason.label) ?? [],
+    ].filter(Boolean).join(' · ');
+    return {
+      preset: hudPreset.value,
+      presentation: Boolean(activeDeath),
+      mapName: demoInfo.value?.mapName ?? '',
+      roundLabel: roundLabel(death.roundId),
+      timeLabel: formatEventTime(hudDemoTimeMs.value),
+      phaseLabel: hudPhaseLabel.value,
+      killer: playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot),
+      victim: playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot),
+      weapon: weaponLabel(death.weapon),
+      weaponSummary,
+      score: rating?.score ?? '–',
+      headshot: death.headshot,
+      fragLanded: Boolean(activeDeath) && hudFragLanded.value,
+      exiting: Boolean(activeDeath) && hudEventExiting.value,
+      terroristsAlive: death.aliveBefore.terrorists.value ?? '–',
+      counterTerroristsAlive: death.aliveBefore.counterTerrorists.value ?? '–',
+      reasons,
+      timelinePercent: activeDeath ? hudTimelinePercent.value : 100,
+      crosshair: customCrosshairVisible.value,
+      crosshairStyle: nativeCrosshairStyle.value,
+      scope: nativeScopeVisible.value,
+    };
+  };
+
+  const startMovieRecorderIfReady = async () => {
+    if (movieExportState.value !== 'starting'
+      || movieRecorderStarting
+      || launching.value
+      || seeking.value
+      || !engineStarted.value
+      || !engineCanvas.value
+      || !preparedMovieOutput) return;
+    if (!MovieRecorder.sourceHasVisibleFrame(engineCanvas.value)) {
+      if (!movieCaptureWaitStartedAt) movieCaptureWaitStartedAt = performance.now();
+      if (performance.now() - movieCaptureWaitStartedAt > 8_000) {
+        movieExportError.value = 'Spelbilden kunde inte läsas från WebGL-renderaren; exporten stoppades.';
+        recordMovieExportDiagnostic('canvas-timeout', movieExportError.value, true);
+        void cancelMovieExport(true);
+      }
+      return;
+    }
+    movieRecorderStarting = true;
+    const frozenMovieStartMs = hudDemoTimeMs.value;
+    let recorderStartPausedEngine = false;
+    try {
+      const audio = DemoEngine.createAudioCapture();
+      if (!audio) {
+        throw new Error(
+          'Spelljudet är inte redo. Starta uppspelningen och försök exportera igen.',
+        );
+      }
+      // Encoder probing and an optional intro can take real wall-clock time.
+      // Freeze the demo for all recorder starts so the first preroll, HUD
+      // clock and automatic scoreboard begin on the exact same game frame.
+      DemoEngine.execute('sys_timescale 0');
+      recorderStartPausedEngine = true;
+      movieRecorder = new MovieRecorder({
+        sourceCanvas: engineCanvas.value,
+        quality: movieQuality.value,
+        output: preparedMovieOutput,
+        audio,
+        captureMode: movieCaptureMode,
+        intro: movieIncludeIntro.value ? movieIntroCard.value : undefined,
+        hudFrame: currentMovieHudFrame,
+        onBytes: (bytes) => { movieExportBytes.value = bytes; },
+        onError: (error) => {
+          movieExportError.value = error.message;
+          recordMovieExportDiagnostic('encoder-error', error.stack ?? error.message, true);
+          void cancelMovieExport(true);
+        },
+        onEncoderMode: (mode) => {
+          const message = mode === 'hardware'
+            ? 'WebCodecs H.264: hårdvarukodare verifierad.'
+            : mode === 'software'
+              ? 'WebCodecs H.264: hardware-läget nekades, software-fallback verifierad.'
+              : 'WebCodecs H.264: browsern valde kodare automatiskt.';
+          addLog(message, false);
+          recordMovieExportDiagnostic('encoder-selected', message);
+        },
+      });
+      await movieRecorder.start();
+      if (recorderStartPausedEngine) {
+        DemoEngine.execute('sys_timescale 1');
+        recorderStartPausedEngine = false;
+      }
+      hudPlaybackStartMs.value = frozenMovieStartMs;
+      hudPlaybackStartedAt.value = performance.now();
+      movieCaptureWaitStartedAt = 0;
+      movieEncoderLastProgressAt = performance.now();
+      movieEncoderLastEncodedFrames = movieRecorder.encodedFrames;
+      movieExportState.value = 'recording';
+      recordMovieExportDiagnostic('recording-started', 'Bild- och ljudkodaren startade.');
+      addLog(
+        `HQ-export startad: ${movieQuality.value.label}, ${movieCaptureMode === 'direct' ? 'direkt GPU-fångst' : 'komponerad HUD'}${audio ? ' med spelljud' : ' utan spelljud'}.`,
+        !audio,
+      );
+    } catch (error) {
+      movieExportError.value = error instanceof Error ? error.message : 'Kunde inte starta filmexporten.';
+      recordMovieExportDiagnostic(
+        'start-error',
+        error instanceof Error ? error.stack ?? error.message : String(error),
+        true,
+      );
+      void cancelMovieExport(true);
+    } finally {
+      if (recorderStartPausedEngine && DemoEngine.running) {
+        try {
+          DemoEngine.execute('sys_timescale 1');
+        } catch {
+          // The engine may already be shutting down after a start failure.
+        }
+      }
+      movieRecorderStarting = false;
+    }
+  };
+
+  const pauseMovieForEncoder = (now: number) => {
+    const recorder = movieRecorder;
+    if (!recorder || movieEncoderCatchingUp.value || seeking.value) return;
+    const frozenDemoTimeMs = hudDemoTimeMs.value;
+    try {
+      DemoEngine.execute('sys_timescale 0');
+    } catch (error) {
+      movieExportError.value = error instanceof Error
+        ? error.message
+        : 'Kunde inte pausa spelet medan videokodaren hämtade ikapp.';
+      void cancelMovieExport(true);
+      return;
+    }
+    recorder.pause();
+    hudPlaybackStartMs.value = frozenDemoTimeMs;
+    hudPlaybackStartedAt.value = 0;
+    movieEncoderCatchingUp.value = true;
+    movieEncoderLastProgressAt = now;
+    movieEncoderLastEncodedFrames = recorder.encodedFrames;
+    addLog(`Videokodaren hämtar ikapp (${recorder.encodingBacklogFrames} frames i kö).`, false);
+    recordMovieExportDiagnostic(
+      'backpressure-pause',
+      `Spelet pausades med ${recorder.encodingBacklogFrames} frames i kodarkön.`,
+    );
+  };
+
+  const resumeMovieAfterEncoderCatchup = (now: number) => {
+    const recorder = movieRecorder;
+    if (!recorder || !movieEncoderCatchingUp.value) return;
+    try {
+      DemoEngine.execute('sys_timescale 1');
+    } catch (error) {
+      movieExportError.value = error instanceof Error
+        ? error.message
+        : 'Kunde inte fortsätta spelet efter kodarpausen.';
+      void cancelMovieExport(true);
+      return;
+    }
+    recorder.resume();
+    hudPlaybackStartedAt.value = now;
+    movieEncoderCatchingUp.value = false;
+    movieEncoderLastProgressAt = now;
+    movieEncoderLastEncodedFrames = recorder.encodedFrames;
+    addLog('Videokodaren är ikapp; exporten fortsätter.', false);
+    recordMovieExportDiagnostic('backpressure-resume', 'Kodarkön tömdes och spelet fortsatte.');
+  };
+
+  const updateMovieExportProgress = () => {
+    if (movieExportState.value !== 'recording') return;
+    const recorder = movieRecorder;
+    if (!recorder) return;
+    movieRenderFps.value = recorder.recentFramesPerSecond;
+    const now = performance.now();
+    const encodingBacklog = recorder.encodingBacklogFrames;
+    if (recorder.encodedFrames !== movieEncoderLastEncodedFrames) {
+      movieEncoderLastEncodedFrames = recorder.encodedFrames;
+      movieEncoderLastProgressAt = now;
+    }
+    if (movieEncoderCatchingUp.value
+      && encodingBacklog > 0
+      && now - movieEncoderLastProgressAt > 60_000) {
+      movieExportError.value = 'Videokodaren har inte levererat en enda bildruta på 60 sekunder.';
+      void cancelMovieExport(true);
+      return;
+    }
+    if (!seeking.value && !fragReelSeeking.value) {
+      const backpressure = movieBackpressureAction(
+        encodingBacklog,
+        movieQuality.value.fps,
+        movieEncoderCatchingUp.value,
+      );
+      if (backpressure === 'pause') pauseMovieForEncoder(now);
+      else if (backpressure === 'resume') resumeMovieAfterEncoderCatchup(now);
+    }
+    const death = fragReelDeaths.value[fragReelIndex.value];
+    const timeline = fragMovieTimeline.value;
+    if (!death || timeline.durationMs <= 0) return;
+    const clipIndex = timeline.clips.findIndex((clip) => clip.eventIds.includes(death.eventId));
+    if (clipIndex < 0) return;
+    const elapsedBefore = timeline.clips.slice(0, clipIndex).reduce(
+      (total, clip) => total + clip.endTimeMs - clip.startTimeMs,
+      0,
+    );
+    const clip = timeline.clips[clipIndex];
+    const elapsedWithin = Math.max(0, Math.min(
+      clip.endTimeMs - clip.startTimeMs,
+      hudDemoTimeMs.value - clip.startTimeMs,
+    ));
+    movieExportProgress.value = Math.min(
+      99.5,
+      (elapsedBefore + elapsedWithin) / timeline.durationMs * 100,
+    );
+    const progressBucket = Math.floor(movieExportProgress.value / 10);
+    if (progressBucket > movieLastDiagnosticProgressBucket) {
+      movieLastDiagnosticProgressBucket = progressBucket;
+      recordMovieExportDiagnostic(
+        'progress',
+        `Exporten nådde ${Math.round(movieExportProgress.value)} procent.`,
+      );
+    }
+  };
+
   const tickHudClock = (now: number) => {
     hudNow.value = now;
+    void startMovieRecorderIfReady();
+    updateMovieAutomaticScoreboard();
     updateFragReel();
+    updateMovieExportProgress();
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
   };
   const analysisProgressPercent = computed(() => {
@@ -1207,6 +1762,51 @@
     if (logs.value.length > 250) logs.value.shift();
   };
 
+  const recordMovieExportDiagnostic = (
+    event: string,
+    message: string,
+    isError = false,
+  ) => {
+    const recorder = movieRecorder;
+    const entry: MovieExportDiagnostic = {
+      at: new Date().toISOString(),
+      event,
+      message,
+      filename: preparedMovieOutput?.filename ?? '',
+      quality: movieQuality.value.label,
+      progressPercent: Number(movieExportProgress.value.toFixed(2)),
+      bytesWritten: recorder?.bytesWritten ?? movieExportBytes.value,
+      capturedFrames: recorder?.capturedFrames ?? 0,
+      encodedFrames: recorder?.encodedFrames ?? 0,
+      backlogFrames: recorder?.encodingBacklogFrames ?? 0,
+      pageVisible: !document.hidden,
+    };
+    movieExportDiagnostics.value.push(entry);
+    if (movieExportDiagnostics.value.length > 100) movieExportDiagnostics.value.shift();
+    try {
+      window.localStorage.setItem(
+        MOVIE_EXPORT_DIAGNOSTICS_KEY,
+        JSON.stringify(movieExportDiagnostics.value),
+      );
+    } catch {
+      // Diagnostics must never interrupt an export if storage is unavailable.
+    }
+    const consoleMethod = isError ? console.error : console.info;
+    consoleMethod(`[HQ-export:${event}] ${message}`, entry);
+  };
+
+  const downloadMovieExportDiagnostics = () => {
+    const blob = new Blob([
+      JSON.stringify(movieExportDiagnostics.value, null, 2),
+    ], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `replay-lab-export-log-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
   const launchDemo = async (
     startAtMs = 0,
     reconstructionCamera?: DemoEngineOptions['reconstructionCamera'],
@@ -1219,6 +1819,8 @@
     logs.value = [];
     loadingProgress.value = 0;
     seeking.value = startAtMs > 0;
+    nativeFov.value = 90;
+    nativeWeaponId.value = 0;
     await nextTick();
 
     try {
@@ -1229,7 +1831,16 @@
         demoSource: demoSource.value,
         demoBuffer: analysisBuffer.value,
         compatibilityProfile: selectedDemo.compatibilityProfile,
-        isHltv: selectedDemo.isHltv,
+        // Header inspection deliberately leaves this unknown until the packet
+        // analysis has seen svc_hltv/svc_director. Use that authoritative
+        // result when launching; otherwise HLTV demos are started as POV and
+        // their recorded overview camera can sit outside the BSP world.
+        isHltv: analysisIndex.value?.demo.isHltv ?? selectedDemo.isHltv,
+        captureFrames: movieExportRunning.value,
+        renderSize: movieExportRunning.value ? {
+          width: movieQuality.value.width,
+          height: movieQuality.value.height,
+        } : undefined,
         startAtMs,
         reconstructionCamera,
         onSeekStateChange: (value) => {
@@ -1239,6 +1850,8 @@
             applyEngineHudPreset();
           }
         },
+        onNativeFovChange: (value) => { nativeFov.value = value; },
+        onNativeWeaponChange: (value) => { nativeWeaponId.value = value; },
         onLog: addLog,
         onProgress: ({ current }) => { loadingProgress.value = current; },
       });
@@ -1250,8 +1863,13 @@
     } catch (error) {
       fragReelActive.value = false;
       fragReelSeeking.value = false;
-      addLog(error instanceof Error ? error.message : 'Motorn kunde inte starta.', true);
+      const message = error instanceof Error ? error.message : 'Motorn kunde inte starta.';
+      addLog(message, true);
       consoleOpen.value = true;
+      if (movieExportRunning.value) {
+        movieExportError.value = message;
+        void cancelMovieExport(true);
+      }
     } finally {
       launching.value = false;
     }
@@ -1263,7 +1881,10 @@
   ): DemoEngineOptions['reconstructionCamera'] | undefined => {
     const rating = fragRatingById.value.get(death.eventId);
     if (!rating || rating.visibility === 'recorded_pov') return undefined;
-    const nativeHltv = rating.visibility === 'hltv_replay';
+    // A DeathMsg always carries the killer slot. In an HLTV demo we can ask the
+    // native spectator to follow that slot even when the exact frag packet did
+    // not contain a complete position/angle snapshot.
+    const nativeHltv = analysisIndex.value?.demo.perspective.kind === 'hltv';
     const position = rating.reconstruction.positionValue;
     const entityAngles = rating.reconstruction.angleValue;
     if (!nativeHltv
@@ -1342,7 +1963,164 @@
     void launchDemo(startAtMs, camera);
   };
 
+  const exportFragMovie = async () => {
+    if (!canStartFragReel.value || movieExportRunning.value) return;
+    movieExportError.value = '';
+    movieExportNotice.value = '';
+    movieExportBytes.value = 0;
+    movieExportProgress.value = 0;
+    movieRenderFps.value = 0;
+    movieEncoderCatchingUp.value = false;
+    movieCaptureWaitStartedAt = 0;
+    movieEncoderLastProgressAt = 0;
+    movieEncoderLastEncodedFrames = 0;
+    movieLastDiagnosticProgressBucket = -1;
+    movieCaptureMode = hudPreset.value === 'original' || hudPreset.value === 'clean'
+      ? 'direct'
+      : 'composited';
+    movieExportState.value = 'starting';
+    recordMovieExportDiagnostic(
+      'requested',
+      `Export begärd i ${movieQuality.value.label}${movieIncludeIntro.value ? ' med matchintro' : ' utan intro'}.`,
+    );
+    const temporaryName = safeMovieFilename(
+      demoSource.value.name,
+      fragReelTeamShortLabel.value,
+      'tmp',
+    );
+    try {
+      preparedMovieOutput = await prepareMovieOutput(temporaryName.replace(/\.tmp$/, ''));
+      movieExportNotice.value = `Exporterar direkt till ${preparedMovieOutput.filename}.`;
+      recordMovieExportDiagnostic('output-prepared', movieExportNotice.value);
+      playFragReel();
+    } catch (error) {
+      movieExportState.value = 'idle';
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        movieExportNotice.value = 'Exporten avbröts innan den startade.';
+        return;
+      }
+      movieExportError.value = error instanceof Error
+        ? error.message
+        : 'Kunde inte förbereda videofilen.';
+      recordMovieExportDiagnostic(
+        'prepare-error',
+        error instanceof Error ? error.stack ?? error.message : String(error),
+        true,
+      );
+    }
+  };
+
+  const finishMovieExport = async () => {
+    const recorder = movieRecorder;
+    if (!recorder || movieExportState.value === 'finalizing') return;
+    setMovieAutomaticScoreboard(false);
+    movieExportState.value = 'finalizing';
+    movieExportProgress.value = 100;
+    movieEncoderCatchingUp.value = false;
+    try {
+      await recorder.stop();
+      if (recorder.encodedFrames !== recorder.capturedFrames) {
+        throw new Error(
+          `Videokodaren tappade ${recorder.capturedFrames - recorder.encodedFrames} frames; filen godkänns inte.`,
+        );
+      }
+      if (recorder.bytesWritten <= 0) {
+        throw new Error('Videokodaren avslutades utan att skapa någon data.');
+      }
+      const minimumPlausibleBytes = movieEstimatedBytes.value * 0.005;
+      if (recorder.bytesWritten < minimumPlausibleBytes) {
+        throw new Error(
+          `Videofilen blev orimligt liten (${formatBytes(recorder.bytesWritten)}); `
+          + 'spelbilden kodades sannolikt inte korrekt.',
+        );
+      }
+      const filename = preparedMovieOutput?.filename ?? 'only-frags-video';
+      movieExportNotice.value = `${filename} är färdig och sparad.`;
+      recordMovieExportDiagnostic('completed', movieExportNotice.value);
+      movieExportState.value = 'complete';
+      movieRecorder = undefined;
+      preparedMovieOutput = undefined;
+      closeEngine();
+    } catch (error) {
+      movieExportError.value = error instanceof Error
+        ? error.message
+        : 'Kunde inte slutföra videofilen.';
+      if (recorder.fileFinalized && recorder.bytesWritten > 0) {
+        movieExportNotice.value = `${preparedMovieOutput?.filename ?? 'Videofilen'} stängdes korrekt och finns kvar fram till felet.`;
+      }
+      recordMovieExportDiagnostic(
+        'finalize-error',
+        error instanceof Error ? error.stack ?? error.message : String(error),
+        true,
+      );
+      movieExportState.value = 'error';
+      movieRecorder = undefined;
+      preparedMovieOutput = undefined;
+      closeEngine();
+    }
+  };
+
+  const cancelMovieExport = async (keepError = false) => {
+    const recorder = movieRecorder;
+    const output = preparedMovieOutput;
+    setMovieAutomaticScoreboard(false);
+    recordMovieExportDiagnostic(
+      keepError ? 'error-stop-requested' : 'user-stop-requested',
+      keepError ? movieExportError.value || 'Exporten stoppades efter ett okänt fel.' : 'Användaren avslutade exporten.',
+      keepError,
+    );
+    if (movieEncoderCatchingUp.value && DemoEngine.running) {
+      try {
+        DemoEngine.execute('sys_timescale 1');
+      } catch {
+        // The engine may already be shutting down.
+      }
+    }
+    movieEncoderCatchingUp.value = false;
+    let partialSaved = false;
+    if (recorder) {
+      movieExportState.value = 'finalizing';
+      try {
+        await recorder.stop();
+        partialSaved = recorder.bytesWritten > 0;
+      } catch (error) {
+        if (recorder.fileFinalized) {
+          partialSaved = recorder.bytesWritten > 0;
+          recordMovieExportDiagnostic(
+            'partial-file-finalized',
+            error instanceof Error ? error.stack ?? error.message : String(error),
+            true,
+          );
+        } else {
+          recordMovieExportDiagnostic(
+            'partial-file-failed',
+            error instanceof Error ? error.stack ?? error.message : String(error),
+            true,
+          );
+          await recorder.cancel();
+        }
+      }
+    } else {
+      await output?.writer?.abort('Exporten avbröts innan kodaren startade.').catch(() => undefined);
+    }
+    movieRecorder = undefined;
+    preparedMovieOutput = undefined;
+    movieExportState.value = keepError ? 'error' : 'idle';
+    if (partialSaved) {
+      movieExportNotice.value = `${output?.filename ?? 'Videofilen'} sparades som en spelbar del fram till avbrottet.`;
+    } else if (!keepError) {
+      movieExportNotice.value = 'Filmexporten avbröts innan videodata hann skapas.';
+    }
+    if (keepError) {
+      fragReelActive.value = false;
+      fragReelSeeking.value = false;
+    } else {
+      closeEngine();
+    }
+  };
+
   const focusFragReelDeath = (death: DeathEvent | undefined) => {
+    setMovieAutomaticScoreboard(false);
     if (!death || analysisIndex.value?.demo.perspective.kind !== 'hltv') return;
     const camera = killerCameraFor(death, Math.max(0, death.demoTimeMs - FRAG_REEL_PREROLL_MS));
     if (!camera?.nativeHltv) return;
@@ -1356,6 +2134,10 @@
   };
 
   const stopFragReel = () => {
+    if (movieExportRunning.value) {
+      void cancelMovieExport();
+      return;
+    }
     fragReelActive.value = false;
     fragReelSeeking.value = false;
     addLog('Endast frags avslutat; vanlig uppspelning fortsätter.', false);
@@ -1365,6 +2147,7 @@
   const updateFragReel = () => {
     if (!fragReelActive.value
       || fragReelSeeking.value
+      || movieRecorderStarting
       || launching.value
       || seeking.value
       || !engineStarted.value) return;
@@ -1377,6 +2160,20 @@
     if (action.type === 'wait') return;
     if (action.type === 'complete') {
       addLog(`Endast frags klart: ${fragReelDeaths.value.length} frags visade.`, false);
+      const completion = movieCompletionAction(movieExportState.value);
+      if (completion === 'finish') {
+        void finishMovieExport();
+        return;
+      }
+      // stop() is asynchronous. While MP4 metadata and queued chunks are being
+      // committed, the HUD clock keeps ticking and reaches this branch again.
+      // Never turn that normal finalization into a destructive cancellation.
+      if (completion === 'wait') return;
+      if (completion === 'fail') {
+        movieExportError.value = 'Filminspelaren hann inte starta.';
+        void cancelMovieExport(true);
+        return;
+      }
       closeEngine();
       return;
     }
@@ -1391,6 +2188,8 @@
 
     fragReelSeeking.value = true;
     seeking.value = true;
+    setMovieAutomaticScoreboard(false);
+    movieRecorder?.pause();
     addLog(`Endast frags: hoppar till ${formatEventTime(action.targetMs)}.`, false);
     void DemoEngine.seekTo(action.targetMs)
       .then(() => {
@@ -1400,6 +2199,7 @@
         fragReelSeeking.value = false;
         focusFragReelDeath(next);
         applyEngineHudPreset();
+        movieRecorder?.resume();
         engineCanvas.value?.focus();
       })
       .catch((error) => {
@@ -1407,6 +2207,12 @@
         seeking.value = false;
         fragReelSeeking.value = false;
         addLog(error instanceof Error ? error.message : 'Kunde inte hoppa till nästa frag.', true);
+        if (movieExportRunning.value) {
+          movieExportError.value = error instanceof Error
+            ? error.message
+            : 'Filmexporten kunde inte hoppa till nästa frag.';
+          void cancelMovieExport(true);
+        }
       });
   };
 
@@ -1433,6 +2239,7 @@
   function closeEngine() {
     if (scoreboardHeld.value && engineStarted.value) DemoEngine.execute('-showscores');
     scoreboardHeld.value = false;
+    movieAutomaticScoreboardVisible = false;
     fragReelActive.value = false;
     fragReelSeeking.value = false;
     engineVisible.value = false;
@@ -1441,17 +2248,56 @@
     engineStarted.value = false;
     seeking.value = false;
     hudPlaybackStartedAt.value = 0;
+    movieEncoderCatchingUp.value = false;
+    nativeFov.value = 90;
+    nativeWeaponId.value = 0;
   }
 
   const onUnhandledRejection = (event: PromiseRejectionEvent) => {
     const message = event.reason instanceof Error ? event.reason.message : String(event.reason);
     if (message.includes('not valid for pointer lock')) return;
     addLog(`Laddningsfel: ${message}`, true);
+    if (movieExportRunning.value) {
+      recordMovieExportDiagnostic(
+        'unhandled-rejection',
+        event.reason instanceof Error ? event.reason.stack ?? message : message,
+        true,
+      );
+    }
+  };
+
+  const onWindowError = (event: ErrorEvent) => {
+    if (!movieExportRunning.value) return;
+    recordMovieExportDiagnostic(
+      'window-error',
+      event.error instanceof Error ? event.error.stack ?? event.message : event.message,
+      true,
+    );
+  };
+
+  const stopExportWhenTabIsHidden = () => {
+    if (!document.hidden || !['starting', 'recording'].includes(movieExportState.value)) return;
+    movieExportError.value = 'Exporten stoppades eftersom browserfliken lämnades. En eventuell del sparas.';
+    void cancelMovieExport(true);
   };
 
   onMounted(() => {
+    try {
+      const savedDiagnostics = JSON.parse(
+        window.localStorage.getItem(MOVIE_EXPORT_DIAGNOSTICS_KEY) ?? '[]',
+      ) as unknown;
+      if (Array.isArray(savedDiagnostics)) {
+        movieExportDiagnostics.value = savedDiagnostics.slice(-100) as MovieExportDiagnostic[];
+      }
+    } catch {
+      // Ignore an invalid or unavailable diagnostics cache.
+    }
     const savedHud = window.localStorage.getItem('replay-lab-hud-preset');
     if (hudPresets.some((preset) => preset.id === savedHud)) hudPreset.value = savedHud as HudPreset;
+    const savedMovieIntro = window.localStorage.getItem(MOVIE_INTRO_PREFERENCE_KEY);
+    if (savedMovieIntro === 'true' || savedMovieIntro === 'false') {
+      movieIncludeIntro.value = savedMovieIntro === 'true';
+    }
     const savedTheme = window.localStorage.getItem('replay-lab-interface-theme');
     if (savedTheme === 'replay' || savedTheme === 'quakenet') interfaceTheme.value = savedTheme;
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
@@ -1459,15 +2305,23 @@
     window.addEventListener('keydown', showScoreboard, true);
     window.addEventListener('keyup', hideScoreboard, true);
     window.addEventListener('blur', hideScoreboardOnBlur);
+    window.addEventListener('error', onWindowError);
     window.addEventListener('unhandledrejection', onUnhandledRejection);
+    document.addEventListener('visibilitychange', stopExportWhenTabIsHidden);
   });
   onBeforeUnmount(() => {
     activeAnalysisRun?.cancel();
     window.cancelAnimationFrame(hudClockFrame);
+    if (movieRecorder) void movieRecorder.cancel();
+    else if (preparedMovieOutput?.writer) {
+      void preparedMovieOutput.writer.abort('Sidan stängdes under exporten.').catch(() => undefined);
+    }
     DemoEngine.stop();
     window.removeEventListener('keydown', showScoreboard, true);
     window.removeEventListener('keyup', hideScoreboard, true);
     window.removeEventListener('blur', hideScoreboardOnBlur);
+    window.removeEventListener('error', onWindowError);
     window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    document.removeEventListener('visibilitychange', stopExportWhenTabIsHidden);
   });
 </script>

@@ -144,6 +144,97 @@ index c576f44..fcb2dad 100644
  	// Or in the muzzle flash
  	ent->curstate.effects |= EF_MUZZLEFLASH;
  }
+diff --git a/cl_dll/hud.cpp b/cl_dll/hud.cpp
+index 8d29ddd..d41b173 100644
+--- a/cl_dll/hud.cpp
++++ b/cl_dll/hud.cpp
+@@ -33,6 +33,8 @@
+ #include "rain.h"
+ 
+ #include "camera.h"
++#include "hltv.h"
++#include "pm_shared.h"
+ 
+ #include "draw_util.h"
+ 
+@@ -99,6 +101,14 @@ static CCStrikeVoiceStatusHelper g_VoiceStatusHelper;
+ 
+ wrect_t nullrc = { 0, 0, 0, 0 };
+ float g_lastFOV = 0.0;
++static int g_ReplayLabPlayerFov[MAX_PLAYERS + 1] = { 0 };
++
++int ReplayLabPlayerFov( int player )
++{
++	if( player < 1 || player > MAX_PLAYERS )
++		return 90;
++	return g_ReplayLabPlayerFov[player] > 0 ? g_ReplayLabPlayerFov[player] : 90;
++}
+ const char *sPlayerModelFiles[12] =
+ {
+ 	"models/player.mdl",
+@@ -268,6 +278,7 @@ void CHud :: Init( void )
+ 	HOOK_MESSAGE( gHUD, InitHUD );
+ 	HOOK_MESSAGE( gHUD, ViewMode );
+ 	HOOK_MESSAGE( gHUD, SetFOV );
++	HOOK_MESSAGE( gHUD, HLTV );
+ 	HOOK_MESSAGE( gHUD, Concuss );
+ 	HOOK_MESSAGE( gHUD, ServerName );
+ 	HOOK_MESSAGE( gHUD, ShadowIdx );
+@@ -579,6 +590,17 @@ Returns last FOV
+ */
+ float HUD_GetFOV( void )
+ {
++	if( CVAR_GET_FLOAT( "hltv_native_spectator" ) != 0.0f &&
++		g_iUser1 == OBS_IN_EYE && g_iUser2 > 0 && g_iUser2 <= MAX_PLAYERS )
++	{
++		// HLTV carries each player's real scoped FOV in its two-byte HLTV user
++		// message. The normal demo zoom belongs to the recorded director camera,
++		// not the player Replay Lab selected for native in-eye playback.
++		int playerFov = g_ReplayLabPlayerFov[g_iUser2];
++		g_lastFOV = playerFov > 0 ? playerFov : 90.0f;
++		return g_lastFOV;
++	}
++
+ 	if ( gEngfuncs.pDemoAPI->IsRecording() )
+ 	{
+ 		// Write it
+@@ -597,6 +619,36 @@ float HUD_GetFOV( void )
+ 	return g_lastFOV;
+ }
+ 
++int CHud::MsgFunc_HLTV(const char *pszName, int iSize, void *pbuf)
++{
++	if( iSize < 2 )
++		return 1;
++
++	BufferReader reader( pszName, pbuf, iSize );
++	int player = reader.ReadByte();
++	int value = reader.ReadByte();
++	if( value & DRC_FLAG_FACEPLAYER )
++		return 1; // health update, not FOV
++
++	int fov = value > 0 ? value : 90;
++	if( player == 0 )
++	{
++		for( int i = 1; i <= MAX_PLAYERS; ++i )
++			g_ReplayLabPlayerFov[i] = fov;
++	}
++	else if( player <= MAX_PLAYERS )
++	{
++		g_ReplayLabPlayerFov[player] = fov;
++	}
++	if( CVAR_GET_FLOAT( "hltv_native_spectator" ) != 0.0f &&
++		( player == 0 || player == g_iUser2 ) )
++	{
++		gEngfuncs.Con_Printf( "ReplayLab native FOV: %i.\n", ReplayLabPlayerFov( g_iUser2 ) );
++	}
++
++	return 1;
++}
++
+ int CHud::MsgFunc_SetFOV(const char *pszName,  int iSize, void *pbuf)
+ {
+ 	//Weapon prediction already takes care of changing the fog. ( g_lastFOV ).
 diff --git a/cl_dll/hud.h b/cl_dll/hud.h
 index b75b3c9..18e05b9 100644
 --- a/cl_dll/hud.h
@@ -184,6 +275,14 @@ index b75b3c9..18e05b9 100644
  
  	enum {
  		ROOT_MENU = (1<<0),
+@@ -1070,6 +1074,7 @@ public:
+ 	CHudMsgFunc(InitHUD);
+ 	CHudMsgFunc(ViewMode);
+ 	CHudMsgFunc(SetFOV);
++	CHudMsgFunc(HLTV);
+ 	CHudMsgFunc(Concuss);
+ 	CHudMsgFunc(ShadowIdx);
+ 	CHudMsgFunc(ServerName);
 diff --git a/cl_dll/hud/scoreboard.cpp b/cl_dll/hud/scoreboard.cpp
 index faed4a2..f64d0dc 100644
 --- a/cl_dll/hud/scoreboard.cpp
@@ -554,6 +653,41 @@ index faed4a2..f64d0dc 100644
  	// if we were the one killed,  or the world killed us, set the scoreboard to indicate suicide
  	if ( victim == m_iPlayerNum || killer == 0 )
  	{
+diff --git a/cl_dll/hud/sniperscope.cpp b/cl_dll/hud/sniperscope.cpp
+index 3d46067..3a4e920 100644
+--- a/cl_dll/hud/sniperscope.cpp
++++ b/cl_dll/hud/sniperscope.cpp
+@@ -37,8 +37,15 @@ version.
+ 
+ int CHudSniperScope::Init()
+ {
++	// Replay Lab always runs this client on Xash3D/WebAssembly. Some browser
++	// builds do not expose a numeric host_ver, so g_iXash remains zero even
++	// though the render API and bundled scope textures are available.
++#if defined(__EMSCRIPTEN__)
++	gHUD.AddHudElem(this);
++#else
+ 	if( g_iXash )
+ 		gHUD.AddHudElem(this);
++#endif
+ 
+ 	m_iFlags = HUD_DRAW;
+ 	m_iScopeArc[0] = m_iScopeArc[1] =m_iScopeArc[2] = m_iScopeArc[3]  = 0;
+@@ -47,12 +54,14 @@ int CHudSniperScope::Init()
+ 
+ int CHudSniperScope::VidInit()
+ {
++#if !defined(__EMSCRIPTEN__)
+ 	if( g_iXash == 0 )
+ 	{
+ 		ConsolePrint("^3No Xash Found Warning^7: CHudSniperScope is disabled!\n");
+ 		m_iFlags = 0;
+ 		return 0;
+ 	}
++#endif
+ 
+ 	m_iScopeArc[0] = gRenderAPI.GL_LoadTexture("sprites/scope_arc_nw.tga", NULL, 0, TF_NEAREST|TF_NOMIPMAP|TF_CLAMP);
+ 	m_iScopeArc[1] = gRenderAPI.GL_LoadTexture("sprites/scope_arc_ne.tga", NULL, 0, TF_NEAREST|TF_NOMIPMAP|TF_CLAMP);
 diff --git a/cl_dll/hud/spectator_gui.cpp b/cl_dll/hud/spectator_gui.cpp
 index 04b6d26..66c0836 100644
 --- a/cl_dll/hud/spectator_gui.cpp
@@ -657,12 +791,13 @@ index 2319f23..9cc8d9a 100644
  void SpectatorMode(void)
  {
  	if ( gEngfuncs.Cmd_Argc() <= 1 )
-@@ -108,6 +113,28 @@ void SpectatorMenu( void )
+@@ -108,6 +113,30 @@ void SpectatorMenu( void )
  		gEngfuncs.Cvar_Set( name, gEngfuncs.Cmd_Argv(1) );
  }
  
 +void ReplayLabSpecPlayer( void )
 +{
++	extern int ReplayLabPlayerFov( int player );
 +	if( gEngfuncs.Cmd_Argc() != 2 )
 +	{
 +		gEngfuncs.Con_Printf( "usage: hltv_spec_player <slot>\n" );
@@ -681,12 +816,13 @@ index 2319f23..9cc8d9a 100644
 +	g_iUser1 = OBS_IN_EYE;
 +	g_iUser2 = target;
 +	g_iUser3 = 0;
++	gEngfuncs.Con_Printf( "ReplayLab native FOV: %i.\n", ReplayLabPlayerFov( target ) );
 +}
 +
  void SpecDrawNames( void )
  {
  	if ( gEngfuncs.Cmd_Argc() <= 1 )
-@@ -215,6 +242,7 @@ int CHudSpectator::Init()
+@@ -215,6 +244,7 @@ int CHudSpectator::Init()
  	gEngfuncs.pfnAddCommand ("spec_drawstatus", SpecDrawStatus );
  	gEngfuncs.pfnAddCommand ("spec_autodirector", SpecAutoDirector );
  	gEngfuncs.pfnAddCommand ("spec_pip", SpecPip );
@@ -694,7 +830,7 @@ index 2319f23..9cc8d9a 100644
  
  	m_drawnames		= gEngfuncs.pfnRegisterVariable("spec_drawnames_internal","1",0);
  	m_drawcone		= gEngfuncs.pfnRegisterVariable("spec_drawcone_internal","1",0);
-@@ -601,7 +629,11 @@ void CHudSpectator::DirectorMessage( int iSize, void *pbuf )
+@@ -601,7 +631,11 @@ void CHudSpectator::DirectorMessage( int iSize, void *pbuf )
  	case DRC_CMD_MODE  :
  		if ( m_autoDirector->value )
  		{
@@ -707,7 +843,7 @@ index 2319f23..9cc8d9a 100644
  		}
  		break;
  
-@@ -707,7 +739,7 @@ void CHudSpectator::FindNextPlayer(bool bReverse)
+@@ -707,7 +741,7 @@ void CHudSpectator::FindNextPlayer(bool bReverse)
  	cl_entity_t * pEnt = NULL;
  
  	// if we are NOT in HLTV mode, spectator targets are set on server
@@ -716,7 +852,7 @@ index 2319f23..9cc8d9a 100644
  	{
  		char cmdstring[32];
  		// forward command to server
-@@ -763,6 +795,7 @@ void CHudSpectator::FindNextPlayer(bool bReverse)
+@@ -763,6 +797,7 @@ void CHudSpectator::FindNextPlayer(bool bReverse)
  	}
  	else
  	{
@@ -724,7 +860,7 @@ index 2319f23..9cc8d9a 100644
  		// use new entity position for roaming
  		VectorCopy ( pEnt->origin, vJumpOrigin );
  		VectorCopy ( pEnt->angles, vJumpAngles );
-@@ -788,7 +821,8 @@ void CHudSpectator::HandleButtonsDown( int ButtonPressed )
+@@ -788,7 +823,8 @@ void CHudSpectator::HandleButtonsDown( int ButtonPressed )
  		return; // don't do anything if not in spectator mode
  
  	// don't handle buttons during normal demo playback
@@ -734,7 +870,7 @@ index 2319f23..9cc8d9a 100644
  		return;
  	// Slow down mouse clicks.
  	if ( m_flNextObserverInput > time )
-@@ -807,7 +841,7 @@ void CHudSpectator::HandleButtonsDown( int ButtonPressed )
+@@ -807,7 +843,7 @@ void CHudSpectator::HandleButtonsDown( int ButtonPressed )
  	}
  
  	// if not in HLTV mode, buttons are handled server side
@@ -743,7 +879,7 @@ index 2319f23..9cc8d9a 100644
  	{
  		// changing target or chase mode not in overviewmode without inset window
  
-@@ -907,7 +941,7 @@ void CHudSpectator::SetModes(int iNewMainMode, int iNewInsetMode)
+@@ -907,7 +943,7 @@ void CHudSpectator::SetModes(int iNewMainMode, int iNewInsetMode)
  	if ( iNewMainMode != g_iUser1 )
  	{
  		// if we are NOT in HLTV mode, main spectator mode is set on server
@@ -873,7 +1009,15 @@ diff --git a/cl_dll/view.cpp b/cl_dll/view.cpp
 index 579b2d6..412198b 100644
 --- a/cl_dll/view.cpp
 +++ b/cl_dll/view.cpp
-@@ -82,6 +82,18 @@ cvar_t	*cl_waterdist;
+@@ -34,6 +34,7 @@
+ #include "kbutton.h"
+ #include "input.h"
+ #include "com_weapons.h"
++#include "weapontype.h"
+ 
+ #ifndef M_PI
+ #define M_PI		3.14159265358979323846	// matches value in gcc v2 math.h
+@@ -82,6 +83,19 @@ cvar_t	*cl_waterdist;
  cvar_t	*cl_chasedist;
  cvar_t	*cl_weaponlag;
  cvar_t	*cl_quakeguns;
@@ -889,10 +1033,11 @@ index 579b2d6..412198b 100644
 +cvar_t	*hltv_native_weapon;
 +int		g_ReplayLabMuzzleSerial = 0;
 +float	g_ReplayLabMuzzleTime = 0.0f;
++int		g_ReplayLabWeaponId = WEAPON_NONE;
  
  // These cvars are not registered (so users can't cheat), so set the ->value field directly
  // Register these cvars in V_Init() if needed for easy tweaking
-@@ -506,7 +518,8 @@ void V_CalcIntermissionRefdef ( struct ref_params_s *pparams )
+@@ -506,7 +520,8 @@ void V_CalcIntermissionRefdef ( struct ref_params_s *pparams )
  
  	V_AddIdle ( pparams );
  
@@ -902,7 +1047,7 @@ index 579b2d6..412198b 100644
  	{
  		// in HLTV we must go to 'intermission' position by ourself
  		VectorCopy( gHUD.m_Spectator.m_cameraOrigin, pparams->vieworg );
-@@ -696,7 +709,8 @@ void V_CalcNormalRefdef ( struct ref_params_s *pparams )
+@@ -696,7 +711,8 @@ void V_CalcNormalRefdef ( struct ref_params_s *pparams )
  	vec3_t camAngles, camForward, camRight, camUp;
  	cl_entity_t *pwater;
  
@@ -912,7 +1057,49 @@ index 579b2d6..412198b 100644
  	{
  		ent = gEngfuncs.GetEntityByIndex( g_iUser2 );
  	}
-@@ -1587,9 +1601,25 @@ V_CalcSpectatorRefdef
+@@ -1577,6 +1593,41 @@ int V_FindViewModelByWeaponModel( int iWeaponIndex )
+ 
+ }
+ 
++int ReplayLabWeaponIdFromName( const char *name )
++{
++	if( !name ) return WEAPON_NONE;
++	struct WeaponModelId { const char *name; int id; };
++	static const WeaponModelId weaponModels[] = {
++		{ "p228", WEAPON_P228 }, { "glock18", WEAPON_GLOCK18 },
++		{ "scout", WEAPON_SCOUT }, { "hegrenade", WEAPON_HEGRENADE },
++		{ "xm1014", WEAPON_XM1014 }, { "c4", WEAPON_C4 },
++		{ "mac10", WEAPON_MAC10 }, { "aug", WEAPON_AUG },
++		{ "smokegrenade", WEAPON_SMOKEGRENADE }, { "elite", WEAPON_ELITE },
++		{ "fiveseven", WEAPON_FIVESEVEN }, { "ump45", WEAPON_UMP45 },
++		{ "sg550", WEAPON_SG550 }, { "galil", WEAPON_GALIL },
++		{ "famas", WEAPON_FAMAS }, { "usp", WEAPON_USP },
++		{ "awp", WEAPON_AWP }, { "mp5", WEAPON_MP5N },
++		{ "m249", WEAPON_M249 }, { "m3", WEAPON_M3 },
++		{ "m4a1", WEAPON_M4A1 }, { "tmp", WEAPON_TMP },
++		{ "g3sg1", WEAPON_G3SG1 }, { "flashbang", WEAPON_FLASHBANG },
++		{ "deagle", WEAPON_DEAGLE }, { "sg552", WEAPON_SG552 },
++		{ "ak47", WEAPON_AK47 }, { "knife", WEAPON_KNIFE },
++		{ "p90", WEAPON_P90 },
++	};
++	for( unsigned int i = 0; i < sizeof( weaponModels ) / sizeof( weaponModels[0] ); ++i )
++	{
++		if( strstr( name, weaponModels[i].name ) )
++			return weaponModels[i].id;
++	}
++	return WEAPON_NONE;
++}
++
++int ReplayLabWeaponIdFromWeaponModel( int modelIndex )
++{
++	model_t *model = modelIndex > 0 ? IEngineStudio.GetModelByIndex( modelIndex ) : NULL;
++	return model ? ReplayLabWeaponIdFromName( model->name ) : WEAPON_NONE;
++}
++
+ 
+ /*
+ ==================
+@@ -1587,9 +1638,25 @@ V_CalcSpectatorRefdef
  void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
  {
  	static vec3_t			velocity ( 0.0f, 0.0f, 0.0f);
@@ -932,13 +1119,13 @@ index 579b2d6..412198b 100644
 +		pparams->nextView = 0;
 +		pparams->viewport[0] = 0;
 +		pparams->viewport[1] = 0;
-+		pparams->viewport[2] = ScreenWidth;
-+		pparams->viewport[3] = ScreenHeight;
++		pparams->viewport[2] = TrueWidth;
++		pparams->viewport[3] = TrueHeight;
 +	}
  
  	cl_entity_t	 * ent = gEngfuncs.GetEntityByIndex( g_iUser2 );
  
-@@ -1602,6 +1632,8 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+@@ -1602,6 +1669,8 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
  	VectorCopy ( pparams->cl_viewangles, v_cl_angles );
  	VectorCopy ( pparams->viewangles, v_angles );
  	VectorCopy ( pparams->vieworg, v_origin );
@@ -947,7 +1134,7 @@ index 579b2d6..412198b 100644
  
  	if ( ( g_iUser1 == OBS_IN_EYE || gHUD.m_Spectator.m_pip->value == INSET_IN_EYE ) && ent )
  	{
-@@ -1622,7 +1654,8 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+@@ -1622,7 +1691,8 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
  		}
  
  		// predict missing client data and set weapon model ( in HLTV mode or inset in eye mode )
@@ -957,7 +1144,7 @@ index 579b2d6..412198b 100644
  		{
  			V_GetInEyePos( g_iUser2, pparams->simorg, pparams->cl_viewangles );
  
-@@ -1652,7 +1685,11 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+@@ -1652,7 +1722,11 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
  			{
  				gunModel->model = IEngineStudio.GetModelByIndex( lastViewModelIndex );
  				gunModel->curstate.modelindex = lastViewModelIndex;
@@ -970,7 +1157,7 @@ index 579b2d6..412198b 100644
  				gunModel->curstate.colormap = 0;
  				gunModel->index = g_iUser2;
  			}
-@@ -1687,7 +1724,32 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
+@@ -1687,7 +1761,32 @@ void V_CalcSpectatorRefdef ( struct ref_params_s * pparams )
  
  		case OBS_ROAMING:
  			VectorCopy (v_cl_angles, v_angles);
@@ -1004,7 +1191,7 @@ index 579b2d6..412198b 100644
  			break;
  
  		case OBS_IN_EYE:
-@@ -1860,6 +1922,72 @@ void DLLEXPORT V_CalcRefdef( struct ref_params_s *pparams )
+@@ -1860,6 +1959,110 @@ void DLLEXPORT V_CalcRefdef( struct ref_params_s *pparams )
  	{
  		V_CalcNormalRefdef ( pparams );
  	}
@@ -1043,20 +1230,58 @@ index 579b2d6..412198b 100644
 +		VectorCopy( pparams->viewangles, v_angles );
 +	}
 +
-+	// Normal local-demo view calculation restores the recorded client's gun
-+	// after the spectator pass. Reapply the selected HLTV frag weapon last.
++	if( hltv_native_spectator && hltv_native_spectator->value != 0.0f )
++	{
++		cl_entity_t *target = g_iUser2 > 0 ? gEngfuncs.GetEntityByIndex( g_iUser2 ) : NULL;
++		g_ReplayLabWeaponId = target
++			? ReplayLabWeaponIdFromWeaponModel( target->curstate.weaponmodel )
++			: WEAPON_NONE;
++		if( g_ReplayLabWeaponId == WEAPON_NONE && hltv_native_weapon )
++			g_ReplayLabWeaponId = ReplayLabWeaponIdFromName( hltv_native_weapon->string );
++	}
++	else
++	{
++		g_ReplayLabWeaponId = WEAPON_NONE;
++	}
++	static int reportedReplayLabWeaponId = -1;
++	if( reportedReplayLabWeaponId != g_ReplayLabWeaponId )
++	{
++		reportedReplayLabWeaponId = g_ReplayLabWeaponId;
++		gEngfuncs.Con_Printf( "ReplayLab native weapon: %i.\n", g_ReplayLabWeaponId );
++	}
++
++	// Normal local-demo view calculation can restore the recorded client's gun
++	// after the spectator pass. Prefer the followed player's live third-person
++	// weapon model so knife, grenade and weapon switches remain authentic. The
++	// frag-selected model is only a fallback for sparse legacy entity packets.
 +	if( hltv_native_spectator && hltv_native_spectator->value != 0.0f &&
 +		hltv_native_weapon && hltv_native_weapon->string[0] )
 +	{
 +		static int appliedMuzzleSerial = 0;
 +		int requestedViewModelIndex = 0;
-+		char requestedViewModelPath[MAX_MODEL_NAME];
-+		snprintf( requestedViewModelPath, sizeof( requestedViewModelPath ),
-+			"models/v_%s.mdl", hltv_native_weapon->string );
-+		model_t *requestedViewModel = gEngfuncs.CL_LoadModel(
-+			requestedViewModelPath, &requestedViewModelIndex );
++		model_t *requestedViewModel = NULL;
++		cl_entity_t *target = g_iUser2 > 0 ? gEngfuncs.GetEntityByIndex( g_iUser2 ) : NULL;
++		if( target && target->curstate.weaponmodel )
++		{
++			requestedViewModelIndex = V_FindViewModelByWeaponModel( target->curstate.weaponmodel );
++			if( requestedViewModelIndex )
++				requestedViewModel = IEngineStudio.GetModelByIndex( requestedViewModelIndex );
++		}
++		if( !requestedViewModel )
++		{
++			char requestedViewModelPath[MAX_MODEL_NAME];
++			snprintf( requestedViewModelPath, sizeof( requestedViewModelPath ),
++				"models/v_%s.mdl", hltv_native_weapon->string );
++			requestedViewModel = gEngfuncs.CL_LoadModel(
++				requestedViewModelPath, &requestedViewModelIndex );
++		}
 +		cl_entity_t *gunModel = gEngfuncs.GetViewModel();
-+		if( requestedViewModel && gunModel )
++		if( gunModel && gHUD.m_iFOV <= 40 )
++		{
++			gunModel->model = NULL;
++			gunModel->curstate.modelindex = 0;
++		}
++		else if( requestedViewModel && gunModel )
 +		{
 +			// Only replace the model identity. The event system owns sequence,
 +			// frame and animtime; resetting frame here on every rendered frame
@@ -1077,7 +1302,7 @@ index 579b2d6..412198b 100644
  }
  
  /*
-@@ -1886,4 +2014,15 @@ void V_Init (void)
+@@ -1886,4 +2089,15 @@ void V_Init (void)
  
  	cl_quakeguns		= gEngfuncs.pfnRegisterVariable( "cl_quakeguns", "0", FCVAR_ARCHIVE );
  	cl_weaponlag		= gEngfuncs.pfnRegisterVariable( "cl_weaponlag", "0", FCVAR_ARCHIVE );
