@@ -5,6 +5,7 @@ import type {
   FragRating,
   HighlightMoment,
   HistoryEntry,
+  ObservedShot,
   PlayerIdentity,
   ReplayEvent,
   RoundRating,
@@ -21,11 +22,7 @@ const SHOT_ATTRIBUTION_WINDOW_MS = 3_000;
 const SHOT_EVENT_LAG_MS = 50;
 const CONTINUOUS_BURST_GAP_MS = 400;
 
-export type ObservedShot = {
-  demoTimeMs: number;
-  slot: number;
-  weapon: string;
-};
+export type { ObservedShot };
 
 const clampScore = (value: number): number => Math.max(0, Math.min(100, Math.round(value)));
 const clampConfidence = (value: number): number =>

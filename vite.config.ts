@@ -7,6 +7,8 @@ import { createGameAssetManifest } from './game-assets-manifest.mjs';
 
 const projectDirectory = dirname(fileURLToPath(import.meta.url));
 const bundledDemoPath = resolve(projectDirectory, '../r60_sthlm.dem');
+const demosDirectory = resolve(projectDirectory, '../demos');
+const demoAnalysisDirectory = resolve(projectDirectory, '../demo-analysis');
 const gameAssetsDirectory = resolve(projectDirectory, 'game-assets');
 const protocol46RuntimePath = resolve(projectDirectory, 'src/vendor/xash-protocol46.js');
 const upstreamRuntimePath = resolve(
@@ -38,6 +40,59 @@ const localDemoPlugin = (): Plugin => ({
       response.setHeader('Content-Length', end - start + 1);
       if (partial) response.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
       createReadStream(bundledDemoPath, { start, end }).pipe(response);
+    });
+  },
+});
+
+const localArchivePlugin = (): Plugin => ({
+  name: 'hltv-local-archive',
+  configureServer(server) {
+    server.middlewares.use((request, response, next) => {
+      const requestPath = decodeURIComponent((request.url || '/').split('?')[0]);
+      const route = requestPath.startsWith('/demo-files/')
+        ? {
+            root: demosDirectory,
+            relativePath: requestPath.slice('/demo-files/'.length),
+            extension: '.dem',
+            ranges: true,
+          }
+        : requestPath.startsWith('/demo-analysis/')
+          ? {
+              root: demoAnalysisDirectory,
+              relativePath: requestPath.slice('/demo-analysis/'.length),
+              extension: '.dem.json',
+              ranges: false,
+            }
+          : undefined;
+      if (!route) {
+        next();
+        return;
+      }
+
+      const candidate = resolve(route.root, route.relativePath);
+      const safeCandidate = candidate.startsWith(`${route.root}${sep}`) ? candidate : '';
+      if (!safeCandidate
+        || !safeCandidate.toLowerCase().endsWith(route.extension)
+        || !existsSync(safeCandidate)
+        || statSync(safeCandidate).isDirectory()) {
+        response.statusCode = 404;
+        response.end('Archive file not found.');
+        return;
+      }
+
+      const { size } = statSync(safeCandidate);
+      const { start, end, partial } = route.ranges
+        ? parseRange(request.headers.range, size)
+        : { start: 0, end: size - 1, partial: false };
+      response.statusCode = partial ? 206 : 200;
+      response.setHeader(
+        'Content-Type',
+        route.extension === '.dem.json' ? 'application/json; charset=utf-8' : 'application/octet-stream',
+      );
+      if (route.ranges) response.setHeader('Accept-Ranges', 'bytes');
+      response.setHeader('Content-Length', end - start + 1);
+      if (partial) response.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+      createReadStream(safeCandidate, { start, end }).pipe(response);
     });
   },
 });
@@ -173,6 +228,7 @@ export default defineConfig({
     protocol46AsmCompatibilityPlugin(),
     vue(),
     localDemoPlugin(),
+    localArchivePlugin(),
     localGameAssetsPlugin(),
   ],
   resolve: {

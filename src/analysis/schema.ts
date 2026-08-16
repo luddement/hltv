@@ -187,6 +187,14 @@ export type AnalysisDiagnostics = {
   warnings: AnalysisWarning[];
 };
 
+// Observerade skott behövs för att poängsätta precision. De sparas i indexet så
+// att fragpoängen kan räknas om utan att demot parsas på nytt.
+export type ObservedShot = {
+  demoTimeMs: number;
+  slot: number;
+  weapon: string;
+};
+
 export type DemoAnalysisIndex = {
   schemaVersion: 2;
   analyzerVersion: string;
@@ -207,6 +215,7 @@ export type DemoAnalysisIndex = {
   players: PlayerIdentity[];
   rounds: RoundSummary[];
   events: ReplayEvent[];
+  observedShots: ObservedShot[];
   moments: HighlightMoment[];
   fragRatings: FragRating[];
   roundRatings: RoundRating[];

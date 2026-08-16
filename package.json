@@ -10,7 +10,9 @@
     "check": "vue-tsc -b",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
-    "serve": "node server.mjs"
+    "serve": "node server.mjs",
+    "archive:index": "node --import ./scripts/hltv-node.mjs scripts/index-demos.mjs parse --year 2004 --year 2005",
+    "archive:rescore": "node --import ./scripts/hltv-node.mjs scripts/index-demos.mjs rescore --year 2004 --year 2005"
   },
   "dependencies": {
     "@types/three": "^0.162.0",

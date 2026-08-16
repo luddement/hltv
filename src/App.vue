@@ -103,6 +103,82 @@
           </div>
         </div>
 
+        <section class="archive-browser" aria-labelledby="archive-heading">
+          <div class="archive-heading">
+            <div>
+              <p class="step-label">Demo archive</p>
+              <h2 id="archive-heading">Find a match worth watching</h2>
+              <small v-if="demoCatalog">
+                {{ demoCatalog.demoCount }} indexed demos · generated {{ formatArchiveDate(demoCatalog.generatedAt) }}
+              </small>
+              <small v-else>Dates, clans, players and every scored frag in one catalog.</small>
+            </div>
+            <span class="archive-result-count">{{ filteredArchiveDemos.length }} matches</span>
+          </div>
+
+          <div class="archive-filters">
+            <label>
+              <span>Search demos, clans or players</span>
+              <input v-model.trim="archiveSearch" type="search" placeholder="crapoffline, luddi, de_nuke…" />
+            </label>
+            <label>
+              <span>Year</span>
+              <select v-model="archiveYear">
+                <option value="all">All years</option>
+                <option v-for="year in archiveYears" :key="year" :value="year">{{ year }}</option>
+              </select>
+            </label>
+            <label>
+              <span>Sort demos</span>
+              <select v-model="archiveSort">
+                <option value="date-desc">Newest first</option>
+                <option value="date-asc">Oldest first</option>
+                <option value="frag-desc">Highest frag score</option>
+                <option value="round-desc">Highest round score</option>
+              </select>
+            </label>
+          </div>
+
+          <div v-if="catalogLoading" class="archive-state">
+            <span class="spinner"></span> Loading demo catalog…
+          </div>
+          <p v-else-if="catalogError" class="analysis-error">{{ catalogError }}</p>
+          <template v-else>
+            <div class="archive-list" role="table" aria-label="Indexed demos">
+              <div class="archive-row archive-row-header" role="row">
+                <span>Date</span><span>Match</span><span>Map</span><span>Top frag</span><span>Top round</span><span></span>
+              </div>
+              <button
+                v-for="entry in visibleArchiveDemos"
+                :key="entry.path"
+                class="archive-row"
+                type="button"
+                role="row"
+                :disabled="entry.status === 'error' || archiveSelectionPath !== ''"
+                :title="entry.error ?? `Open ${entry.filename}`"
+                @click="loadArchiveDemo(entry)"
+              >
+                <time>{{ formatArchiveDate(entry.recordedAt) }}</time>
+                <span class="archive-match">
+                  <strong>{{ demoCatalogMatchup(entry) }}</strong>
+                  <small>{{ entry.filename }} · {{ entry.fragCount ?? 0 }} scored frags</small>
+                </span>
+                <span>{{ entry.map ?? '–' }}</span>
+                <b>{{ entry.topFragScore ?? '–' }}</b>
+                <b>{{ entry.topRoundScore ?? '–' }}</b>
+                <span class="archive-open">
+                  {{ archiveSelectionPath === entry.path ? 'Loading…' : entry.status === 'error' ? 'Error' : 'Open' }}
+                </span>
+              </button>
+            </div>
+            <div v-if="visibleArchiveDemos.length < filteredArchiveDemos.length" class="archive-more">
+              <span>Showing {{ visibleArchiveDemos.length }} of {{ filteredArchiveDemos.length }}</span>
+              <button type="button" @click="archiveResultLimit += 50">Show 50 more</button>
+            </div>
+            <p v-else-if="!filteredArchiveDemos.length" class="empty-frags">No demos match the filters.</p>
+          </template>
+        </section>
+
         <div class="setup-columns">
           <article :class="['setup-card', { complete: demoInfo }]">
             <div class="card-number">01</div>
@@ -723,6 +799,14 @@
     type CompetitiveSide,
     type LogicalTeamId,
   } from '/@/analysis/team-identity';
+  import {
+    demoCatalogAssetUrl,
+    demoCatalogMatchup,
+    filterDemoCatalog,
+    type DemoCatalog,
+    type DemoCatalogEntry,
+    type DemoCatalogSort,
+  } from '/@/archive/demo-catalog';
   import { withVerifiedWallbangBonus } from '/@/analysis/highlight-analyzer';
   import type {
     DeathEvent,
@@ -841,6 +925,14 @@
   const demoSource = ref<DemoSource>(bundledDemo);
   const demoLoading = ref(true);
   const demoError = ref('');
+  const demoCatalog = shallowRef<DemoCatalog>();
+  const catalogLoading = ref(true);
+  const catalogError = ref('');
+  const archiveSearch = ref('');
+  const archiveYear = ref<'all' | number>('all');
+  const archiveSort = ref<DemoCatalogSort>('date-desc');
+  const archiveResultLimit = ref(50);
+  const archiveSelectionPath = ref('');
   const gameFiles = ref<GameAssetEntry[]>([]);
   const gameError = ref('');
   const mapChecksumMatches = ref(false);
@@ -906,6 +998,17 @@
   let activeScoringMapBuffer: ArrayBuffer | undefined;
 
   const deathEvents = computed(() => analysisIndex.value?.events.filter(isDeathEvent) ?? []);
+  const archiveYears = computed(() => [...new Set(
+    demoCatalog.value?.demos.flatMap((entry) => entry.year === null ? [] : [entry.year]) ?? [],
+  )].sort((left, right) => right - left));
+  const filteredArchiveDemos = computed(() => filterDemoCatalog(
+    demoCatalog.value?.demos ?? [],
+    archiveSearch.value,
+    archiveYear.value,
+    archiveSort.value,
+  ));
+  const visibleArchiveDemos = computed(() =>
+    filteredArchiveDemos.value.slice(0, archiveResultLimit.value));
   const fragRatingById = computed(() => new Map(
     analysisIndex.value?.fragRatings.map((rating) => [
       rating.eventId,
@@ -1344,6 +1447,11 @@
   });
 
   const formatNumber = (value: number): string => value.toLocaleString('en-GB');
+  const formatArchiveDate = (value: string | null): string => value
+    ? new Intl.DateTimeFormat('en-GB', {
+        year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC',
+      }).format(new Date(value))
+    : 'Date unknown';
   const mircClock = computed(() => new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date()));
@@ -1884,6 +1992,73 @@
       demoError.value = error instanceof Error ? error.message : 'Could not read the demo.';
     } finally {
       demoLoading.value = false;
+    }
+  };
+
+  const loadDemoCatalog = async () => {
+    catalogLoading.value = true;
+    catalogError.value = '';
+    try {
+      const response = await fetch('/demo-index.json');
+      if (!response.ok) throw new Error(`Demo catalog could not be loaded (${response.status}).`);
+      demoCatalog.value = await response.json() as DemoCatalog;
+    } catch (error) {
+      catalogError.value = error instanceof Error ? error.message : 'Demo catalog could not be loaded.';
+    } finally {
+      catalogLoading.value = false;
+    }
+  };
+
+  const loadArchiveDemo = async (entry: DemoCatalogEntry) => {
+    if (entry.status === 'error' || archiveSelectionPath.value) return;
+    if (engineStarted.value || engineVisible.value || DemoEngine.running) closeEngine();
+    activeAnalysisRun?.cancel();
+    analysisRequest += 1;
+    archiveSelectionPath.value = entry.path;
+    demoLoading.value = true;
+    demoError.value = '';
+    analysisLoading.value = true;
+    analysisError.value = '';
+    analysisProgress.value = undefined;
+    analysisBuffer.value = undefined;
+    analysisIndex.value = undefined;
+    analysisCacheHit.value = false;
+    activeScoringMapBuffer = undefined;
+    verifiedWallbangEventIds.value = new Set();
+    mapChecksumMatches.value = false;
+    gameFiles.value = [];
+    selectedFragId.value = '';
+    expandedFragScoreId.value = '';
+    fragPlayer.value = 'all';
+    highlightTeam.value = 'all';
+    fragReelSource.value = 'playback';
+    movieExcludedFragIds.value = new Set();
+
+    const demoUrl = demoCatalogAssetUrl('/demo-files', entry.path);
+    const analysisUrl = demoCatalogAssetUrl('/demo-analysis', `${entry.path}.json`);
+    try {
+      const [inspected, analysisResponse] = await Promise.all([
+        inspectDemoUrl(entry.filename, demoUrl),
+        fetch(analysisUrl),
+      ]);
+      if (!analysisResponse.ok) {
+        throw new Error(`Stored demo analysis could not be loaded (${analysisResponse.status}).`);
+      }
+      const stored = await analysisResponse.json() as DemoAnalysisIndex & { error?: string };
+      if (stored.error) throw new Error(stored.error);
+      demoInfo.value = inspected;
+      demoSource.value = { kind: 'url', name: entry.filename, url: demoUrl };
+      analysisIndex.value = stored;
+      analysisCacheHit.value = true;
+      await loadInstalledGameAssets(inspected);
+    } catch (error) {
+      demoInfo.value = undefined;
+      analysisIndex.value = undefined;
+      demoError.value = error instanceof Error ? error.message : 'Could not open the archived demo.';
+    } finally {
+      demoLoading.value = false;
+      analysisLoading.value = false;
+      archiveSelectionPath.value = '';
     }
   };
 
@@ -2584,6 +2759,7 @@
     }
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
     loadBundledDemo();
+    loadDemoCatalog();
     window.addEventListener('keydown', showScoreboard, true);
     window.addEventListener('keyup', hideScoreboard, true);
     window.addEventListener('blur', hideScoreboardOnBlur);

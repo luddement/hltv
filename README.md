@@ -12,6 +12,35 @@ verifierad med tre separata inspelningar:
 Demot och spelresurserna läses från datorn och körs lokalt i WebAssembly. De
 laddas inte upp till någon extern tjänst.
 
+## Indexera demoarkivet
+
+Indexering och scoring är helt deterministisk kod och använder ingen AI. För
+alla redan uppzippade `.dem` från 2004–2005:
+
+```bash
+pnpm archive:index
+```
+
+Kommandot läser datumet ur filnamnet, identifierar lag/klaner med samma logik
+som spelaren, normaliserar varje frag och rond, räknar FragScore/MomentScore/
+RoundScore och skriver:
+
+- `public/demo-index.json`: den lilla sök- och sorteringskatalogen;
+- `../demo-analysis/<år>/<demo>.json`: full analys och score per demo.
+
+Körningen är säker att återstarta. SHA-256 och analyzer-version gör att färdiga,
+oförändrade demos hoppas över. ZIP-filer läses eller raderas aldrig.
+
+Efter en ren ändring av poängreglerna behöver de stora demofilerna inte parsas
+igen. Räkna om alla sparade poäng med:
+
+```bash
+pnpm archive:rescore
+```
+
+Se [docs/DEMO_ARCHIVE_INDEXING.md](docs/DEMO_ARCHIVE_INDEXING.md) för format,
+felsäkerhet och manuella varianter av kommandona.
+
 ## Kör på Mac
 
 ```bash

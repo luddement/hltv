@@ -8,6 +8,8 @@ import { formatGoldSrcChecksum } from './goldsrc-map-crc.mjs';
 const appDirectory = dirname(fileURLToPath(import.meta.url));
 const distDirectory = resolve(appDirectory, 'dist');
 const demoPath = resolve(appDirectory, '../r60_sthlm.dem');
+const demosDirectory = resolve(appDirectory, '../demos');
+const demoAnalysisDirectory = resolve(appDirectory, '../demo-analysis');
 const gameAssetsDirectory = resolve(appDirectory, 'game-assets');
 const demoAssetPaths = new Set(
   JSON.parse(readFileSync(resolve(appDirectory, 'demo-assets.json'), 'utf8')),
@@ -45,11 +47,45 @@ const sendFile = (request, response, filePath, allowRanges = false) => {
   createReadStream(filePath, { start, end }).pipe(response);
 };
 
+const archiveFile = (root, relativePath) => {
+  const candidate = resolve(root, relativePath);
+  return candidate.startsWith(`${root}${sep}`)
+    && existsSync(candidate)
+    && !statSync(candidate).isDirectory()
+    ? candidate
+    : undefined;
+};
+
 createServer((request, response) => {
   const requestPath = decodeURIComponent((request.url || '/').split('?')[0]);
 
   if (requestPath === '/demos/r60_sthlm.dem') {
     sendFile(request, response, demoPath, true);
+    return;
+  }
+
+  if (requestPath.startsWith('/demo-files/')) {
+    const filePath = archiveFile(demosDirectory, requestPath.slice('/demo-files/'.length));
+    if (filePath?.toLowerCase().endsWith('.dem')) {
+      sendFile(request, response, filePath, true);
+      return;
+    }
+    response.statusCode = 404;
+    response.end('Demo not found.');
+    return;
+  }
+
+  if (requestPath.startsWith('/demo-analysis/')) {
+    const filePath = archiveFile(
+      demoAnalysisDirectory,
+      requestPath.slice('/demo-analysis/'.length),
+    );
+    if (filePath?.toLowerCase().endsWith('.dem.json')) {
+      sendFile(request, response, filePath);
+      return;
+    }
+    response.statusCode = 404;
+    response.end('Demo analysis not found.');
     return;
   }
 
