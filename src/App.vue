@@ -1013,12 +1013,15 @@
     analysisIndex.value?.fragRatings.map((rating) => [
       rating.eventId,
       verifiedWallbangEventIds.value.has(rating.eventId)
-        ? withVerifiedWallbangBonus(rating)
+        ? withVerifiedWallbangBonus(rating, (demoInfo.value?.mapChecksum ?? 0) !== 0)
         : rating,
     ]) ?? [],
   ));
   const refreshVerifiedWallbangs = () => {
-    if (!activeScoringMapBuffer || !analysisIndex.value) {
+    if (!activeScoringMapBuffer
+      || !analysisIndex.value
+      || !demoInfo.value
+      || demoInfo.value.mapChecksum === 0) {
       verifiedWallbangEventIds.value = new Set();
       return;
     }

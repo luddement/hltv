@@ -296,6 +296,31 @@ describe('highlight scoring', () => {
       },
     ]);
     expect(withVerifiedWallbangBonus(wallbang)).toEqual(wallbang);
+    expect(withVerifiedWallbangBonus(rating, false)).toEqual(rating);
+  });
+
+  it('does not inflate a losing 2v5 frag after several shots in the same fight', () => {
+    const fixture = input({
+      kind: 'hltv', focusPlayerIds: [], focusTeamHistory: [], evidence: 'unknown',
+    });
+    fixture.rounds[0].winner.value = 'CT';
+    fixture.events = [
+      death('death-1', 5_000, 't-pov', 'ct-1', 1, 3, 2, 5, true),
+    ];
+
+    const rating = buildHighlightAnalysis(fixture, [
+      { demoTimeMs: 3_922, slot: 1, weapon: 'deagle' },
+      { demoTimeMs: 4_165, slot: 1, weapon: 'deagle' },
+      { demoTimeMs: 4_443, slot: 1, weapon: 'deagle' },
+      { demoTimeMs: 5_000, slot: 1, weapon: 'deagle' },
+    ]).fragRatings[0];
+    const reasonCodes = rating.reasons.map((entry) => entry.code);
+
+    expect(reasonCodes).toContain('precision_short_burst');
+    expect(reasonCodes).not.toContain('precision_one_shot');
+    expect(reasonCodes).not.toContain('fast_kill');
+    expect(reasonCodes).not.toContain('numbers_disadvantage');
+    expect(withVerifiedWallbangBonus(rating, false)).toEqual(rating);
   });
 
   it('only marks a frag as a trade when it kills the previous killer', () => {

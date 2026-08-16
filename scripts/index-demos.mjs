@@ -219,7 +219,12 @@ const main = async () => {
         } else {
           // Poängsättningen räknas om, parsningen återanvänds oförändrad.
           const rescored = rescoreWith(stored, stored.observedShots ?? []);
-          record.index = { ...stored, ...rescored, createdAt: new Date().toISOString() };
+          record.index = {
+            ...stored,
+            ...rescored,
+            analyzerVersion: ANALYZER_VERSION,
+            createdAt: new Date().toISOString(),
+          };
           await writeJson(targetPath, record.index);
         }
       } else {

@@ -18,7 +18,7 @@ import type {
   TeamChangeEvent,
 } from '/@/analysis/schema';
 
-export const ANALYZER_VERSION = '2.5.8';
+export const ANALYZER_VERSION = '2.5.9';
 
 const PARSER_VERSION = 'hlviewer-0.8.5-hltv-analysis-7';
 const ENGINE_WASM_VERSION = '7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4';

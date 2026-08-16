@@ -20,7 +20,8 @@ const MULTI_KILL_WINDOW_MS = 6_000;
 const TRADE_WINDOW_MS = 5_000;
 const SHOT_ATTRIBUTION_WINDOW_MS = 3_000;
 const SHOT_EVENT_LAG_MS = 50;
-const CONTINUOUS_BURST_GAP_MS = 400;
+const SPRAY_TRANSFER_GAP_MS = 400;
+const MIN_MEASURABLE_FAST_KILL_MS = 50;
 
 export type { ObservedShot };
 
@@ -80,7 +81,11 @@ const weaponBonus = (weapon: string): ScoreReason | undefined => {
   return undefined;
 };
 
-export const withVerifiedWallbangBonus = (rating: FragRating): FragRating => {
+export const withVerifiedWallbangBonus = (
+  rating: FragRating,
+  hasVerifiedMapChecksum = true,
+): FragRating => {
+  if (!hasVerifiedMapChecksum) return rating;
   if (rating.reasons.some((entry) => entry.code === 'wallbang')) return rating;
   const isHeadshot = rating.reasons.some((entry) => entry.code === 'headshot');
   const wallbangReasons = [
@@ -143,15 +148,21 @@ const precisionReasons = (
     .sort((left, right) => left.demoTimeMs - right.demoTimeMs);
   if (!attributed.length) return [];
 
-  let burstStart = attributed.length - 1;
-  while (burstStart > 0
-    && attributed[burstStart].demoTimeMs - attributed[burstStart - 1].demoTimeMs
-      <= CONTINUOUS_BURST_GAP_MS) {
-    burstStart -= 1;
-  }
-  const burst = attributed.slice(burstStart);
-  const shotsToKill = burst.length;
-  const timeToKillMs = Math.max(0, death.demoTimeMs - burst[0].demoTimeMs);
+  // A previous frag closes the previous engagement. Without one, keep every
+  // matching shot in the attribution window instead of treating a short pause
+  // as a brand-new one-shot attempt.
+  const previousKill = deaths
+    .filter((previous) => previous.eventId !== death.eventId
+      && previous.killerSlot === death.killerSlot
+      && previous.demoTimeMs < death.demoTimeMs)
+    .sort((left, right) => right.demoTimeMs - left.demoTimeMs)[0];
+  const engagement = previousKill
+    ? attributed.filter((shot) => shot.demoTimeMs > previousKill.demoTimeMs)
+    : attributed;
+  if (!engagement.length) return [];
+
+  const shotsToKill = engagement.length;
+  const timeToKillMs = Math.max(0, death.demoTimeMs - engagement[0].demoTimeMs);
   const reasons: ScoreReason[] = [];
   if (shotsToKill === 1) {
     reasons.push(reason('precision_one_shot', '1 skott till kill', 20, 'observed'));
@@ -169,15 +180,20 @@ const precisionReasons = (
       'observed',
     ));
   }
-  if (timeToKillMs <= 250) {
+  if (timeToKillMs >= MIN_MEASURABLE_FAST_KILL_MS && timeToKillMs <= 250) {
     reasons.push(reason('fast_kill', `Kill på ${timeToKillMs} ms`, 5, 'observed'));
   }
-  const transferred = deaths.some((previous) =>
-    previous.eventId !== death.eventId
-    && previous.killerSlot === death.killerSlot
-    && previous.victimSlot !== death.victimSlot
-    && previous.demoTimeMs >= burst[0].demoTimeMs
-    && previous.demoTimeMs < death.demoTimeMs);
+  const transferred = previousKill
+    && previousKill.victimSlot !== death.victimSlot
+    && previousKill.demoTimeMs >= death.demoTimeMs - SHOT_ATTRIBUTION_WINDOW_MS
+    && attributed.some((shot) => shot.demoTimeMs <= previousKill.demoTimeMs)
+    && attributed.some((shot) => shot.demoTimeMs > previousKill.demoTimeMs)
+    && (() => {
+      const before = attributed.filter((shot) => shot.demoTimeMs <= previousKill.demoTimeMs).at(-1);
+      const after = attributed.find((shot) => shot.demoTimeMs > previousKill.demoTimeMs);
+      return Boolean(before && after
+        && after.demoTimeMs - before.demoTimeMs <= SPRAY_TRANSFER_GAP_MS);
+    })();
   if (transferred) {
     reasons.push(reason('spray_transfer', 'Spray-transfer till nytt mål', 12, 'observed'));
   }
@@ -246,6 +262,7 @@ export const buildHighlightAnalysis = (
       reasons.push(reason('opening_kill', 'Opening kill', 10));
     }
 
+    const round = death.roundId ? roundById.get(death.roundId) : undefined;
     const ownAlive = team === 'TERRORIST'
       ? death.aliveBefore.terrorists
       : death.aliveBefore.counterTerrorists;
@@ -259,7 +276,7 @@ export const buildHighlightAnalysis = (
           `Clutchfrag i 1v${enemyAlive.value}`,
           Math.min(20, 12 + (enemyAlive.value - 2) * 4),
         ));
-      } else if (enemyAlive.value > ownAlive.value) {
+      } else if (enemyAlive.value > ownAlive.value && round?.winner.value === team) {
         reasons.push(reason(
           'numbers_disadvantage',
           `Frag i numerärt underläge ${ownAlive.value}v${enemyAlive.value}`,
@@ -268,7 +285,6 @@ export const buildHighlightAnalysis = (
       }
     }
 
-    const round = death.roundId ? roundById.get(death.roundId) : undefined;
     if (round?.winner.value === team) reasons.push(reason('round_win', 'Bidrar till vunnen rond', 10));
     const bonus = weaponBonus(death.weapon);
     if (bonus) reasons.push(bonus);
