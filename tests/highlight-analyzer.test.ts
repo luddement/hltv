@@ -276,7 +276,7 @@ describe('highlight scoring', () => {
     ]);
   });
 
-  it('adds only a small bonus to a geometry-verified wallbang', () => {
+  it('rewards a geometry-verified wallbang and its headshot combination', () => {
     const rating = buildHighlightAnalysis(input({
       kind: 'hltv',
       focusPlayerIds: [],
@@ -285,14 +285,37 @@ describe('highlight scoring', () => {
     })).fragRatings[0];
     const wallbang = withVerifiedWallbangBonus(rating);
 
-    expect(wallbang.score).toBe(Math.min(100, rating.score + 5));
-    expect(wallbang.reasons.at(-1)).toEqual({
-      code: 'wallbang',
-      label: 'Wallbang',
-      points: 5,
-      evidence: 'derived',
-    });
+    expect(wallbang.score).toBe(Math.min(100, rating.score + 15));
+    expect(wallbang.reasons.slice(-2)).toEqual([
+      { code: 'wallbang', label: 'Wallbang', points: 10, evidence: 'derived' },
+      {
+        code: 'wallbang_headshot',
+        label: 'Headshot genom vägg',
+        points: 5,
+        evidence: 'derived',
+      },
+    ]);
     expect(withVerifiedWallbangBonus(wallbang)).toEqual(wallbang);
+  });
+
+  it('only marks a frag as a trade when it kills the previous killer', () => {
+    const fixture = input({
+      kind: 'hltv', focusPlayerIds: [], focusTeamHistory: [], evidence: 'unknown',
+    });
+    const unrelatedFrag = buildHighlightAnalysis(fixture).fragRatings
+      .find((rating) => rating.eventId === 'death-2');
+    expect(unrelatedFrag?.reasons.some((entry) => entry.code === 'trade')).toBe(false);
+
+    const tradedDeath = fixture.events.find((event): event is DeathEvent =>
+      event.type === 'death' && event.eventId === 'death-2');
+    if (!tradedDeath) throw new Error('Fixture death missing');
+    tradedDeath.victimPlayerId = 'ct-1';
+    tradedDeath.victimSlot = 3;
+    const actualTrade = buildHighlightAnalysis(fixture).fragRatings
+      .find((rating) => rating.eventId === 'death-2');
+    expect(actualTrade?.reasons).toContainEqual(expect.objectContaining({
+      code: 'trade', points: 8,
+    }));
   });
 
   it('returns identical scores for identical input', () => {

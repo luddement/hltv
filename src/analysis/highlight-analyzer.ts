@@ -85,10 +85,18 @@ const weaponBonus = (weapon: string): ScoreReason | undefined => {
 
 export const withVerifiedWallbangBonus = (rating: FragRating): FragRating => {
   if (rating.reasons.some((entry) => entry.code === 'wallbang')) return rating;
+  const isHeadshot = rating.reasons.some((entry) => entry.code === 'headshot');
+  const wallbangReasons = [
+    reason('wallbang', 'Wallbang', 10, 'derived'),
+    ...(isHeadshot
+      ? [reason('wallbang_headshot', 'Headshot genom vägg', 5, 'derived')]
+      : []),
+  ];
   return {
     ...rating,
-    score: clampScore(rating.score + 5),
-    reasons: [...rating.reasons, reason('wallbang', 'Wallbang', 5, 'derived')],
+    score: clampScore(rating.score + wallbangReasons.reduce((total, entry) =>
+      total + entry.points, 0)),
+    reasons: [...rating.reasons, ...wallbangReasons],
   };
 };
 
@@ -296,7 +304,10 @@ export const buildHighlightAnalysis = (
         || previous.roundId !== death.roundId) return false;
       const previousVictimTeam = teamAt(playersById, previous.victimPlayerId, previous.demoTimeMs);
       const previousKillerTeam = teamAt(playersById, previous.killerPlayerId, previous.demoTimeMs);
-      return previousVictimTeam === team && previousKillerTeam && previousKillerTeam !== team;
+      return previous.killerPlayerId === death.victimPlayerId
+        && previousVictimTeam === team
+        && previousKillerTeam !== undefined
+        && previousKillerTeam !== team;
     });
     if (traded) reasons.push(reason('trade', 'Snabb trade', 8));
 

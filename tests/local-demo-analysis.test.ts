@@ -186,6 +186,15 @@ describe('local binary demo goldens', () => {
         expect.objectContaining({ code: 'precision_two_shots', points: 15 }),
         expect.objectContaining({ code: 'long_distance', points: 12 }),
       ]));
+
+      const mp5Headshot = index.events.find((event): event is DeathEvent =>
+        event.type === 'death'
+        && event.killerPlayerId === luddi?.playerId
+        && Math.abs(event.demoTimeMs - 86_816) < 100);
+      const mp5Rating = index.fragRatings.find((entry) =>
+        entry.eventId === mp5Headshot?.eventId);
+      expect(mp5Rating?.score).toBe(35);
+      expect(mp5Rating?.reasons.some((entry) => entry.code === 'trade')).toBe(false);
     },
     30_000,
   );

@@ -535,12 +535,15 @@
 .frag-header,
 .frag-row {
   display: grid;
-  grid-template-columns: 46px 28px 70px minmax(250px, 1.6fr) minmax(90px, .6fr) 54px 78px;
+  grid-template-columns: 72px 28px 70px minmax(250px, 1.6fr) minmax(90px, .6fr) 54px 78px;
   align-items: center;
   gap: 11px;
   padding: 0 16px;
 }
 .frag-header { position: sticky; top: 0; z-index: 1; height: 29px; color: #626961; border-bottom: 1px solid #252a24; background: #0c0f0c; font: 8px ui-monospace, monospace; text-transform: uppercase; }
+.movie-select-all { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.movie-select-all input { width: 13px; height: 13px; margin: 0; accent-color: var(--acid); cursor: pointer; }
+.movie-select-all:has(input:disabled) { cursor: not-allowed; opacity: .45; }
 .frag-row { width: 100%; min-height: 41px; border: 0; border-bottom: 1px solid #1f231f; color: #a7aea4; background: transparent; text-align: left; cursor: pointer; font: 9px ui-monospace, monospace; }
 .frag-row:hover { background: rgba(200,245,66,.045); }
 .frag-row.selected { box-shadow: inset 2px 0 var(--acid); background: rgba(200,245,66,.065); }
@@ -903,7 +906,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .analysis-stats { width: 100%; justify-content: space-between; gap: 8px; }
   .frag-filter-fields { grid-template-columns: 1fr; }
   .frag-header,
-  .frag-row { grid-template-columns: 40px 24px 54px minmax(170px, 1fr) 45px; }
+  .frag-row { grid-template-columns: 58px 24px 54px minmax(170px, 1fr) 45px; }
   .frag-header > :nth-child(5),
   .frag-row > :nth-child(5),
   .frag-header > :nth-child(6),

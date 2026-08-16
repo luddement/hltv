@@ -354,7 +354,18 @@
 
             <div class="frag-list" role="table" aria-label="Frag list">
               <div class="frag-header" role="row">
-                <span>Movie</span><span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span>
+                <label class="movie-select-all" title="Select or deselect every visible movie frag">
+                  <input
+                    type="checkbox"
+                    :checked="movieAllFragsSelected"
+                    :indeterminate.prop="movieSomeFragsSelected"
+                    :disabled="!movieSelectableFragIds.size || movieExportRunning"
+                    aria-label="Select or deselect every visible movie frag"
+                    @change="onMovieSelectAllCheckbox"
+                  />
+                  <span>Movie</span>
+                </label>
+                <span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span>
               </div>
               <template v-for="(death, index) in filteredDeaths" :key="death.eventId">
                 <div
@@ -953,6 +964,7 @@
       case 'kill_streak': return `Frag ${numbers[0] ?? '?'} in quick succession`;
       case 'trade': return 'Quick trade';
       case 'wallbang': return 'Wallbang';
+      case 'wallbang_headshot': return 'Wallbang headshot';
       case 'long_distance': return `Long distance · ${numbers[0] ?? '?'} units`;
       case 'best_frag': return `Best frag ${numbers[0] ?? '?'}/100`;
       case 'multi_kill': return `${numbers[0] ?? '?'} frags in ${(numbers[1] ?? '?').replace(',', '.')} s`;
@@ -1194,6 +1206,12 @@
   ));
   const movieFragDeaths = computed(() => fragReelDeaths.value.filter((death) =>
     !movieExcludedFragIds.value.has(death.eventId)));
+  const movieAllFragsSelected = computed(() => movieSelectableFragIds.value.size > 0
+    && [...movieSelectableFragIds.value].every((eventId) =>
+      !movieExcludedFragIds.value.has(eventId)));
+  const movieSomeFragsSelected = computed(() => !movieAllFragsSelected.value
+    && [...movieSelectableFragIds.value].some((eventId) =>
+      !movieExcludedFragIds.value.has(eventId)));
   const activeFragReelDeaths = computed(() => fragReelSource.value === 'movie'
     ? movieFragDeaths.value
     : fragReelDeaths.value);
@@ -1351,6 +1369,10 @@
   };
   const onMovieFragCheckbox = (eventId: string, event: Event) => {
     toggleMovieFrag(eventId, (event.target as HTMLInputElement).checked);
+  };
+  const onMovieSelectAllCheckbox = (event: Event) => {
+    if ((event.target as HTMLInputElement).checked) selectAllMovieFrags();
+    else clearMovieFrags();
   };
   const selectAllMovieFrags = () => {
     const selectable = movieSelectableFragIds.value;
