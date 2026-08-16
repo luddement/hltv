@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   MOVIE_QUALITIES,
+  MOVIE_SCOREBOARD_DURATION_MS,
   buildFragMovieTimeline,
   estimatedMovieBytes,
   inferDemoMatchDate,
   movieBackpressureAction,
   movieCompletionAction,
-  movieScoreboardCueAt,
+  movieSideCount,
+  movieSideEndsAtIndex,
   safeMovieFilename,
 } from '../src/movie/movie-project';
 
@@ -58,19 +60,19 @@ describe('frag movie project', () => {
     expect(movieBackpressureAction(6, 60, true)).toBe('resume');
   });
 
-  it('shows the scoreboard only at the safe edges of each T/CT phase', () => {
+  it('marks only the final frag of each T/CT phase for a scorecard', () => {
     const events = [
       { demoTimeMs: 10_000, side: 'TERRORIST' as const },
       { demoTimeMs: 20_000, side: 'TERRORIST' as const },
       { demoTimeMs: 40_000, side: 'CT' as const },
       { demoTimeMs: 50_000, side: 'CT' as const },
     ];
-    expect(movieScoreboardCueAt(events, 0, 7_300)).toBe('side-start');
-    expect(movieScoreboardCueAt(events, 0, 9_000)).toBeUndefined();
-    expect(movieScoreboardCueAt(events, 1, 20_000)).toBeUndefined();
-    expect(movieScoreboardCueAt(events, 1, 22_200)).toBe('side-end');
-    expect(movieScoreboardCueAt(events, 2, 37_500)).toBe('side-start');
-    expect(movieScoreboardCueAt(events, 3, 52_400)).toBe('side-end');
+    expect(movieSideEndsAtIndex(events, 0)).toBe(false);
+    expect(movieSideEndsAtIndex(events, 1)).toBe(true);
+    expect(movieSideEndsAtIndex(events, 2)).toBe(false);
+    expect(movieSideEndsAtIndex(events, 3)).toBe(true);
+    expect(movieSideCount(events)).toBe(2);
+    expect(MOVIE_SCOREBOARD_DURATION_MS).toBe(3_000);
   });
 
   it('offers a high-bitrate max-HQ profile with display-safe frame pacing', () => {

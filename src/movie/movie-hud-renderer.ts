@@ -271,39 +271,39 @@ const renderCinematicKillfeed = (
 ) => {
   const { width } = context.canvas;
   const scale = width / 1920;
-  const rowHeight = 42 * scale;
-  const right = width - 54 * scale;
+  const rowHeight = 54 * scale;
+  const right = width - 34 * scale;
   entries.slice(-4).reverse().forEach((entry, index) => {
-    const y = 58 * scale + index * (rowHeight + 7 * scale);
+    const y = 42 * scale + index * (rowHeight + 8 * scale);
     const opacity = entry.ageMs > 5_000
       ? Math.max(0, 1 - (entry.ageMs - 5_000) / 1_000)
       : 1;
     context.save();
     context.globalAlpha = opacity;
-    context.font = `750 ${15 * scale}px ${SANS}`;
+    context.font = `750 ${20 * scale}px ${SANS}`;
     const victimWidth = context.measureText(entry.victim.toUpperCase()).width;
-    context.font = `700 ${11 * scale}px ${MONO}`;
+    context.font = `700 ${14 * scale}px ${MONO}`;
     const weaponLabel = entry.headshot
       ? `${entry.weapon.toUpperCase()} · HS`
       : entry.weapon.toUpperCase();
-    const weaponWidth = context.measureText(weaponLabel).width + 24 * scale;
-    context.font = `750 ${15 * scale}px ${SANS}`;
+    const weaponWidth = context.measureText(weaponLabel).width + 30 * scale;
+    context.font = `750 ${20 * scale}px ${SANS}`;
     const killerWidth = context.measureText(entry.killer.toUpperCase()).width;
-    const rowWidth = Math.min(width * 0.46, killerWidth + weaponWidth + victimWidth + 48 * scale);
+    const rowWidth = Math.min(width * 0.62, killerWidth + weaponWidth + victimWidth + 62 * scale);
     const left = right - rowWidth;
     panel(context, left, y, rowWidth, rowHeight, 0.76);
     context.fillStyle = 'rgba(200,245,66,.65)';
     context.fillRect(right - 2 * scale, y, 2 * scale, rowHeight);
 
-    const baseline = y + 27 * scale;
-    text(context, entry.victim.toUpperCase(), right - 15 * scale, baseline,
-      15 * scale, killfeedColor(entry.victimSide), 750, 'right');
-    const weaponRight = right - 25 * scale - victimWidth;
-    panel(context, weaponRight - weaponWidth, y + 7 * scale, weaponWidth, 28 * scale, 0.9);
+    const baseline = y + 35 * scale;
+    text(context, entry.victim.toUpperCase(), right - 18 * scale, baseline,
+      20 * scale, killfeedColor(entry.victimSide), 750, 'right');
+    const weaponRight = right - 30 * scale - victimWidth;
+    panel(context, weaponRight - weaponWidth, y + 8 * scale, weaponWidth, 38 * scale, 0.9);
     text(context, weaponLabel, weaponRight - weaponWidth / 2, baseline,
-      11 * scale, entry.headshot ? ACID : MUTED, 700, 'center', MONO);
-    text(context, entry.killer.toUpperCase(), weaponRight - weaponWidth - 12 * scale, baseline,
-      15 * scale, killfeedColor(entry.killerSide), 750, 'right');
+      14 * scale, entry.headshot ? ACID : MUTED, 700, 'center', MONO);
+    text(context, entry.killer.toUpperCase(), weaponRight - weaponWidth - 15 * scale, baseline,
+      20 * scale, killfeedColor(entry.killerSide), 750, 'right');
     context.restore();
   });
 };

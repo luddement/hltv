@@ -689,8 +689,10 @@
     inferDemoMatchDate,
     movieBackpressureAction,
     movieCompletionAction,
-    movieScoreboardCueAt,
+    movieSideCount,
+    movieSideEndsAtIndex,
     safeMovieFilename,
+    MOVIE_SCOREBOARD_DURATION_MS,
     type MovieExportState,
     type MovieQualityId,
   } from '/@/movie/movie-project';
@@ -813,6 +815,8 @@
   let movieEncoderLastEncodedFrames = 0;
   let movieLastDiagnosticProgressBucket = -1;
   let movieAutomaticScoreboardVisible = false;
+  let movieScoreboardStartFrame = 0;
+  const movieScoreboardsShown = new Set<string>();
 
   const deathEvents = computed(() => analysisIndex.value?.events.filter(isDeathEvent) ?? []);
   const fragRatingById = computed(() => new Map(
@@ -1103,7 +1107,9 @@
   const movieQuality = computed(() => MOVIE_QUALITIES.find((quality) =>
     quality.id === movieQualityId.value) ?? MOVIE_QUALITIES[0]);
   const movieEstimatedBytes = computed(() => estimatedMovieBytes(
-    fragMovieTimeline.value.durationMs + (movieIncludeIntro.value ? MOVIE_INTRO_DURATION_MS : 0),
+    fragMovieTimeline.value.durationMs
+      + movieSideCount(movieScoreboardEvents.value) * MOVIE_SCOREBOARD_DURATION_MS
+      + (movieIncludeIntro.value ? MOVIE_INTRO_DURATION_MS : 0),
     movieQuality.value,
   ));
   const movieExportSupported = computed(() => Boolean(preferredMovieContainer()));
@@ -1113,6 +1119,7 @@
   const movieExportStatusLabel = computed(() => {
     if (movieExportState.value === 'starting') return 'Startar den lokala renderaren';
     if (movieEncoderCatchingUp.value) return 'Kodaren hämtar ikapp · spelet är pausat';
+    if (scoreboardHeld.value) return 'Visar scorecard · spelet är pausat';
     if (movieExportState.value === 'recording') return 'Renderar bild och ljud';
     if (movieExportState.value === 'finalizing') return 'Slutför videofilen';
     return '';
@@ -1234,7 +1241,7 @@
 
   const setMovieAutomaticScoreboard = (
     visible: boolean,
-    cue?: 'side-start' | 'side-end',
+    side?: 'TERRORIST' | 'CT',
   ) => {
     if (movieAutomaticScoreboardVisible === visible && scoreboardHeld.value === visible) return;
     movieAutomaticScoreboardVisible = visible;
@@ -1245,9 +1252,7 @@
       DemoEngine.execute('+showscores');
       recordMovieExportDiagnostic(
         'scoreboard-shown',
-        cue === 'side-start'
-          ? 'Scoreboard visades i början av lagets sidfas.'
-          : 'Scoreboard visades i slutet av lagets sidfas.',
+        `Scorecard visas i tre sekunder efter lagets ${side === 'TERRORIST' ? 'T-sida' : 'CT-sida'}.`,
       );
       return;
     }
@@ -1255,20 +1260,61 @@
     applyEngineHudPreset();
   };
 
-  const updateMovieAutomaticScoreboard = () => {
-    if (movieExportState.value !== 'recording'
-      || !fragReelActive.value
-      || fragReelSeeking.value
-      || seeking.value) {
-      setMovieAutomaticScoreboard(false);
-      return;
+  const finishMovieScoreboard = (now: number) => {
+    setMovieAutomaticScoreboard(false);
+    movieScoreboardStartFrame = 0;
+    hudPlaybackStartedAt.value = now;
+    if (!movieEncoderCatchingUp.value && engineStarted.value) {
+      DemoEngine.execute('sys_timescale 1');
     }
-    const cue = movieScoreboardCueAt(
-      movieScoreboardEvents.value,
-      fragReelIndex.value,
-      hudDemoTimeMs.value,
+  };
+
+  const updateMovieAutomaticScoreboard = (now: number): boolean => {
+    if (!movieAutomaticScoreboardVisible) return false;
+    const recorder = movieRecorder;
+    if (movieExportState.value !== 'recording' || !recorder || !fragReelActive.value) {
+      finishMovieScoreboard(now);
+      return false;
+    }
+    const recordedFrames = recorder.capturedFrames - movieScoreboardStartFrame;
+    if (recordedFrames < Math.round(movieQuality.value.fps * MOVIE_SCOREBOARD_DURATION_MS / 1_000)) {
+      return true;
+    }
+    finishMovieScoreboard(now);
+    return false;
+  };
+
+  const startMovieAutomaticScoreboard = (): boolean => {
+    const death = fragReelDeaths.value[fragReelIndex.value];
+    const event = movieScoreboardEvents.value[fragReelIndex.value];
+    if (movieExportState.value !== 'recording'
+      || !death
+      || !event
+      || !movieSideEndsAtIndex(movieScoreboardEvents.value, fragReelIndex.value)
+      || movieScoreboardsShown.has(death.eventId)) return false;
+    // Do not cross the side boundary while the recorder is paused. Once the
+    // encoder catches up, the next HUD tick starts the complete three-second card.
+    if (movieEncoderCatchingUp.value || !movieRecorder) return true;
+    try {
+      DemoEngine.execute('sys_timescale 0');
+    } catch (error) {
+      movieExportError.value = error instanceof Error
+        ? error.message
+        : 'Kunde inte frysa spelet för scorecardet.';
+      void cancelMovieExport(true);
+      return true;
+    }
+    const frozenDemoTimeMs = hudDemoTimeMs.value;
+    hudPlaybackStartMs.value = frozenDemoTimeMs;
+    hudPlaybackStartedAt.value = 0;
+    movieScoreboardStartFrame = movieRecorder.capturedFrames;
+    movieScoreboardsShown.add(death.eventId);
+    setMovieAutomaticScoreboard(true, event.side);
+    addLog(
+      `Scorecard: ${event.side === 'TERRORIST' ? 'T-sidan' : 'CT-sidan'} avslutad · 3 sekunder.`,
+      false,
     );
-    setMovieAutomaticScoreboard(Boolean(cue), cue);
+    return true;
   };
 
   const setHudPreset = (preset: HudPreset) => {
@@ -1473,7 +1519,7 @@
     const recorder = movieRecorder;
     if (!recorder || !movieEncoderCatchingUp.value) return;
     try {
-      DemoEngine.execute('sys_timescale 1');
+      DemoEngine.execute(`sys_timescale ${movieAutomaticScoreboardVisible ? 0 : 1}`);
     } catch (error) {
       movieExportError.value = error instanceof Error
         ? error.message
@@ -1482,7 +1528,7 @@
       return;
     }
     recorder.resume();
-    hudPlaybackStartedAt.value = now;
+    hudPlaybackStartedAt.value = movieAutomaticScoreboardVisible ? 0 : now;
     movieEncoderCatchingUp.value = false;
     movieEncoderLastProgressAt = now;
     movieEncoderLastEncodedFrames = recorder.encodedFrames;
@@ -1548,8 +1594,7 @@
   const tickHudClock = (now: number) => {
     hudNow.value = now;
     void startMovieRecorderIfReady();
-    updateMovieAutomaticScoreboard();
-    updateFragReel();
+    if (!updateMovieAutomaticScoreboard(now)) updateFragReel();
     updateMovieExportProgress();
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
   };
@@ -1983,6 +2028,9 @@
     fragReelActive.value = true;
     fragReelSeeking.value = false;
     fragReelIndex.value = 0;
+    movieScoreboardsShown.clear();
+    movieScoreboardStartFrame = 0;
+    setMovieAutomaticScoreboard(false);
     selectedFragId.value = first.eventId;
     const startAtMs = Math.max(0, first.demoTimeMs - FRAG_REEL_PREROLL_MS);
     hudPlaybackStartMs.value = startAtMs;
@@ -2042,6 +2090,7 @@
     const recorder = movieRecorder;
     if (!recorder || movieExportState.value === 'finalizing') return;
     setMovieAutomaticScoreboard(false);
+    movieScoreboardStartFrame = 0;
     movieExportState.value = 'finalizing';
     movieExportProgress.value = 100;
     movieEncoderCatchingUp.value = false;
@@ -2092,12 +2141,13 @@
     const recorder = movieRecorder;
     const output = preparedMovieOutput;
     setMovieAutomaticScoreboard(false);
+    movieScoreboardStartFrame = 0;
     recordMovieExportDiagnostic(
       keepError ? 'error-stop-requested' : 'user-stop-requested',
       keepError ? movieExportError.value || 'Exporten stoppades efter ett okänt fel.' : 'Användaren avslutade exporten.',
       keepError,
     );
-    if (movieEncoderCatchingUp.value && DemoEngine.running) {
+    if (DemoEngine.running) {
       try {
         DemoEngine.execute('sys_timescale 1');
       } catch {
@@ -2186,6 +2236,7 @@
       hudDemoTimeMs.value,
     );
     if (action.type === 'wait') return;
+    if (startMovieAutomaticScoreboard()) return;
     if (action.type === 'complete') {
       addLog(`Endast frags klart: ${fragReelDeaths.value.length} frags visade.`, false);
       const completion = movieCompletionAction(movieExportState.value);
@@ -2268,6 +2319,8 @@
     if (scoreboardHeld.value && engineStarted.value) DemoEngine.execute('-showscores');
     scoreboardHeld.value = false;
     movieAutomaticScoreboardVisible = false;
+    movieScoreboardStartFrame = 0;
+    movieScoreboardsShown.clear();
     fragReelActive.value = false;
     fragReelSeeking.value = false;
     engineVisible.value = false;

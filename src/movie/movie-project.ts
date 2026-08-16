@@ -9,40 +9,27 @@ export type MovieQualityId = '720p' | '1080p' | '1440p' | '2160p' | 'max-hq';
 export type MovieExportState = 'idle' | 'starting' | 'recording' | 'finalizing' | 'complete' | 'error';
 export type MovieCompletionAction = 'close' | 'fail' | 'finish' | 'wait';
 export type MovieBackpressureAction = 'continue' | 'pause' | 'wait' | 'resume';
-export type MovieScoreboardCue = 'side-start' | 'side-end';
 
 export const MOVIE_INTRO_DURATION_MS = 3_000;
-export const MOVIE_SCOREBOARD_DURATION_MS = 2_000;
+export const MOVIE_SCOREBOARD_DURATION_MS = 3_000;
 
 export type MovieScoreboardEvent = {
   demoTimeMs: number;
   side: 'TERRORIST' | 'CT';
 };
 
-/** Shows scores at each followed team's side boundaries, away from the frag itself. */
-export const movieScoreboardCueAt = (
+/** Marks the final included frag before the followed team changes side. */
+export const movieSideEndsAtIndex = (
   events: readonly MovieScoreboardEvent[],
   index: number,
-  demoTimeMs: number,
-): MovieScoreboardCue | undefined => {
+): boolean => {
   const event = events[index];
-  if (!event) return undefined;
-  const startsSide = index === 0 || events[index - 1]?.side !== event.side;
-  const endsSide = index === events.length - 1 || events[index + 1]?.side !== event.side;
-  const clipStartMs = Math.max(0, event.demoTimeMs - FRAG_REEL_PREROLL_MS);
-  if (startsSide
-    && demoTimeMs >= clipStartMs
-    && demoTimeMs < clipStartMs + MOVIE_SCOREBOARD_DURATION_MS) {
-    return 'side-start';
-  }
-  const scoreboardEndMs = event.demoTimeMs + FRAG_REEL_POSTROLL_MS;
-  if (endsSide
-    && demoTimeMs >= scoreboardEndMs - MOVIE_SCOREBOARD_DURATION_MS
-    && demoTimeMs <= scoreboardEndMs) {
-    return 'side-end';
-  }
-  return undefined;
+  return Boolean(event && (index === events.length - 1 || events[index + 1]?.side !== event.side));
 };
+
+export const movieSideCount = (events: readonly MovieScoreboardEvent[]): number =>
+  events.reduce((count, event, index) =>
+    count + (index === 0 || events[index - 1]?.side !== event.side ? 1 : 0), 0);
 
 const validCalendarDate = (year: number, month: number, day: number): boolean => {
   const candidate = new Date(Date.UTC(year, month - 1, day));
