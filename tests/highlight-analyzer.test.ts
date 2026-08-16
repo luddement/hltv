@@ -219,6 +219,32 @@ describe('highlight scoring', () => {
     }));
   });
 
+  it('does not inflate a grenade opening kill with an automatic weapon bonus', () => {
+    const fixture = input({
+      kind: 'hltv',
+      focusPlayerIds: [],
+      focusTeamHistory: [],
+      evidence: 'unknown',
+    });
+    const grenade = fixture.events.find((event): event is DeathEvent =>
+      event.type === 'death' && event.eventId === 'death-1');
+    if (!grenade) throw new Error('Fixture death missing');
+    grenade.weapon = 'grenade';
+    grenade.headshot = false;
+    grenade.aliveBefore = {
+      terrorists: { value: 3, evidence: 'derived' },
+      counterTerrorists: { value: 3, evidence: 'derived' },
+    };
+
+    const rating = buildHighlightAnalysis(fixture).fragRatings
+      .find((entry) => entry.eventId === grenade.eventId);
+
+    expect(rating?.score).toBe(45);
+    expect(rating?.reasons.map((entry) => entry.code)).toEqual([
+      'frag', 'opening_kill', 'round_win',
+    ]);
+  });
+
   it('returns identical scores for identical input', () => {
     const fixture = input({
       kind: 'hltv',

@@ -80,9 +80,6 @@ const weaponBonus = (weapon: string): ScoreReason | undefined => {
   const normalized = weapon.toLowerCase();
   if (normalized === 'knife') return reason('weapon_knife', 'Knivfrag', 15, 'observed');
   if (normalized === 'deagle') return reason('weapon_deagle', 'Deagle-frag', 7, 'observed');
-  if (normalized === 'grenade' || normalized === 'hegrenade') {
-    return reason('weapon_grenade', 'Granatfrag', 8, 'observed');
-  }
   return undefined;
 };
 
