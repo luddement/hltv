@@ -40,6 +40,13 @@ describe('only frags timeline', () => {
     ], 0, 37_536)).toEqual({ type: 'advance', index: 1 });
   });
 
+  it('keeps playing when the next team frag is within ten seconds', () => {
+    expect(nextFragReelAction([
+      { eventId: 'first', demoTimeMs: 10_000, killerPlayerId: 'player-a' },
+      { eventId: 'next', demoTimeMs: 15_000, killerPlayerId: 'player-b' },
+    ], 0, 13_000)).toEqual({ type: 'advance', index: 1 });
+  });
+
   it('does not replay a second quick frag already shown by the same player camera', () => {
     expect(nextFragReelAction([
       { eventId: 'a', demoTimeMs: 10_000, killerPlayerId: 'player-a' },

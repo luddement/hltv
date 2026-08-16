@@ -337,9 +337,10 @@
                 <span>Only Frags playback</span>
                 <strong>Watch every frag by the selected player or team</strong>
                 <small v-if="analysisIndex.demo.perspective.kind === 'hltv'">
-                  {{ fragReelTeamLabel }} · first person follows the killer · 3 seconds before and after
+                  {{ fragReelTeamLabel }} · first person follows the killer · continuous when the next frag is within 10 seconds
                 </small>
-                <small v-else>3 seconds before and after · gaps over 10 seconds are skipped</small>
+                <small v-else>Continuous when the next frag is within 10 seconds · longer gaps are skipped</small>
+                <small>3-second lead-in before the first frag and tail after the final frag.</small>
                 <small>Playback always follows match time, regardless of list sorting.</small>
               </div>
               <div class="frag-reel-controls">
@@ -355,45 +356,82 @@
               <div class="frag-header" role="row">
                 <span>Movie</span><span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span>
               </div>
-              <div
-                v-for="(death, index) in filteredDeaths"
-                :key="death.eventId"
-                :class="['frag-row', { selected: selectedFragId === death.eventId, disabled: !canLaunch }]"
-                role="row"
-                :tabindex="canLaunch ? 0 : -1"
-                :aria-disabled="!canLaunch"
-                @click="canLaunch && playFrag(death)"
-                @keydown.enter="canLaunch && playFrag(death)"
-                @keydown.space.prevent="canLaunch && playFrag(death)"
-              >
-                <label
-                  class="movie-frag-checkbox"
-                  :title="movieSelectableFragIds.has(death.eventId) ? 'Include this frag in the movie' : 'This frag cannot be exported from the recorded POV'"
+              <template v-for="(death, index) in filteredDeaths" :key="death.eventId">
+                <div
+                  :class="['frag-row', { selected: selectedFragId === death.eventId, disabled: !canLaunch }]"
+                  role="row"
+                  :tabindex="canLaunch ? 0 : -1"
+                  :aria-disabled="!canLaunch"
+                  @click="canLaunch && playFrag(death)"
+                  @keydown.enter="canLaunch && playFrag(death)"
+                  @keydown.space.prevent="canLaunch && playFrag(death)"
+                >
+                  <label
+                    class="movie-frag-checkbox"
+                    :title="movieSelectableFragIds.has(death.eventId) ? 'Include this frag in the movie' : 'This frag cannot be exported from the recorded POV'"
+                    @click.stop
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="isMovieFragSelected(death.eventId)"
+                      :disabled="!movieSelectableFragIds.has(death.eventId) || movieExportRunning"
+                      :aria-label="`Include frag ${index + 1} in movie`"
+                      @change="onMovieFragCheckbox(death.eventId, $event)"
+                    />
+                  </label>
+                  <span class="frag-number">{{ index + 1 }}</span>
+                  <time>{{ formatEventTime(death.demoTimeMs) }}</time>
+                  <span class="frag-players">
+                    <b :class="teamClass(death.killerPlayerId, death.demoTimeMs)">{{ death.worldKill ? 'World' : playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot) }}</b>
+                    <i>→</i>
+                    <b :class="teamClass(death.victimPlayerId, death.demoTimeMs)">{{ playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot) }}</b>
+                    <em v-if="death.headshot">HS</em>
+                  </span>
+                  <span class="frag-weapon">{{ death.weapon || 'unknown' }}</span>
+                  <span>{{ roundLabel(death.roundId) }}</span>
+                  <span class="frag-score">
+                    <b>{{ fragRatingById.get(death.eventId)?.score ?? '–' }}</b>
+                    <button
+                      class="frag-score-info"
+                      type="button"
+                      :aria-label="`Explain the score for frag ${index + 1}`"
+                      :aria-expanded="expandedFragScoreId === death.eventId"
+                      :disabled="!fragRatingById.has(death.eventId)"
+                      title="Show score calculation"
+                      @click.stop="toggleFragScoreDetails(death.eventId)"
+                    >i</button>
+                    <i aria-hidden="true">▶</i>
+                  </span>
+                </div>
+                <div
+                  v-if="expandedFragScoreId === death.eventId"
+                  class="frag-score-details"
                   @click.stop
                 >
-                  <input
-                    type="checkbox"
-                    :checked="isMovieFragSelected(death.eventId)"
-                    :disabled="!movieSelectableFragIds.has(death.eventId) || movieExportRunning"
-                    :aria-label="`Include frag ${index + 1} in movie`"
-                    @change="onMovieFragCheckbox(death.eventId, $event)"
-                  />
-                </label>
-                <span class="frag-number">{{ index + 1 }}</span>
-                <time>{{ formatEventTime(death.demoTimeMs) }}</time>
-                <span class="frag-players">
-                  <b :class="teamClass(death.killerPlayerId, death.demoTimeMs)">{{ death.worldKill ? 'World' : playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot) }}</b>
-                  <i>→</i>
-                  <b :class="teamClass(death.victimPlayerId, death.demoTimeMs)">{{ playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot) }}</b>
-                  <em v-if="death.headshot">HS</em>
-                </span>
-                <span class="frag-weapon">{{ death.weapon || 'unknown' }}</span>
-                <span>{{ roundLabel(death.roundId) }}</span>
-                <span class="frag-score">
-                  <b>{{ fragRatingById.get(death.eventId)?.score ?? '–' }}</b>
-                  <i>▶</i>
-                </span>
-              </div>
+                  <header>
+                    <strong>Frag {{ index + 1 }} · score calculation</strong>
+                    <span>
+                      {{ fragRawScore(death.eventId) }} raw points
+                      → {{ fragRatingById.get(death.eventId)?.score }}/100
+                    </span>
+                  </header>
+                  <ul>
+                    <li
+                      v-for="reason in fragRatingById.get(death.eventId)?.reasons ?? []"
+                      :key="`${death.eventId}-${reason.code}`"
+                    >
+                      <span>
+                        <strong>{{ scoreReasonLabel(reason) }}</strong>
+                        <small>{{ scoreEvidenceLabel(reason) }}</small>
+                      </span>
+                      <b :class="{ negative: reason.points < 0 }">{{ formatScorePoints(reason.points) }}</b>
+                    </li>
+                  </ul>
+                  <p v-if="fragRawScore(death.eventId) !== fragRatingById.get(death.eventId)?.score">
+                    Final scores are limited to the 0–100 range.
+                  </p>
+                </div>
+              </template>
               <p v-if="!filteredDeaths.length" class="empty-frags">No frags match the filters.</p>
             </div>
             <p class="analysis-footnote">
@@ -814,6 +852,7 @@
   const headshotsOnly = ref(false);
   const fragSort = ref<'time' | 'score'>('time');
   const selectedFragId = ref('');
+  const expandedFragScoreId = ref('');
   const hudPreset = ref<HudPreset>('cinematic');
   const interfaceTheme = ref<InterfaceTheme>('replay');
   const scoreboardHeld = ref(false);
@@ -926,6 +965,15 @@
       case 'bomb_context': return 'Bomb event affects the round';
       default: return entry.label;
     }
+  };
+  const scoreEvidenceLabel = (entry: ScoreReason): string => entry.evidence === 'observed'
+    ? 'Observed in the demo'
+    : 'Derived from match context';
+  const formatScorePoints = (points: number): string => points > 0 ? `+${points}` : `${points}`;
+  const fragRawScore = (eventId: string): number => fragRatingById.value.get(eventId)?.reasons
+    .reduce((total, entry) => total + entry.points, 0) ?? 0;
+  const toggleFragScoreDetails = (eventId: string) => {
+    expandedFragScoreId.value = expandedFragScoreId.value === eventId ? '' : eventId;
   };
   const logicalTeamIdForSideAt = (side: CompetitiveSide, atMs: number): LogicalTeamId =>
     logicalTeamForSideAt(
@@ -1771,6 +1819,7 @@
     analysisCacheHit.value = false;
     analysisProgress.value = undefined;
     selectedFragId.value = '';
+    expandedFragScoreId.value = '';
     fragPlayer.value = 'all';
     highlightTeam.value = 'all';
     fragReelSource.value = 'playback';

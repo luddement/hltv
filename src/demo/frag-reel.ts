@@ -52,8 +52,8 @@ export const nextFragReelAction = (
     return { type: 'advance', index: nextIndex };
   }
 
-  const hasFullPrerollWithoutRewind = next.demoTimeMs - demoTimeMs >= FRAG_REEL_PREROLL_MS;
-  if (hasFullPrerollWithoutRewind
+  const nextFragIsStillAhead = next.demoTimeMs > demoTimeMs;
+  if (nextFragIsStillAhead
     && next.demoTimeMs - current.demoTimeMs <= FRAG_REEL_CONTINUOUS_GAP_MS) {
     return { type: 'advance', index: nextIndex };
   }

@@ -21,11 +21,10 @@ describe('frag movie project', () => {
       { eventId: 'd', demoTimeMs: 40_000, killerPlayerId: 'two' },
     ])).toEqual({
       clips: [
-        { startTimeMs: 7_000, endTimeMs: 21_000, eventIds: ['a', 'b'] },
-        { startTimeMs: 19_000, endTimeMs: 25_000, eventIds: ['c'] },
+        { startTimeMs: 7_000, endTimeMs: 25_000, eventIds: ['a', 'b', 'c'] },
         { startTimeMs: 37_000, endTimeMs: 43_000, eventIds: ['d'] },
       ],
-      durationMs: 26_000,
+      durationMs: 24_000,
     });
   });
 
