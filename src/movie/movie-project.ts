@@ -137,12 +137,20 @@ export const buildFragMovieTimeline = (
     const endTimeMs = event.demoTimeMs + FRAG_REEL_POSTROLL_MS;
     const previousEvent = events[index - 1];
     const activeClip = clips.at(-1);
+    const gapFromPreviousMs = previousEvent
+      ? event.demoTimeMs - previousEvent.demoTimeMs
+      : Number.POSITIVE_INFINITY;
+    const sameFirstPersonTarget = previousEvent
+      && previousEvent.killerPlayerId != null
+      && previousEvent.killerPlayerId === event.killerPlayerId;
+    const alreadyShownByPreviousCamera = sameFirstPersonTarget
+      && gapFromPreviousMs <= FRAG_REEL_POSTROLL_MS;
+    const hasFullPrerollWithoutRewind = gapFromPreviousMs - FRAG_REEL_POSTROLL_MS
+      >= FRAG_REEL_PREROLL_MS;
     const continuous = previousEvent
       && activeClip
-      && previousEvent.killerPlayerId === event.killerPlayerId
-      && event.demoTimeMs - previousEvent.demoTimeMs <= FRAG_REEL_CONTINUOUS_GAP_MS
-      && event.demoTimeMs - (previousEvent.demoTimeMs + FRAG_REEL_POSTROLL_MS)
-        >= FRAG_REEL_PREROLL_MS;
+      && gapFromPreviousMs <= FRAG_REEL_CONTINUOUS_GAP_MS
+      && (alreadyShownByPreviousCamera || hasFullPrerollWithoutRewind);
 
     if (continuous) {
       activeClip.endTimeMs = endTimeMs;

@@ -43,6 +43,15 @@ export const nextFragReelAction = (
   const next = events[nextIndex];
   if (!next) return { type: 'complete' };
 
+  const sameFirstPersonTarget = current.killerPlayerId != null
+    && current.killerPlayerId === next.killerPlayerId;
+  const wasAlreadyShownByCurrentCamera = sameFirstPersonTarget
+    && next.demoTimeMs <= demoTimeMs;
+  if (wasAlreadyShownByCurrentCamera
+    && next.demoTimeMs - current.demoTimeMs <= FRAG_REEL_CONTINUOUS_GAP_MS) {
+    return { type: 'advance', index: nextIndex };
+  }
+
   const hasFullPrerollWithoutRewind = next.demoTimeMs - demoTimeMs >= FRAG_REEL_PREROLL_MS;
   if (hasFullPrerollWithoutRewind
     && next.demoTimeMs - current.demoTimeMs <= FRAG_REEL_CONTINUOUS_GAP_MS) {

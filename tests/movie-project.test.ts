@@ -29,6 +29,20 @@ describe('frag movie project', () => {
     });
   });
 
+  it('counts two quick frags by the same player as one continuous clip', () => {
+    expect(buildFragMovieTimeline([
+      { eventId: 'first', demoTimeMs: 10_000, killerPlayerId: 'tobbi' },
+      { eventId: 'second', demoTimeMs: 12_000, killerPlayerId: 'tobbi' },
+    ])).toEqual({
+      clips: [{
+        startTimeMs: 7_000,
+        endTimeMs: 15_000,
+        eventIds: ['first', 'second'],
+      }],
+      durationMs: 8_000,
+    });
+  });
+
   it('estimates encoded bytes from the selected quality bitrate', () => {
     expect(estimatedMovieBytes(60_000, MOVIE_QUALITIES[0])).toBe(61_440_000);
   });

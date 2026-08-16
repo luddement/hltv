@@ -40,11 +40,11 @@ describe('only frags timeline', () => {
     ], 0, 37_536)).toEqual({ type: 'advance', index: 1 });
   });
 
-  it('rewinds overlapping frags so every frag gets its full lead-in', () => {
+  it('does not replay a second quick frag already shown by the same player camera', () => {
     expect(nextFragReelAction([
       { eventId: 'a', demoTimeMs: 10_000, killerPlayerId: 'player-a' },
       { eventId: 'b', demoTimeMs: 12_000, killerPlayerId: 'player-a' },
-    ], 0, 13_000)).toEqual({ type: 'seek', index: 1, targetMs: 9_000 });
+    ], 0, 13_000)).toEqual({ type: 'advance', index: 1 });
   });
 
   it('includes every rated HLTV frag while keeping POV reels to recorded POV', () => {
