@@ -503,16 +503,15 @@
 .highlight-copy small { overflow: hidden; color: #666d64; font: 7px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .highlight-meta { color: #7a8176; font: 7px ui-monospace, monospace; text-transform: uppercase; white-space: nowrap; }
 .frag-filters {
-  min-height: 66px;
-  display: flex;
-  align-items: end;
-  gap: 12px;
-  padding: 12px 19px;
+  display: grid;
+  gap: 10px;
+  padding: 14px 19px 10px;
   border-bottom: 1px solid #262b25;
   background: #101310;
 }
 
-.frag-filters label:not(.headshot-filter) { min-width: 170px; display: flex; flex-direction: column; gap: 5px; }
+.frag-filter-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: start; gap: 12px; }
+.frag-filter-fields > label { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .frag-filters label > span { color: #70766e; font: 8px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
 .frag-filters label > small { color: #596057; font: 7px/1.35 ui-monospace, monospace; }
 .frag-filters select,
@@ -527,9 +526,10 @@
 }
 .frag-filters select:focus,
 .frag-filters input[type="search"]:focus { border-color: #64743c; }
+.frag-filter-meta { min-height: 24px; display: flex; align-items: center; gap: 16px; padding-top: 2px; border-top: 1px solid rgba(255,255,255,.035); }
 .headshot-filter { height: 29px; display: flex; align-items: center; gap: 7px; color: #9da39a; font-size: 9px; white-space: nowrap; }
 .headshot-filter input { accent-color: var(--acid); }
-.filter-result { margin: 0 0 8px auto; color: #697067; font: 8px ui-monospace, monospace; text-transform: uppercase; white-space: nowrap; }
+.filter-result { margin-left: auto; color: #697067; font: 8px ui-monospace, monospace; text-transform: uppercase; white-space: nowrap; }
 
 .frag-list { max-height: 390px; overflow-y: auto; scrollbar-color: #40483a #111411; }
 .frag-header,
@@ -850,9 +850,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .analysis-heading { align-items: flex-start; flex-direction: column; }
   .highlight-overview { grid-template-columns: 1fr; }
   .highlight-overview > section + section { border-top: 1px solid #262b25; border-left: 0; }
-  .frag-filters { align-items: stretch; flex-wrap: wrap; }
-  .frag-filters label:not(.headshot-filter) { flex: 1; }
-  .filter-result { margin-left: 0; }
+  .frag-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .frag-reel-launcher { align-items: stretch; flex-direction: column; }
   .frag-reel-controls { justify-content: flex-start; }
   .movie-export-section { align-items: stretch; flex-direction: column; }
@@ -873,6 +871,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .hud-setup { margin-left: 16px; margin-right: 16px; }
   .hud-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .analysis-stats { width: 100%; justify-content: space-between; gap: 8px; }
+  .frag-filter-fields { grid-template-columns: 1fr; }
   .frag-header,
   .frag-row { grid-template-columns: 40px 24px 54px minmax(170px, 1fr) 45px; }
   .frag-header > :nth-child(5),

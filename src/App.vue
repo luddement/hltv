@@ -291,41 +291,45 @@
             </div>
 
             <div class="frag-filters">
-              <label v-if="analysisIndex.demo.perspective.kind === 'hltv'">
-                <span>Team · controls Only Frags</span>
-                <select :value="highlightTeam" @change="onHighlightTeamSelect">
-                  <option value="all">{{ logicalMatchupLabel }}</option>
-                  <option v-for="team in logicalTeamIndex.teams" :key="team.id" :value="team.id">
-                    {{ team.name }}
-                  </option>
-                </select>
-              </label>
-              <label>
-                <span>Player · controls Only Frags</span>
-                <select :value="fragPlayer" @change="onFragPlayerSelect">
-                  <option value="all">All players</option>
-                  <option v-for="player in killerPlayers" :key="player.playerId" :value="player.playerId">
-                    {{ playerLabel(player.playerId) }}
-                  </option>
-                </select>
-              </label>
-              <label>
-                <span>Search</span>
-                <input v-model.trim="fragSearch" type="search" placeholder="Name or weapon" />
-              </label>
-              <label>
-                <span>List sorting</span>
-                <select v-model="fragSort">
-                  <option value="time">Match time</option>
-                  <option value="score">Highest score</option>
-                </select>
-                <small>List only · playback stays chronological</small>
-              </label>
-              <label class="headshot-filter">
-                <input v-model="headshotsOnly" type="checkbox" />
-                Headshots only
-              </label>
-              <span class="filter-result">{{ filteredDeaths.length }} results</span>
+              <div class="frag-filter-fields">
+                <label v-if="analysisIndex.demo.perspective.kind === 'hltv'">
+                  <span>Team · controls Only Frags</span>
+                  <select :value="highlightTeam" @change="onHighlightTeamSelect">
+                    <option value="all">{{ logicalMatchupLabel }}</option>
+                    <option v-for="team in logicalTeamIndex.teams" :key="team.id" :value="team.id">
+                      {{ team.name }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span>Player · controls Only Frags</span>
+                  <select :value="fragPlayer" @change="onFragPlayerSelect">
+                    <option value="all">All players</option>
+                    <option v-for="player in killerPlayers" :key="player.playerId" :value="player.playerId">
+                      {{ playerLabel(player.playerId) }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  <span>Search</span>
+                  <input v-model.trim="fragSearch" type="search" placeholder="Name or weapon" />
+                </label>
+                <label>
+                  <span>List sorting</span>
+                  <select v-model="fragSort">
+                    <option value="time">Match time</option>
+                    <option value="score">Highest score</option>
+                  </select>
+                  <small>Changes the list only · playback stays chronological</small>
+                </label>
+              </div>
+              <div class="frag-filter-meta">
+                <label class="headshot-filter">
+                  <input v-model="headshotsOnly" type="checkbox" />
+                  Headshots only
+                </label>
+                <span class="filter-result">{{ filteredDeaths.length }} results</span>
+              </div>
             </div>
 
             <div class="frag-reel-launcher">
@@ -2398,7 +2402,7 @@
     setMovieAutomaticScoreboard(false);
     movieRecorder?.pause();
     addLog(`Only Frags: seeking to ${formatEventTime(action.targetMs)}.`, false);
-    void DemoEngine.seekTo(action.targetMs)
+    void DemoEngine.seekTo(action.targetMs, action.targetMs < hudDemoTimeMs.value)
       .then(() => {
         hudPlaybackStartMs.value = action.targetMs;
         hudPlaybackStartedAt.value = performance.now();

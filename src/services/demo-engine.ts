@@ -378,7 +378,7 @@ class DemoEngine {
     };
   }
 
-  seekTo(targetMs: number): Promise<void> {
+  seekTo(targetMs: number, restartDemo = false): Promise<void> {
     const xash = this.xash;
     if (!xash?.running) return Promise.reject(new Error('The engine has not started.'));
 
@@ -408,6 +408,13 @@ class DemoEngine {
       xash.Cmd_ExecuteString('r_norefresh 1');
       xash.Cmd_ExecuteString('sys_timescale 1');
       xash.Cmd_ExecuteString(`set hltv_fastforward ${(Math.max(0, targetMs) / 1_000).toFixed(3)}`);
+      if (restartDemo) {
+        // GoldSrc cannot seek backwards inside an active demo. Restart the
+        // same mounted recording, then let the patched reader fast-forward to
+        // the requested preroll while rendering and audio remain paused.
+        xash.Cmd_ExecuteString('playdemo hltv_replay');
+        xash.Cmd_ExecuteString('hltv_closemenu');
+      }
       this.runtimeSeekTimer = window.setTimeout(finish, 10_000);
     });
   }

@@ -33,6 +33,13 @@ describe('only frags timeline', () => {
     ], 0, 13_000)).toEqual({ type: 'seek', index: 1, targetMs: 9_000 });
   });
 
+  it('keeps the 0:41 luddi frag when a full team reel switches killer', () => {
+    expect(nextFragReelAction([
+      { eventId: 'tobbi', demoTimeMs: 34_536, killerPlayerId: 'player-tobbi' },
+      { eventId: 'luddi', demoTimeMs: 41_336, killerPlayerId: 'player-luddi' },
+    ], 0, 37_536)).toEqual({ type: 'advance', index: 1 });
+  });
+
   it('rewinds overlapping frags so every frag gets its full lead-in', () => {
     expect(nextFragReelAction([
       { eventId: 'a', demoTimeMs: 10_000, killerPlayerId: 'player-a' },
