@@ -646,6 +646,7 @@
     type CompetitiveSide,
     type LogicalTeamId,
   } from '/@/analysis/team-identity';
+  import { withVerifiedWallbangBonus } from '/@/analysis/highlight-analyzer';
   import type {
     DeathEvent,
     DemoAnalysisIndex,
@@ -654,6 +655,9 @@
     RoundRating,
   } from '/@/analysis/schema';
   import { isDeathEvent } from '/@/analysis/schema';
+  import {
+    detectWallbangEventIds,
+  } from '/@/demo/goldsrc-bsp-trace';
   import {
     type DemoSource,
     type GoldSrcDemo,
@@ -817,11 +821,32 @@
   let movieAutomaticScoreboardVisible = false;
   let movieScoreboardStartFrame = 0;
   const movieScoreboardsShown = new Set<string>();
+  const verifiedWallbangEventIds = shallowRef<ReadonlySet<string>>(new Set());
+  let activeScoringMapBuffer: ArrayBuffer | undefined;
 
   const deathEvents = computed(() => analysisIndex.value?.events.filter(isDeathEvent) ?? []);
   const fragRatingById = computed(() => new Map(
-    analysisIndex.value?.fragRatings.map((rating) => [rating.eventId, rating]) ?? [],
+    analysisIndex.value?.fragRatings.map((rating) => [
+      rating.eventId,
+      verifiedWallbangEventIds.value.has(rating.eventId)
+        ? withVerifiedWallbangBonus(rating)
+        : rating,
+    ]) ?? [],
   ));
+  const refreshVerifiedWallbangs = () => {
+    if (!activeScoringMapBuffer || !analysisIndex.value) {
+      verifiedWallbangEventIds.value = new Set();
+      return;
+    }
+    try {
+      verifiedWallbangEventIds.value = detectWallbangEventIds(
+        activeScoringMapBuffer,
+        deathEvents.value,
+      );
+    } catch {
+      verifiedWallbangEventIds.value = new Set();
+    }
+  };
   const logicalTeamIndex = computed(() => buildLogicalTeamIndex(
     analysisIndex.value?.players ?? [],
   ));
@@ -1646,6 +1671,8 @@
     analysisLoading.value = true;
     analysisError.value = '';
     analysisIndex.value = undefined;
+    activeScoringMapBuffer = undefined;
+    verifiedWallbangEventIds.value = new Set();
     analysisBuffer.value = undefined;
     analysisCacheHit.value = false;
     analysisProgress.value = undefined;
@@ -1661,6 +1688,7 @@
       if (request !== analysisRequest) return;
       analysisBuffer.value = buffer;
       analysisIndex.value = index;
+      refreshVerifiedWallbangs();
       analysisCacheHit.value = cacheHit;
     } catch (error) {
       if (request !== analysisRequest) return;
@@ -1757,16 +1785,20 @@
     }
 
     let exactMap: GameAssetEntry | undefined;
+    let exactMapBuffer: ArrayBuffer | undefined;
     if (selectedDemo.mapChecksum === 0) {
       // Early demos commonly leave the header CRC at 00000000.  In that case
       // there is no recorded revision to compare against, so use the installed
       // map rather than treating zero as a real checksum.
       exactMap = candidates[0];
+      exactMapBuffer = await entryBuffer(exactMap);
     } else {
       for (const candidate of candidates) {
         try {
-          if (goldSrcMapChecksum(await entryBuffer(candidate)) === selectedDemo.mapChecksum) {
+          const buffer = await entryBuffer(candidate);
+          if (goldSrcMapChecksum(buffer) === selectedDemo.mapChecksum) {
             exactMap = candidate;
+            exactMapBuffer = buffer;
             break;
           }
         } catch {
@@ -1789,6 +1821,8 @@
       ...files.filter((entry) => !candidateSet.has(entry)),
       { ...exactMap, path: canonicalPath },
     ];
+    activeScoringMapBuffer = exactMapBuffer;
+    refreshVerifiedWallbangs();
     mapChecksumMatches.value = true;
   };
 

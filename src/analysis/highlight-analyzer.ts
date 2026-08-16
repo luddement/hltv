@@ -83,6 +83,15 @@ const weaponBonus = (weapon: string): ScoreReason | undefined => {
   return undefined;
 };
 
+export const withVerifiedWallbangBonus = (rating: FragRating): FragRating => {
+  if (rating.reasons.some((entry) => entry.code === 'wallbang')) return rating;
+  return {
+    ...rating,
+    score: clampScore(rating.score + 5),
+    reasons: [...rating.reasons, reason('wallbang', 'Wallbang', 5, 'derived')],
+  };
+};
+
 const normalizedWeapon = (weapon: string): string => {
   const normalized = weapon.toLowerCase();
   if (normalized === 'mp5n') return 'mp5navy';

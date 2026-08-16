@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildHighlightAnalysis } from '/@/analysis/highlight-analyzer';
+import {
+  buildHighlightAnalysis,
+  withVerifiedWallbangBonus,
+} from '/@/analysis/highlight-analyzer';
 import type {
   AnalysisPerspective,
   DeathEvent,
@@ -243,6 +246,25 @@ describe('highlight scoring', () => {
     expect(rating?.reasons.map((entry) => entry.code)).toEqual([
       'frag', 'opening_kill', 'round_win',
     ]);
+  });
+
+  it('adds only a small bonus to a geometry-verified wallbang', () => {
+    const rating = buildHighlightAnalysis(input({
+      kind: 'hltv',
+      focusPlayerIds: [],
+      focusTeamHistory: [],
+      evidence: 'unknown',
+    })).fragRatings[0];
+    const wallbang = withVerifiedWallbangBonus(rating);
+
+    expect(wallbang.score).toBe(Math.min(100, rating.score + 5));
+    expect(wallbang.reasons.at(-1)).toEqual({
+      code: 'wallbang',
+      label: 'Wallbang',
+      points: 5,
+      evidence: 'derived',
+    });
+    expect(withVerifiedWallbangBonus(wallbang)).toEqual(wallbang);
   });
 
   it('returns identical scores for identical input', () => {
