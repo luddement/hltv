@@ -334,7 +334,7 @@ class XashLoader {
     xash: Xash3D,
     onProgress?: (progress: LoadProgress) => void,
   ): Promise<void> {
-    if (!entries.length) throw new Error('Inga Counter-Strike-resurser hittades.');
+    if (!entries.length) throw new Error('No Counter-Strike assets were found.');
 
     xash.em.FS.mkdirTree(XASH_BASE_DIR);
     const firstPath = entries[0].path.replace(/\\/g, '/');
@@ -360,7 +360,7 @@ class XashLoader {
       const data = 'file' in entry
         ? await entry.file.arrayBuffer()
         : await fetch(entry.url).then((response) => {
-            if (!response.ok) throw new Error(`Kunde inte läsa ${relativePath}.`);
+            if (!response.ok) throw new Error(`Could not read ${relativePath}.`);
             return response.arrayBuffer();
           });
       xash.em.FS.writeFile(XASH_BASE_DIR + relativePath, new Uint8Array(data));

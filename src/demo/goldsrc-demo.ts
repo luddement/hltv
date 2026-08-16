@@ -62,7 +62,7 @@ const readCString = (
 
 const parseHeader = (buffer: ArrayBuffer) => {
   if (buffer.byteLength < HEADER_SIZE) {
-    throw new Error('Filen är för liten för att vara ett GoldSrc-demo.');
+    throw new Error('The file is too small to be a GoldSrc demo.');
   }
 
   const bytes = new Uint8Array(buffer);
@@ -70,7 +70,7 @@ const parseHeader = (buffer: ArrayBuffer) => {
   const magic = readCString(bytes, 0, 8);
 
   if (magic !== 'HLDEMO') {
-    throw new Error(`Okänt demoformat: ${magic || 'saknar signatur'}.`);
+    throw new Error(`Unknown demo format: ${magic || 'missing signature'}.`);
   }
 
   return {
@@ -86,7 +86,7 @@ const parseHeader = (buffer: ArrayBuffer) => {
 
 const parseDirectory = (buffer: ArrayBuffer): DemoDirectoryEntry[] => {
   if (buffer.byteLength < 4) {
-    throw new Error('Demots katalog är trasig eller avklippt.');
+    throw new Error('The demo directory is corrupt or truncated.');
   }
 
   const bytes = new Uint8Array(buffer);
@@ -99,7 +99,7 @@ const parseDirectory = (buffer: ArrayBuffer): DemoDirectoryEntry[] => {
 
   const requiredSize = 4 + count * DIRECTORY_ENTRY_SIZE;
   if (buffer.byteLength < requiredSize) {
-    throw new Error('Demots sektionskatalog är ofullständig.');
+    throw new Error('The demo section directory is incomplete.');
   }
 
   return Array.from({ length: count }, (_, index) => {
@@ -123,15 +123,15 @@ const selectCompatibilityProfile = (
   gameDirectory: string,
 ): DemoCompatibilityProfile => {
   if (demoProtocol !== 5) {
-    throw new Error(`Demoformat ${demoProtocol} stöds inte ännu.`);
+    throw new Error(`Demo format ${demoProtocol} is not supported yet.`);
   }
   if (gameDirectory.toLowerCase() !== 'cstrike') {
-    throw new Error(`Spelmodden ${gameDirectory || 'okänd'} stöds inte ännu.`);
+    throw new Error(`Game mod ${gameDirectory || 'unknown'} is not supported yet.`);
   }
 
   const profile = `cs-goldsrc-${networkProtocol}` as DemoCompatibilityProfile;
   if (!(profile in DEMO_COMPATIBILITY_PROFILES)) {
-    throw new Error(`GoldSrc-nätprotokoll ${networkProtocol} stöds inte ännu.`);
+    throw new Error(`GoldSrc network protocol ${networkProtocol} is not supported yet.`);
   }
   return profile;
 };
@@ -146,7 +146,7 @@ const combineInspection = (
   const directory = parseDirectory(directoryBuffer);
 
   if (header.directoryOffset < HEADER_SIZE || header.directoryOffset >= size) {
-    throw new Error('Demots katalogpekare ligger utanför filen.');
+    throw new Error('The demo directory pointer is outside the file.');
   }
 
   return {
@@ -171,7 +171,7 @@ const combineInspection = (
 const getUrlSize = async (url: string): Promise<number> => {
   const response = await fetch(url, { headers: { Range: 'bytes=0-0' } });
   if (!response.ok) {
-    throw new Error(`Kunde inte läsa demot (${response.status}).`);
+    throw new Error(`Could not read the demo (${response.status}).`);
   }
 
   const contentRange = response.headers.get('content-range');
@@ -195,7 +195,7 @@ const fetchRange = async (
     headers: { Range: `bytes=${start}-${end}` },
   });
   if (!response.ok) {
-    throw new Error(`Kunde inte läsa byte ${start}–${end} från demot.`);
+    throw new Error(`Could not read bytes ${start}–${end} from the demo.`);
   }
   return response.arrayBuffer();
 };
@@ -253,14 +253,14 @@ export const readDemoSource = async (source: DemoSource): Promise<ArrayBuffer> =
 
   const response = await fetch(source.url);
   if (!response.ok) {
-    throw new Error(`Kunde inte hämta demot (${response.status}).`);
+    throw new Error(`Could not fetch the demo (${response.status}).`);
   }
   return response.arrayBuffer();
 };
 
 export const formatBytes = (bytes: number): string => {
   const mib = bytes / 1024 / 1024;
-  return `${mib.toLocaleString('sv-SE', { maximumFractionDigits: 1 })} MB`;
+  return `${mib.toLocaleString('en-GB', { maximumFractionDigits: 1 })} MB`;
 };
 
 export const formatDuration = (seconds: number): string => {

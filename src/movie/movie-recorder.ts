@@ -72,7 +72,7 @@ export const prepareMovieOutput = async (
 ): Promise<PreparedMovieOutput> => {
   const container = preferredMovieContainer();
   if (!container) {
-    throw new Error('Browsern saknar WebCodecs som krävs för stabil 60 FPS-export.');
+    throw new Error('This browser does not provide the WebCodecs support required for stable 60 FPS export.');
   }
   const filename = `${filenameWithoutExtension}.${container.extension}`;
   const picker = (window as SaveFileWindow).showSaveFilePicker;
@@ -142,7 +142,7 @@ export class MovieRecorder {
       outputCanvas.width = options.quality.width;
       outputCanvas.height = options.quality.height;
       const context = outputCanvas.getContext('2d', { alpha: false, desynchronized: true });
-      if (!context) throw new Error('Kunde inte skapa filmens renderingsyta.');
+      if (!context) throw new Error('Could not create the movie render surface.');
       this.outputCanvas = outputCanvas;
       this.context = context;
     }
@@ -224,11 +224,11 @@ export class MovieRecorder {
     output.addVideoTrack(videoSource, { frameRate: this.options.quality.fps });
 
     if (typeof AudioEncoder === 'undefined') {
-      throw new Error('Browsern saknar WebCodecs-ljudkodaren som krävs för AAC i MP4.');
+      throw new Error('This browser does not provide the WebCodecs audio encoder required for AAC in MP4.');
     }
     const audioCapture = this.options.audio;
     if (!audioCapture) {
-      throw new Error('Kunde inte ansluta motorns PCM-ljud till filmexporten.');
+      throw new Error('Could not connect the engine PCM audio to the movie export.');
     }
     const audioBitrate = await this.selectAacBitrate(audioCapture);
     const audioSource = new AudioSampleSource({
@@ -275,7 +275,7 @@ export class MovieRecorder {
       }
     }
     throw new Error(
-      `Browsern stöder inte AAC ${numberOfChannels} kanaler i ${audio.sampleRate} Hz.`,
+      `This browser does not support ${numberOfChannels}-channel AAC at ${audio.sampleRate} Hz.`,
     );
   }
 
@@ -336,7 +336,7 @@ export class MovieRecorder {
     const browser = await VideoEncoder.isConfigSupported(browserConfig);
     if (!browser.supported) {
       throw new Error(
-        `Browsern kan inte koda H.264 ${width}×${height} i ${fps} FPS med WebCodecs.`,
+        `This browser cannot encode H.264 ${width}×${height} at ${fps} FPS with WebCodecs.`,
       );
     }
     await this.verifyEncoder(browserConfig);
@@ -350,7 +350,7 @@ export class MovieRecorder {
     probe.width = width;
     probe.height = height;
     const context = probe.getContext('2d', { alpha: false });
-    if (!context) throw new Error('Kunde inte skapa kodarens testbild.');
+    if (!context) throw new Error('Could not create the encoder test frame.');
     context.fillStyle = '#000';
     context.fillRect(0, 0, width, height);
     const source = this.outputCanvas ?? this.options.sourceCanvas;
@@ -474,7 +474,7 @@ export class MovieRecorder {
     canvas.width = this.options.quality.width;
     canvas.height = this.options.quality.height;
     const context = canvas.getContext('2d', { alpha: false });
-    if (!context) throw new Error('Kunde inte skapa filmens introplatta.');
+    if (!context) throw new Error('Could not create the movie intro card.');
     renderMovieIntro(context, intro);
 
     const duration = 1 / this.options.quality.fps;
@@ -540,7 +540,7 @@ export class MovieRecorder {
       canvas.width = this.options.quality.width;
       canvas.height = this.options.quality.height;
       context = canvas.getContext('2d', { alpha: false, desynchronized: true }) ?? undefined;
-      if (!context) throw new Error('Kunde inte skapa filmens crosshair-lager.');
+      if (!context) throw new Error('Could not create the movie crosshair layer.');
       this.directOverlayCanvas = canvas;
       this.directOverlayContext = context;
     }
@@ -586,7 +586,7 @@ export class MovieRecorder {
     if (!block.channels.length || !block.channels[0]?.length || block.sampleRate <= 0) return;
     const frameCount = block.channels[0].length;
     if (block.channels.some((channel) => channel.length !== frameCount)) {
-      this.setFailure(new Error('Motorns PCM-kanaler hade olika längd.'));
+      this.setFailure(new Error('The engine PCM channels had different lengths.'));
       return;
     }
     if (!this.audioSampleRate) {
@@ -594,7 +594,7 @@ export class MovieRecorder {
       this.audioChannelCount = block.channels.length;
     } else if (block.sampleRate !== this.audioSampleRate
       || block.channels.length !== this.audioChannelCount) {
-      this.setFailure(new Error('Motorns PCM-format ändrades mitt under exporten.'));
+      this.setFailure(new Error('The engine PCM format changed during export.'));
       return;
     }
 
@@ -746,10 +746,10 @@ export class MovieRecorder {
     this.videoSource?.close();
     this.audioSource?.close();
     const output = this.output;
-    if (!output) throw new Error('Videokodaren startade aldrig.');
+    if (!output) throw new Error('The video encoder never started.');
     const captureFailure = this.failure
       ?? (this.receivedAudioFrames === 0
-        ? new Error('Motorn levererade inga PCM-ljudblock till filmen.')
+        ? new Error('The engine did not deliver any PCM audio blocks to the movie.')
         : undefined);
     // Even when a source failed, finalize all packets accepted up to that
     // point. This writes the MP4 index and preserves a playable partial file;

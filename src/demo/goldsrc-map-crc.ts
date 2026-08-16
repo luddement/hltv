@@ -12,7 +12,7 @@ for (let value = 0; value < crcTable.length; value += 1) {
 
 export const goldSrcMapChecksum = (buffer: ArrayBuffer): number => {
   if (buffer.byteLength < BSP_HEADER_SIZE) {
-    throw new Error('BSP-filen är för liten för att innehålla en giltig header.');
+    throw new Error('The BSP file is too small to contain a valid header.');
   }
 
   const bytes = new Uint8Array(buffer);
@@ -25,7 +25,7 @@ export const goldSrcMapChecksum = (buffer: ArrayBuffer): number => {
     const offset = view.getInt32(4 + index * 8, true);
     const length = view.getInt32(8 + index * 8, true);
     if (offset < 0 || length < 0 || offset + length > bytes.byteLength) {
-      throw new Error(`BSP-lump ${index} ligger utanför filen.`);
+      throw new Error(`BSP lump ${index} is outside the file.`);
     }
     for (let position = offset; position < offset + length; position += 1) {
       checksum = crcTable[(checksum ^ bytes[position]) & 0xff] ^ (checksum >>> 8);

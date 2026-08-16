@@ -129,10 +129,10 @@ export const renderMovieIntro = (
 
   context.fillStyle = 'rgba(200,245,66,.13)';
   context.fillRect(width * 0.075, height * 0.12, width * 0.85, Math.max(1, 2 * scale));
-  text(context, 'HLTV REPLAY LAB / ENDAST FRAGS', width * 0.075, height * 0.105,
+  text(context, 'PRAXXA HLTV PLAYER / ONLY FRAGS', width * 0.075, height * 0.105,
     14 * scale, ACID, 700, 'left', MONO);
   if (card.matchDate) {
-    text(context, 'MATCHDATUM', centerX, height * 0.175,
+    text(context, 'MATCH DATE', centerX, height * 0.175,
       11 * scale, MUTED, 650, 'center', MONO);
     fittedText(context, card.matchDate.toUpperCase(), centerX, height * 0.225,
       54 * scale, 30 * scale, width * 0.72, PAPER, 850);
@@ -147,10 +147,10 @@ export const renderMovieIntro = (
     58 * scale, 30 * scale, width * 0.78, PAPER, 850);
 
   const focusLabel = card.focusKind === 'player'
-    ? 'FÖLJER SPELARE'
+    ? 'FOLLOWING PLAYER'
     : card.focusKind === 'team'
-      ? 'FÖLJER LAG'
-      : 'VISAR FRAGS FRÅN';
+      ? 'FOLLOWING TEAM'
+      : 'SHOWING FRAGS FROM';
   const focusY = height * 0.755;
   const focusWidth = Math.min(width * 0.78, 920 * scale);
   panel(context, centerX - focusWidth / 2, focusY - 52 * scale, focusWidth, 132 * scale, 0.72);

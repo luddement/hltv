@@ -2,34 +2,27 @@
   <main :class="['app-shell', `interface-${interfaceTheme}`, { 'engine-open': engineVisible }]">
     <section v-if="!engineVisible" class="workspace">
       <header class="topbar">
-        <a class="brand" href="#" aria-label="HLTV Replay Lab">
+        <a class="brand" href="#" aria-label="PRAXXA HLTV Player">
           <span class="brand-mark"><i></i><i></i><i></i></span>
-          <span>HLTV</span>
-          <span class="brand-muted">Replay Lab</span>
+          <span>PRAXXA</span>
+          <span class="brand-muted">HLTV Player</span>
         </a>
         <div class="topbar-actions">
-          <label class="interface-theme-select">
-            <span>Tema</span>
-            <select :value="interfaceTheme" @change="onInterfaceThemeSelect">
-              <option value="replay">Replay Lab</option>
-              <option value="quakenet">QuakeNet XP</option>
-            </select>
-          </label>
-          <div class="runtime-pill"><span></span> Kör lokalt i din browser</div>
+          <div class="runtime-pill"><span></span> Runs locally in your browser</div>
         </div>
       </header>
 
       <div v-if="interfaceTheme === 'replay'" class="hero-grid">
         <div class="hero-copy">
-          <p class="eyebrow">GoldSrc archive player / build 001</p>
-          <h1>Gamla matcher.<br /><em>Nytt liv.</em></h1>
+          <p class="eyebrow">PRAXXA HLTV Player / build 001</p>
+          <h1>Old matches.<br /><em>New life.</em></h1>
           <p class="lede">
-            Öppna klassiska HLTV-demos direkt på din Mac. Inga uppladdningar,
-            ingen videokonvertering—originalmotorn kör matchen lokalt.
+            Open classic HLTV demos directly in your browser. No uploads,
+            no video conversion—the original engine runs the match locally.
           </p>
         </div>
 
-        <aside class="signal-card" aria-label="Systemstatus">
+        <aside class="signal-card" aria-label="System status">
           <div class="radar">
             <span class="radar-ring radar-ring-one"></span>
             <span class="radar-ring radar-ring-two"></span>
@@ -41,16 +34,16 @@
           <div class="signal-copy">
             <span>Engine</span>
             <strong>Xash3D + CS 1.6</strong>
-            <small>Native HUD · versionsprofiler</small>
+            <small>Native HUD · version profiles</small>
           </div>
         </aside>
       </div>
 
-      <section v-else class="mirc-shell" aria-label="QuakeNet och mIRC 6 i Windows XP-stil">
+      <section v-else class="mirc-shell" aria-label="QuakeNet and mIRC 6 in the Windows XP style">
         <div class="mirc-titlebar">
           <span class="mirc-icon">m</span>
           <strong>mIRC v6.16 - [#replaylab]</strong>
-          <div class="mirc-window-controls"><button type="button" aria-label="Minimera">_</button><button type="button" aria-label="Maximera">□</button><button class="close" type="button" aria-label="Stäng">×</button></div>
+          <div class="mirc-window-controls"><button type="button" aria-label="Minimize">_</button><button type="button" aria-label="Maximize">□</button><button class="close" type="button" aria-label="Close">×</button></div>
         </div>
         <div class="mirc-menubar"><span>File</span><span>View</span><span>Favorites</span><span>Tools</span><span>Commands</span><span>Window</span><span>Help</span></div>
         <div class="mirc-toolbar">
@@ -66,7 +59,7 @@
             <div class="mirc-topic"><span>#replaylab</span> old demos never die | !top5 !score !play</div>
             <div class="mirc-lines">
               <p><time>[{{ mircClock }}]</time> <b class="irc-blue">* Now talking in #replaylab</b></p>
-              <p><time>[{{ mircClock }}]</time> <b class="irc-green">* Topic is 'HLTV Replay Lab // GoldSrc archive player'</b></p>
+              <p><time>[{{ mircClock }}]</time> <b class="irc-green">* Topic is 'PRAXXA HLTV Player // classic matches, new life'</b></p>
               <p><time>[{{ mircClock }}]</time> <b class="irc-gray">-Q- Welcome to QuakeNet. You are now authed.</b></p>
               <p><time>[{{ mircClock }}]</time> <b class="irc-red">&lt;@ReplayBot&gt;</b> demo loaded: <b>{{ demoInfo?.name ?? 'waiting_for_demo.dem' }}</b></p>
               <p><time>[{{ mircClock }}]</time> <b class="irc-blue">&lt;+m0nkey&gt;</b> !top5</p>
@@ -78,11 +71,11 @@
                   <b class="irc-nick">{{ playerLabel(moment.killerPlayerId, moment.startTimeMs) }}</b>
                   — <b class="irc-score">{{ moment.rating.score }}/100</b>
                   — {{ moment.eventIds.length }} {{ moment.eventIds.length === 1 ? 'frag' : 'frags' }}
-                  — {{ moment.rating.reasons.slice(0, 2).map((entry) => entry.label).join(' / ') }}
+                  — {{ moment.rating.reasons.slice(0, 2).map(scoreReasonLabel).join(' / ') }}
                 </p>
               </template>
               <p v-else><time>[{{ mircClock }}]</time> <b class="irc-red">&lt;@ReplayBot&gt;</b> indexing demo, hold on...</p>
-              <p><time>[{{ mircClock }}]</time> <b class="irc-blue">&lt;+m0nkey&gt;</b> gamla matcher. nytt liv.</p>
+              <p><time>[{{ mircClock }}]</time> <b class="irc-blue">&lt;+m0nkey&gt;</b> old matches. new life.</p>
               <p><time>[{{ mircClock }}]</time> <b class="irc-green">* @ReplayBot sets mode: +o movie-maker</b></p>
             </div>
             <div class="mirc-input"><span>&gt;</span><strong>type /play #1 to watch the frag_</strong></div>
@@ -100,13 +93,13 @@
         <div class="setup-heading">
           <div>
             <p class="step-label">Match setup</p>
-            <h2>Förbered uppspelningen</h2>
+            <h2>Prepare playback</h2>
           </div>
           <div class="privacy-note">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M7 10V8a5 5 0 0 1 10 0v2m-11 0h12v10H6z" />
             </svg>
-            Filer lämnar aldrig datorn
+            Files never leave your device
           </div>
         </div>
 
@@ -117,7 +110,7 @@
               <div class="card-title-row">
                 <div>
                   <span class="card-kicker">Demo</span>
-                  <h3>Välj matchfil</h3>
+                  <h3>Select match file</h3>
                 </div>
                 <span v-if="demoInfo" class="checkmark">✓</span>
               </div>
@@ -131,21 +124,21 @@
                   <strong>{{ demoInfo.name }}</strong>
                   <span>{{ formatBytes(demoInfo.size) }} · {{ demoInfo.magic }}</span>
                 </div>
-                <span class="ready-label">Redo</span>
+                <span class="ready-label">Ready</span>
               </div>
               <p v-else class="error-copy">{{ demoError }}</p>
 
               <dl v-if="demoInfo" class="metadata-grid">
-                <div><dt>Karta</dt><dd>{{ demoInfo.mapName }}</dd></div>
-                <div><dt>Längd</dt><dd>{{ formatDuration(demoInfo.duration) }}</dd></div>
-                <div><dt>Nätprotokoll</dt><dd>{{ demoInfo.networkProtocol }}</dd></div>
-                <div><dt>Typ</dt><dd>{{ analysisIndex ? (analysisIndex.demo.isHltv ? 'HLTV' : 'POV') : 'Analyserar…' }}</dd></div>
+                <div><dt>Map</dt><dd>{{ demoInfo.mapName }}</dd></div>
+                <div><dt>Duration</dt><dd>{{ formatDuration(demoInfo.duration) }}</dd></div>
+                <div><dt>Network protocol</dt><dd>{{ demoInfo.networkProtocol }}</dd></div>
+                <div><dt>Type</dt><dd>{{ analysisIndex ? (analysisIndex.demo.isHltv ? 'HLTV' : 'POV') : 'Analyzing…' }}</dd></div>
                 <div><dt>Frames</dt><dd>{{ formatNumber(demoInfo.frameCount) }}</dd></div>
-                <div><dt>Kart-CRC</dt><dd>{{ formatGoldSrcChecksum(demoInfo.mapChecksum) }}</dd></div>
+                <div><dt>Map CRC</dt><dd>{{ formatGoldSrcChecksum(demoInfo.mapChecksum) }}</dd></div>
               </dl>
 
               <button class="secondary-button" type="button" @click="demoInput?.click()">
-                Välj en annan .dem
+                Select another .dem
               </button>
               <input
                 ref="demoInput"
@@ -164,8 +157,8 @@
             <div class="card-body">
               <div class="card-title-row">
                 <div>
-                  <span class="card-kicker">Spelresurser</span>
-                  <h3>Counter-Strike-resurser</h3>
+                  <span class="card-kicker">Game assets</span>
+                  <h3>Counter-Strike assets</h3>
                 </div>
                 <span v-if="gameReady" class="checkmark">✓</span>
               </div>
@@ -177,17 +170,17 @@
                 @click="selectGameFolder"
               >
                 <span class="folder-icon"></span>
-                <strong>Öppna spelmapp</strong>
-                <small>Mappen som innehåller valve/ och cstrike/</small>
+                <strong>Open game folder</strong>
+                <small>The folder containing valve/ and cstrike/</small>
               </button>
 
               <div v-else class="folder-summary">
                 <div class="folder-icon small"></div>
                 <div>
                   <strong>{{ gameFolderName }}</strong>
-                  <span>{{ formatNumber(gameFiles.length) }} filer · {{ formatBytes(gameBytes) }}</span>
+                  <span>{{ formatNumber(gameFiles.length) }} files · {{ formatBytes(gameBytes) }}</span>
                 </div>
-                <button type="button" @click="selectGameFolder">Byt mapp</button>
+                <button type="button" @click="selectGameFolder">Change folder</button>
               </div>
 
               <ul class="asset-checks">
@@ -212,23 +205,23 @@
         <div class="compatibility-strip">
           <span class="compat-icon">{{ demoInfo?.networkProtocol ?? '–' }}</span>
           <div>
-            <strong>Versionsprofil väljs från demots header</strong>
-            <p v-if="demoInfo">Demoformat {{ demoInfo.demoProtocol }} · GoldSrc protocol {{ demoInfo.networkProtocol }} · {{ demoInfo.directory.length }} sektioner</p>
-            <p v-else>Protocol 46, 47 och 48 har separata kompatibilitetslägen</p>
+            <strong>Version profile selected from the demo header</strong>
+            <p v-if="demoInfo">Demo format {{ demoInfo.demoProtocol }} · GoldSrc protocol {{ demoInfo.networkProtocol }} · {{ demoInfo.directory.length }} sections</p>
+            <p v-else>Protocols 46, 47 and 48 use separate compatibility modes</p>
           </div>
-          <span class="compat-state">{{ demoInfo ? 'Matchad' : 'Väntar' }}</span>
+          <span class="compat-state">{{ demoInfo ? 'Matched' : 'Waiting' }}</span>
         </div>
 
         <section v-if="demoInfo" class="analysis-panel" aria-labelledby="frag-heading">
           <div class="analysis-heading">
             <div>
               <p class="step-label">Demoindex v2</p>
-              <h2 id="frag-heading">Frags i matchen</h2>
+              <h2 id="frag-heading">Match frags</h2>
             </div>
             <div v-if="analysisIndex" class="analysis-stats">
               <span><strong>{{ displayDeathEvents.length }}</strong> frags</span>
-              <span><strong>{{ analysisIndex.rounds.length }}</strong> ronder</span>
-              <span><strong>{{ analysisIndex.players.length }}</strong> spelare</span>
+              <span><strong>{{ analysisIndex.rounds.length }}</strong> rounds</span>
+              <span><strong>{{ analysisIndex.players.length }}</strong> players</span>
             </div>
           </div>
 
@@ -241,7 +234,7 @@
                 v-if="analysisProgressPercent !== null"
                 class="analysis-progress-track"
                 role="progressbar"
-                aria-label="Analysförlopp"
+                aria-label="Analysis progress"
                 aria-valuemin="0"
                 aria-valuemax="100"
                 :aria-valuenow="analysisProgressPercent"
@@ -255,7 +248,7 @@
             <div v-if="topMoments.length || topRounds.length" class="highlight-overview">
               <section>
                 <div class="highlight-title">
-                  <div><span>Highlights</span><strong>Bästa spelbara moments</strong></div>
+                  <div><span>Highlights</span><strong>Best playable moments</strong></div>
                   <small>{{ analysisPerspectiveLabel }}</small>
                 </div>
                 <button
@@ -269,14 +262,14 @@
                   <span class="score-badge">{{ moment.rating.score }}</span>
                   <span class="highlight-copy">
                     <strong>{{ playerLabel(moment.killerPlayerId, moment.startTimeMs) }} · {{ moment.eventIds.length }} {{ moment.eventIds.length === 1 ? 'frag' : 'frags' }}</strong>
-                    <small>{{ moment.rating.reasons.slice(0, 2).map((entry) => entry.label).join(' · ') }}</small>
+                    <small>{{ moment.rating.reasons.slice(0, 2).map(scoreReasonLabel).join(' · ') }}</small>
                   </span>
                   <span class="highlight-meta">{{ logicalTeamNameForPlayer(moment.killerPlayerId) }} · {{ momentVisibilityLabel(moment) }}</span>
                 </button>
               </section>
               <section>
                 <div class="highlight-title">
-                  <div><span>Ronder</span><strong>Bästa lagrundor</strong></div>
+                  <div><span>Rounds</span><strong>Best team rounds</strong></div>
                   <small>0–100</small>
                 </div>
                 <button
@@ -290,16 +283,16 @@
                   <span class="score-badge">{{ rating.score }}</span>
                   <span class="highlight-copy">
                     <strong>{{ roundLabel(rating.roundId) }} · {{ roundTeamLabel(rating) }}</strong>
-                    <small>{{ rating.reasons.slice(0, 2).map((entry) => entry.label).join(' · ') || 'Låg informationsnivå' }}</small>
+                    <small>{{ rating.reasons.slice(0, 2).map(scoreReasonLabel).join(' · ') || 'Limited information' }}</small>
                   </span>
-                  <span class="highlight-meta">{{ Math.round(rating.confidence * 100) }} % säkerhet</span>
+                  <span class="highlight-meta">{{ Math.round(rating.confidence * 100) }}% confidence</span>
                 </button>
               </section>
             </div>
 
             <div class="frag-filters">
               <label v-if="analysisIndex.demo.perspective.kind === 'hltv'">
-                <span>Lag · styr Endast frags</span>
+                <span>Team · controls Only Frags</span>
                 <select :value="highlightTeam" @change="onHighlightTeamSelect">
                   <option value="all">{{ logicalMatchupLabel }}</option>
                   <option v-for="team in logicalTeamIndex.teams" :key="team.id" :value="team.id">
@@ -308,49 +301,65 @@
                 </select>
               </label>
               <label>
-                <span>Spelare · styr Endast frags</span>
+                <span>Player · controls Only Frags</span>
                 <select :value="fragPlayer" @change="onFragPlayerSelect">
-                  <option value="all">Alla spelare</option>
+                  <option value="all">All players</option>
                   <option v-for="player in killerPlayers" :key="player.playerId" :value="player.playerId">
                     {{ playerLabel(player.playerId) }}
                   </option>
                 </select>
               </label>
               <label>
-                <span>Sök</span>
-                <input v-model.trim="fragSearch" type="search" placeholder="Namn eller vapen" />
+                <span>Search</span>
+                <input v-model.trim="fragSearch" type="search" placeholder="Name or weapon" />
               </label>
               <label>
-                <span>Sortering</span>
+                <span>List sorting</span>
                 <select v-model="fragSort">
-                  <option value="time">Matchtid</option>
-                  <option value="score">Bäst betyg</option>
+                  <option value="time">Match time</option>
+                  <option value="score">Highest score</option>
                 </select>
+                <small>List only · playback stays chronological</small>
               </label>
               <label class="headshot-filter">
                 <input v-model="headshotsOnly" type="checkbox" />
-                Bara headshots
+                Headshots only
               </label>
-              <span class="filter-result">{{ filteredDeaths.length }} träffar</span>
+              <span class="filter-result">{{ filteredDeaths.length }} results</span>
             </div>
 
             <div class="frag-reel-launcher">
               <div class="frag-reel-copy">
-                <span>Snabbgranskning</span>
-                <strong>Se alla frags för vald spelare eller valt lag i följd</strong>
+                <span>Only Frags playback</span>
+                <strong>Watch every frag by the selected player or team</strong>
                 <small v-if="analysisIndex.demo.perspective.kind === 'hltv'">
-                  {{ fragReelTeamLabel }} · first person följer killern · 3 s före och efter
+                  {{ fragReelTeamLabel }} · first person follows the killer · 3 seconds before and after
                 </small>
-                <small v-else>3 s före och efter · luckor över 10 s hoppas över</small>
-                <small class="movie-estimate">
-                  Film: {{ formatDuration((fragMovieTimeline.durationMs + (movieIncludeIntro ? MOVIE_INTRO_DURATION_MS : 0)) / 1_000) }} · cirka {{ formatBytes(movieEstimatedBytes) }}
+                <small v-else>3 seconds before and after · gaps over 10 seconds are skipped</small>
+                <small>Playback always follows match time, regardless of list sorting.</small>
+              </div>
+              <div class="frag-reel-controls">
+                <button
+                  type="button"
+                  :disabled="!canStartFragReel || movieExportRunning"
+                  @click="playFragReel"
+                ><span class="play-icon"></span> Only Frags · {{ fragReelTeamShortLabel }} · {{ fragReelDeaths.length }}</button>
+              </div>
+            </div>
+
+            <section class="movie-export-section" aria-labelledby="movie-export-heading">
+              <div class="movie-export-copy">
+                <span>Movie export</span>
+                <strong id="movie-export-heading">Create a high-quality Only Frags movie</strong>
+                <small>
+                  {{ formatDuration((fragMovieTimeline.durationMs + (movieIncludeIntro ? MOVIE_INTRO_DURATION_MS : 0)) / 1_000) }} · approximately {{ formatBytes(movieEstimatedBytes) }}
                 </small>
                 <small v-if="movieExportNotice" class="movie-export-notice">{{ movieExportNotice }}</small>
                 <small v-if="movieExportError" class="movie-export-error">{{ movieExportError }}</small>
               </div>
-              <div class="frag-reel-controls">
+              <div class="movie-export-controls">
                 <label class="movie-quality-select">
-                  <span>Exportkvalitet</span>
+                  <span>Export quality</span>
                   <select v-model="movieQualityId" :disabled="movieExportRunning">
                     <option v-for="quality in MOVIE_QUALITIES" :key="quality.id" :value="quality.id">
                       {{ quality.label }}
@@ -364,28 +373,23 @@
                     :disabled="movieExportRunning"
                     @change="saveMovieIntroPreference"
                   />
-                  <span>Filmintro med matchinfo</span>
+                  <span>Match intro</span>
                 </label>
-                <button
-                  type="button"
-                  :disabled="!canStartFragReel || movieExportRunning"
-                  @click="playFragReel"
-                ><span class="play-icon"></span> Endast frags · {{ fragReelTeamShortLabel }} · {{ fragReelDeaths.length }}</button>
                 <button
                   class="movie-export-button"
                   type="button"
                   :disabled="!canStartFragReel || !movieExportSupported || movieExportRunning"
                   @click="exportFragMovie"
-                >Skapa film</button>
+                >Create movie</button>
               </div>
-            </div>
+            </section>
 
-            <div class="frag-list" role="table" aria-label="Fraglista">
+            <div class="frag-list" role="table" aria-label="Frag list">
               <div class="frag-header" role="row">
-                <span>Tid</span><span>Frag</span><span>Vapen</span><span>Rond</span><span>Betyg</span>
+                <span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span>
               </div>
               <button
-                v-for="death in filteredDeaths"
+                v-for="(death, index) in filteredDeaths"
                 :key="death.eventId"
                 :class="['frag-row', { selected: selectedFragId === death.eventId }]"
                 type="button"
@@ -393,25 +397,26 @@
                 :disabled="!canLaunch"
                 @click="playFrag(death)"
               >
+                <span class="frag-number">{{ index + 1 }}</span>
                 <time>{{ formatEventTime(death.demoTimeMs) }}</time>
                 <span class="frag-players">
-                  <b :class="teamClass(death.killerPlayerId, death.demoTimeMs)">{{ death.worldKill ? 'Världen' : playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot) }}</b>
+                  <b :class="teamClass(death.killerPlayerId, death.demoTimeMs)">{{ death.worldKill ? 'World' : playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot) }}</b>
                   <i>→</i>
                   <b :class="teamClass(death.victimPlayerId, death.demoTimeMs)">{{ playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot) }}</b>
                   <em v-if="death.headshot">HS</em>
                 </span>
-                <span class="frag-weapon">{{ death.weapon || 'okänt' }}</span>
+                <span class="frag-weapon">{{ death.weapon || 'unknown' }}</span>
                 <span>{{ roundLabel(death.roundId) }}</span>
                 <span class="frag-score">
                   <b>{{ fragRatingById.get(death.eventId)?.score ?? '–' }}</b>
                   <i>▶</i>
                 </span>
               </button>
-              <p v-if="!filteredDeaths.length" class="empty-frags">Inga frags matchar filtren.</p>
+              <p v-if="!filteredDeaths.length" class="empty-frags">No frags match the filters.</p>
             </div>
             <p class="analysis-footnote">
-              {{ analysisCacheHit ? 'Laddat från lokalt index.' : 'Analyserat och sparat lokalt.' }}
-              Klicka på ett frag för att starta tre sekunder före händelsen.
+              {{ analysisCacheHit ? 'Loaded from the local index.' : 'Analyzed and saved locally.' }}
+              Click a frag to start three seconds before the event.
             </p>
           </template>
         </section>
@@ -419,10 +424,10 @@
         <section class="hud-setup" aria-labelledby="hud-heading">
           <div class="hud-setup-copy">
             <p class="step-label">Presentation</p>
-            <h2 id="hud-heading">Välj HUD</h2>
-            <span>Kan bytas direkt under uppspelningen.</span>
+            <h2 id="hud-heading">Choose HUD</h2>
+            <span>Can be changed during playback.</span>
           </div>
-          <div class="hud-preset-grid" role="radiogroup" aria-label="HUD-läge">
+          <div class="hud-preset-grid" role="radiogroup" aria-label="HUD mode">
             <button
               v-for="preset in hudPresets"
               :key="preset.id"
@@ -452,7 +457,7 @@
           >
             <span v-if="launching" class="spinner"></span>
             <span v-else class="play-icon"></span>
-            {{ launching ? 'Laddar motorn…' : 'Spela matchen' }}
+            {{ launching ? 'Loading engine…' : 'Play match' }}
           </button>
         </div>
       </section>
@@ -475,13 +480,13 @@
       <div v-if="launching" class="engine-loader">
         <div class="loader-ring"></div>
         <strong>{{ loadingLabel }}</strong>
-        <span>{{ loadingProgress ? `${formatNumber(loadingProgress)} resurser` : 'Initierar CS-klienten…' }}</span>
+        <span>{{ loadingProgress ? `${formatNumber(loadingProgress)} assets` : 'Initializing the CS client…' }}</span>
       </div>
 
       <div v-else-if="seeking" class="seek-loader">
         <div class="loader-ring"></div>
-        <strong>Snabbspolar till vald plats</strong>
-        <span>Bild och ljud är avstängda under uppbyggnaden.</span>
+        <strong>Seeking to the selected position</strong>
+        <span>Video and audio are disabled while the scene is rebuilt.</span>
       </div>
 
       <div
@@ -544,7 +549,7 @@
           <div class="analyst-metrics">
             <div v-for="metric in activeHudReasons" :key="metric.code">
               <strong>{{ metric.points > 0 ? `+${metric.points}` : metric.points }}</strong>
-              <span>{{ metric.label }}</span>
+              <span>{{ scoreReasonLabel(metric) }}</span>
             </div>
           </div>
           <div class="analyst-timeline">
@@ -573,53 +578,53 @@
           <p>{{ fragReelTeamLabel }} · {{ fragReelIndex + 1 }}/{{ fragReelDeaths.length }} frags</p>
           <div class="movie-export-progress"><i :style="{ width: `${movieExportProgress}%` }"></i></div>
           <small>
-            {{ Math.round(movieExportProgress) }} % · {{ formatBytes(movieExportBytes) }} skrivna
-            · {{ movieRenderFps ? `${movieRenderFps.toFixed(1)} kodade FPS` : 'startar kodaren…' }}
-            · {{ movieRecorder?.encodingBacklogFrames ?? 0 }} frames i kö
+            {{ Math.round(movieExportProgress) }}% · {{ formatBytes(movieExportBytes) }} written
+            · {{ movieRenderFps ? `${movieRenderFps.toFixed(1)} encoded FPS` : 'starting encoder…' }}
+            · {{ movieRecorder?.encodingBacklogFrames ?? 0 }} queued frames
           </small>
           <small v-if="movieEncoderCatchingUp">
-            Spelet är tillfälligt fryst medan kodaren tömmer kön. Filmens tid och ljud är pausade tillsammans.
+            Playback is temporarily frozen while the encoder drains its queue. Movie time and audio are paused together.
           </small>
-          <small v-else>Filmen renderas bakom denna vy. Håll denna browserflik öppen och aktiv.</small>
+          <small v-else>The movie is rendering behind this view. Keep this browser tab open and active.</small>
           <button
             type="button"
             :disabled="movieExportState === 'finalizing'"
             @click="() => cancelMovieExport()"
-          >{{ movieExportState === 'finalizing' ? 'Sparar filen…' : 'Avsluta och spara del' }}</button>
+          >{{ movieExportState === 'finalizing' ? 'Saving file…' : 'Stop and save partial movie' }}</button>
         </div>
       </div>
 
       <div v-else-if="movieExportState === 'error'" class="movie-export-overlay">
         <div class="movie-export-card">
-          <span>HQ-EXPORT AVBRUTEN</span>
-          <strong>Exporten kunde inte slutföras</strong>
+          <span>HQ EXPORT STOPPED</span>
+          <strong>The export could not be completed</strong>
           <p class="movie-export-error">{{ movieExportError }}</p>
           <small v-if="movieExportNotice">{{ movieExportNotice }}</small>
-          <small v-else>Ingen film godkändes. Detaljerna finns kvar här så felet kan felsökas.</small>
-          <button type="button" @click="downloadMovieExportDiagnostics">Ladda ner fellogg</button>
-          <button type="button" @click="closeEngine">← Tillbaka</button>
+          <small v-else>No movie was accepted. The details remain available for troubleshooting.</small>
+          <button type="button" @click="downloadMovieExportDiagnostics">Download error log</button>
+          <button type="button" @click="closeEngine">← Back</button>
         </div>
       </div>
 
       <div class="engine-toolbar">
-        <button type="button" @click="closeEngine">← Tillbaka</button>
+        <button type="button" @click="closeEngine">← Back</button>
         <div>
           <span :class="['engine-light', { live: engineStarted }]"></span>
-          {{ engineStarted ? 'Motor igång' : 'Startar…' }}
+          {{ engineStarted ? 'Engine running' : 'Starting…' }}
         </div>
         <div v-if="fragReelActive" class="frag-reel-status">
-          <span>ENDAST FRAGS · {{ fragReelTeamLabel }} <strong>{{ fragReelIndex + 1 }}/{{ fragReelDeaths.length }}</strong></span>
+          <span>ONLY FRAGS · {{ fragReelTeamLabel }} <strong>{{ fragReelIndex + 1 }}/{{ fragReelDeaths.length }}</strong></span>
           <i aria-hidden="true"></i>
           <span>SCORE <strong>{{ activeFragReelScore }}/100</strong></span>
         </div>
-        <button v-if="fragReelActive" type="button" @click="stopFragReel">Avsluta fragsläge</button>
+        <button v-if="fragReelActive" type="button" @click="stopFragReel">Exit Only Frags</button>
         <label class="engine-hud-select">
           <span>HUD</span>
           <select :value="hudPreset" :disabled="movieExportRunning" @change="onHudSelect">
             <option v-for="preset in hudPresets" :key="preset.id" :value="preset.id">{{ preset.label }}</option>
           </select>
         </label>
-        <button type="button" @click="consoleOpen = !consoleOpen">Diagnostik</button>
+        <button type="button" @click="consoleOpen = !consoleOpen">Diagnostics</button>
       </div>
 
       <aside v-if="consoleOpen" class="console-panel">
@@ -653,6 +658,7 @@
     HighlightMoment,
     HistoryEntry,
     RoundRating,
+    ScoreReason,
   } from '/@/analysis/schema';
   import { isDeathEvent } from '/@/analysis/schema';
   import {
@@ -743,11 +749,11 @@
     label: string;
     detail: string;
   }> = [
-    { id: 'original', short: 'CS', label: 'Original', detail: 'Klassisk CS-HUD' },
-    { id: 'cinematic', short: '01', label: 'Cinematic', detail: 'Ren fragpresentation' },
-    { id: 'analyst', short: '02', label: 'Analyst', detail: 'Score och situation' },
-    { id: 'movie', short: '03', label: 'Movie', detail: 'Filmisk lower third' },
-    { id: 'clean', short: '00', label: 'Ren bild', detail: 'Ingen HUD' },
+    { id: 'original', short: 'CS', label: 'Original', detail: 'Classic CS HUD' },
+    { id: 'cinematic', short: '01', label: 'Cinematic', detail: 'Clean frag presentation' },
+    { id: 'analyst', short: '02', label: 'Analyst', detail: 'Score and situation' },
+    { id: 'movie', short: '03', label: 'Movie', detail: 'Cinematic lower third' },
+    { id: 'clean', short: '00', label: 'Clean', detail: 'No HUD' },
   ];
 
   const bundledDemo: DemoSource = {
@@ -859,7 +865,40 @@
     playerId ? logicalTeamIndex.value.teamIdByPlayerId.get(playerId) : undefined;
   const logicalTeamNameForPlayer = (playerId: string | null): string => {
     const teamId = logicalTeamIdForPlayer(playerId);
-    return teamId ? logicalTeamName(teamId) : 'Okänt lag';
+    return teamId ? logicalTeamName(teamId) : 'Unknown team';
+  };
+  const reasonNumbers = (label: string): string[] => label.match(/[\d]+(?:[.,][\d]+)?/g) ?? [];
+  const scoreReasonLabel = (entry: ScoreReason): string => {
+    const numbers = reasonNumbers(entry.label);
+    switch (entry.code) {
+      case 'frag': return 'Frag';
+      case 'headshot': return 'Headshot';
+      case 'opening_kill': return 'Opening kill';
+      case 'clutch_kill': return `Clutch frag in 1v${numbers.at(-1) ?? '?'}`;
+      case 'numbers_disadvantage': return `Frag while down ${numbers[0] ?? '?'}v${numbers[1] ?? '?'}`;
+      case 'round_win': return entry.points >= 15 ? 'Wins the round' : 'Contributes to a round win';
+      case 'weapon_knife': return 'Knife frag';
+      case 'weapon_deagle': return 'Deagle frag';
+      case 'precision_one_shot': return '1 shot to kill';
+      case 'precision_two_shots': return '2 shots to kill';
+      case 'precision_short_burst': return `${numbers[0] ?? '?'} shots to kill`;
+      case 'spray_penalty': return `${numbers[0] ?? '?'}-shot spray`;
+      case 'fast_kill': return `Kill in ${numbers[0] ?? '?'} ms`;
+      case 'spray_transfer': return 'Spray transfer to a new target';
+      case 'kill_streak': return `Frag ${numbers[0] ?? '?'} in quick succession`;
+      case 'trade': return 'Quick trade';
+      case 'wallbang': return 'Wallbang';
+      case 'best_frag': return `Best frag ${numbers[0] ?? '?'}/100`;
+      case 'multi_kill': return `${numbers[0] ?? '?'} frags in ${(numbers[1] ?? '?').replace(',', '.')} s`;
+      case 'tempo': return 'High tempo';
+      case 'headshots': return `${numbers[0] ?? '?'} headshots`;
+      case 'best_moment': return `Best moment ${numbers[0] ?? '?'}/100`;
+      case 'team_frags': return `${numbers[0] ?? '?'} team frags`;
+      case 'comeback': return `Plays from a ${numbers[0] ?? '?'}-player disadvantage`;
+      case 'clutch_round': return 'Clutch situation in the round';
+      case 'bomb_context': return 'Bomb event affects the round';
+      default: return entry.label;
+    }
   };
   const logicalTeamIdForSideAt = (side: CompetitiveSide, atMs: number): LogicalTeamId =>
     logicalTeamForSideAt(
@@ -991,7 +1030,7 @@
   };
 
   const playerLabel = (playerId: string | null, atMs?: number, slot?: number): string =>
-    playerHistory(playerId, atMs).name ?? (slot ? `Okänd #${slot}` : 'Okänd');
+    playerHistory(playerId, atMs).name ?? (slot ? `Unknown #${slot}` : 'Unknown');
   const teamClass = (playerId: string | null, atMs: number): string => {
     const team = playerHistory(playerId, atMs).team;
     return team === 'TERRORIST' ? 'team-t' : team === 'CT' ? 'team-ct' : '';
@@ -1028,27 +1067,27 @@
   const analysisPerspectiveLabel = computed(() => {
     const perspective = analysisIndex.value?.demo.perspective;
     if (!perspective) return '';
-    if (perspective.kind === 'hltv') return 'Båda lag · HLTV-underlag';
+    if (perspective.kind === 'hltv') return 'Both teams · HLTV data';
     const teams = Array.from(new Set(perspective.focusTeamHistory.map((entry) => entry.value)));
     return teams.length === 1
-      ? `POV · endast inspelad spelare (${teamLabel(teams[0] as 'TERRORIST' | 'CT')})`
-      : 'POV · endast inspelad spelare';
+      ? `POV · recorded player only (${teamLabel(teams[0] as 'TERRORIST' | 'CT')})`
+      : 'POV · recorded player only';
   });
   const momentVisibilityLabel = (moment: HighlightMoment): string => {
     const firstRating = fragRatingById.value.get(moment.eventIds[0]);
     if (firstRating?.visibility === 'recorded_pov') return 'Inspelad POV';
     if (firstRating?.visibility === 'killfeed_only') {
       return firstRating.reconstruction.position
-        ? 'Lagkamrat · entitydata finns'
-        : 'Endast killfeed';
+        ? 'Teammate · entity data available'
+        : 'Killfeed only';
     }
-    if (firstRating?.visibility === 'hltv_replay') return 'Verifierad HLTV-POV';
-    if (firstRating?.visibility === 'hltv_director') return 'HLTV-direktör · POV saknas';
-    return 'Bild okänd';
+    if (firstRating?.visibility === 'hltv_replay') return 'Verified HLTV POV';
+    if (firstRating?.visibility === 'hltv_director') return 'HLTV director · POV unavailable';
+    return 'Video unknown';
   };
   const formatEventTime = formatDemoTime;
   const filteredDeaths = computed(() => {
-    const query = fragSearch.value.toLocaleLowerCase('sv-SE');
+    const query = fragSearch.value.toLocaleLowerCase('en-GB');
     const matches = displayDeathEvents.value.filter((death) => {
       if (fragPlayer.value !== 'all' && death.killerPlayerId !== fragPlayer.value) return false;
       if (headshotsOnly.value && !death.headshot) return false;
@@ -1057,7 +1096,7 @@
         death.weapon,
         playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot),
         playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot),
-      ].some((value) => value.toLocaleLowerCase('sv-SE').includes(query));
+      ].some((value) => value.toLocaleLowerCase('en-GB').includes(query));
     });
     return fragSort.value === 'score'
       ? [...matches].sort((left, right) =>
@@ -1096,14 +1135,14 @@
   const fragReelTeamShortLabel = computed(() => fragPlayer.value !== 'all'
     ? playerLabel(fragPlayer.value)
     : highlightTeam.value === 'all'
-      ? 'Båda'
+      ? 'Both'
       : logicalTeamName(highlightTeam.value));
   const fragMovieTimeline = computed(() => buildFragMovieTimeline(fragReelDeaths.value));
   const movieMatchDateLabel = computed(() => {
     const inferred = inferDemoMatchDate(demoSource.value.name);
     if (!inferred) return '';
     const [year, month, day] = inferred.split('-').map(Number);
-    return new Intl.DateTimeFormat('sv-SE', {
+    return new Intl.DateTimeFormat('en-GB', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -1115,7 +1154,7 @@
     return {
       teams: [teams[0]?.name ?? 'Team 1', teams[1]?.name ?? 'Team 2'],
       matchDate: movieMatchDateLabel.value,
-      mapName: demoInfo.value?.mapName ?? 'Okänd karta',
+      mapName: demoInfo.value?.mapName ?? 'Unknown map',
       focusKind: fragPlayer.value !== 'all'
         ? 'player'
         : highlightTeam.value !== 'all'
@@ -1125,7 +1164,7 @@
         ? playerLabel(fragPlayer.value)
         : highlightTeam.value !== 'all'
           ? logicalTeamName(highlightTeam.value)
-          : 'Båda lagen',
+          : 'Both teams',
       durationSeconds: MOVIE_INTRO_DURATION_MS / 1_000,
     };
   });
@@ -1142,11 +1181,11 @@
     'starting', 'recording', 'finalizing',
   ].includes(movieExportState.value));
   const movieExportStatusLabel = computed(() => {
-    if (movieExportState.value === 'starting') return 'Startar den lokala renderaren';
-    if (movieEncoderCatchingUp.value) return 'Kodaren hämtar ikapp · spelet är pausat';
-    if (scoreboardHeld.value) return 'Visar scorecard · spelet är pausat';
-    if (movieExportState.value === 'recording') return 'Renderar bild och ljud';
-    if (movieExportState.value === 'finalizing') return 'Slutför videofilen';
+    if (movieExportState.value === 'starting') return 'Starting the local renderer';
+    if (movieEncoderCatchingUp.value) return 'Encoder catching up · playback paused';
+    if (scoreboardHeld.value) return 'Showing scoreboard · playback paused';
+    if (movieExportState.value === 'recording') return 'Rendering video and audio';
+    if (movieExportState.value === 'finalizing') return 'Finalizing the video file';
     return '';
   });
 
@@ -1177,8 +1216,8 @@
   );
   const gameFolderName = computed(() =>
     'url' in (gameFiles.value[0] ?? {})
-      ? 'Valve HLDS · lokalt installerat'
-      : gameFiles.value[0]?.path.split('/')[0] ?? 'Spelmapp',
+      ? 'Valve HLDS · locally installed'
+      : gameFiles.value[0]?.path.split('/')[0] ?? 'Game folder',
   );
   const canLaunch = computed(
     () => Boolean(demoInfo.value && gameReady.value && !launching.value),
@@ -1186,31 +1225,26 @@
   const canStartFragReel = computed(() =>
     canLaunch.value && fragReelDeaths.value.length > 0);
   const loadingLabel = computed(() =>
-    loadingProgress.value ? 'Monterar Counter-Strike' : 'Startar Xash3D',
+    loadingProgress.value ? 'Mounting Counter-Strike' : 'Starting Xash3D',
   );
   const launchHint = computed(() => {
     if (!demoInfo.value) {
-      return { title: 'Demot saknas', detail: 'Välj en giltig GoldSrc .dem-fil.' };
+      return { title: 'Demo missing', detail: 'Select a valid GoldSrc .dem file.' };
     }
     if (!gameFiles.value.length) {
-      return { title: 'Ett steg kvar', detail: 'Välj din gamla Half-Life/CS-mapp.' };
+      return { title: 'One step left', detail: 'Select your Half-Life/CS folder.' };
     }
     if (!gameReady.value) {
-      return { title: 'Ofullständig spelmapp', detail: `valve/, cstrike/ och ${requiredMapName.value}.bsp krävs.` };
+      return { title: 'Incomplete game folder', detail: `valve/, cstrike/ and ${requiredMapName.value}.bsp are required.` };
     }
-    return { title: 'Allt är redo', detail: 'Matchen körs lokalt med WebAssembly.' };
+    return { title: 'Everything is ready', detail: 'The match runs locally with WebAssembly.' };
   });
 
-  const formatNumber = (value: number): string => value.toLocaleString('sv-SE');
-  const mircClock = computed(() => new Intl.DateTimeFormat('sv-SE', {
+  const formatNumber = (value: number): string => value.toLocaleString('en-GB');
+  const mircClock = computed(() => new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date()));
 
-  const onInterfaceThemeSelect = (event: Event) => {
-    const theme = (event.target as HTMLSelectElement).value as InterfaceTheme;
-    interfaceTheme.value = theme;
-    window.localStorage.setItem('replay-lab-interface-theme', theme);
-  };
   const onHighlightTeamSelect = (event: Event) => {
     highlightTeam.value = (event.target as HTMLSelectElement).value as 'all' | LogicalTeamId;
     fragPlayer.value = 'all';
@@ -1277,7 +1311,7 @@
       DemoEngine.execute('+showscores');
       recordMovieExportDiagnostic(
         'scoreboard-shown',
-        `Scorecard visas i tre sekunder efter lagets ${side === 'TERRORIST' ? 'T-sida' : 'CT-sida'}.`,
+        `Scoreboard shown for three seconds after the team's ${side === 'TERRORIST' ? 'T side' : 'CT side'}.`,
       );
       return;
     }
@@ -1325,7 +1359,7 @@
     } catch (error) {
       movieExportError.value = error instanceof Error
         ? error.message
-        : 'Kunde inte frysa spelet för scorecardet.';
+        : 'Could not freeze playback for the scoreboard.';
       void cancelMovieExport(true);
       return true;
     }
@@ -1336,7 +1370,7 @@
     movieScoreboardsShown.add(death.eventId);
     setMovieAutomaticScoreboard(true, event.side);
     addLog(
-      `Scorecard: ${event.side === 'TERRORIST' ? 'T-sidan' : 'CT-sidan'} avslutad · 3 sekunder.`,
+      `Scoreboard: ${event.side === 'TERRORIST' ? 'T side' : 'CT side'} complete · 3 seconds.`,
       false,
     );
     return true;
@@ -1369,7 +1403,7 @@
       .slice(-4)
       .map((entry) => ({
         killer: entry.worldKill
-          ? 'Världen'
+          ? 'World'
           : playerLabel(entry.killerPlayerId, entry.demoTimeMs, entry.killerSlot),
         victim: playerLabel(entry.victimPlayerId, entry.demoTimeMs, entry.victimSlot),
         weapon: fragWeaponLabel(entry.weapon),
@@ -1394,7 +1428,7 @@
           'precision_one_shot', 'precision_two_shots', 'fast_kill', 'headshot', 'clutch_kill',
         ].includes(reason.code))
         .slice(0, 3)
-        .map((reason) => reason.label) ?? [],
+        .map(scoreReasonLabel) ?? [],
     ].filter(Boolean).join(' · ');
     return {
       preset: hudPreset.value,
@@ -1413,7 +1447,7 @@
       exiting: Boolean(activeDeath) && hudEventExiting.value,
       terroristsAlive: death.aliveBefore.terrorists.value ?? '–',
       counterTerroristsAlive: death.aliveBefore.counterTerrorists.value ?? '–',
-      reasons,
+      reasons: reasons.map((entry) => ({ ...entry, label: scoreReasonLabel(entry) })),
       killfeed: currentMovieKillfeed(),
       timelinePercent: activeDeath ? hudTimelinePercent.value : 100,
       crosshair: customCrosshairVisible.value,
@@ -1433,7 +1467,7 @@
     if (!MovieRecorder.sourceHasVisibleFrame(engineCanvas.value)) {
       if (!movieCaptureWaitStartedAt) movieCaptureWaitStartedAt = performance.now();
       if (performance.now() - movieCaptureWaitStartedAt > 8_000) {
-        movieExportError.value = 'Spelbilden kunde inte läsas från WebGL-renderaren; exporten stoppades.';
+        movieExportError.value = 'The game frame could not be read from the WebGL renderer; export stopped.';
         recordMovieExportDiagnostic('canvas-timeout', movieExportError.value, true);
         void cancelMovieExport(true);
       }
@@ -1446,7 +1480,7 @@
       const audio = DemoEngine.createAudioCapture();
       if (!audio) {
         throw new Error(
-          'Spelljudet är inte redo. Starta uppspelningen och försök exportera igen.',
+          'Game audio is not ready. Start playback and try exporting again.',
         );
       }
       // Encoder probing and an optional intro can take real wall-clock time.
@@ -1470,10 +1504,10 @@
         },
         onEncoderMode: (mode) => {
           const message = mode === 'hardware'
-            ? 'WebCodecs H.264: hårdvarukodare verifierad.'
+            ? 'WebCodecs H.264: hardware encoder verified.'
             : mode === 'software'
-              ? 'WebCodecs H.264: hardware-läget nekades, software-fallback verifierad.'
-              : 'WebCodecs H.264: browsern valde kodare automatiskt.';
+              ? 'WebCodecs H.264: hardware mode rejected, software fallback verified.'
+              : 'WebCodecs H.264: browser selected an encoder automatically.';
           addLog(message, false);
           recordMovieExportDiagnostic('encoder-selected', message);
         },
@@ -1489,13 +1523,13 @@
       movieEncoderLastProgressAt = performance.now();
       movieEncoderLastEncodedFrames = movieRecorder.encodedFrames;
       movieExportState.value = 'recording';
-      recordMovieExportDiagnostic('recording-started', 'Bild- och ljudkodaren startade.');
+      recordMovieExportDiagnostic('recording-started', 'Video and audio encoders started.');
       addLog(
-        `HQ-export startad: ${movieQuality.value.label}, ${movieCaptureMode === 'direct' ? 'direkt GPU-fångst' : 'komponerad HUD'}${audio ? ' med spelljud' : ' utan spelljud'}.`,
+        `HQ export started: ${movieQuality.value.label}, ${movieCaptureMode === 'direct' ? 'direct GPU capture' : 'composited HUD'}${audio ? ' with game audio' : ' without game audio'}.`,
         !audio,
       );
     } catch (error) {
-      movieExportError.value = error instanceof Error ? error.message : 'Kunde inte starta filmexporten.';
+      movieExportError.value = error instanceof Error ? error.message : 'Could not start the movie export.';
       recordMovieExportDiagnostic(
         'start-error',
         error instanceof Error ? error.stack ?? error.message : String(error),
@@ -1523,7 +1557,7 @@
     } catch (error) {
       movieExportError.value = error instanceof Error
         ? error.message
-        : 'Kunde inte pausa spelet medan videokodaren hämtade ikapp.';
+        : 'Could not pause playback while the video encoder caught up.';
       void cancelMovieExport(true);
       return;
     }
@@ -1533,10 +1567,10 @@
     movieEncoderCatchingUp.value = true;
     movieEncoderLastProgressAt = now;
     movieEncoderLastEncodedFrames = recorder.encodedFrames;
-    addLog(`Videokodaren hämtar ikapp (${recorder.encodingBacklogFrames} frames i kö).`, false);
+    addLog(`Video encoder catching up (${recorder.encodingBacklogFrames} queued frames).`, false);
     recordMovieExportDiagnostic(
       'backpressure-pause',
-      `Spelet pausades med ${recorder.encodingBacklogFrames} frames i kodarkön.`,
+      `Playback paused with ${recorder.encodingBacklogFrames} frames in the encoder queue.`,
     );
   };
 
@@ -1548,7 +1582,7 @@
     } catch (error) {
       movieExportError.value = error instanceof Error
         ? error.message
-        : 'Kunde inte fortsätta spelet efter kodarpausen.';
+        : 'Could not resume playback after the encoder pause.';
       void cancelMovieExport(true);
       return;
     }
@@ -1557,8 +1591,8 @@
     movieEncoderCatchingUp.value = false;
     movieEncoderLastProgressAt = now;
     movieEncoderLastEncodedFrames = recorder.encodedFrames;
-    addLog('Videokodaren är ikapp; exporten fortsätter.', false);
-    recordMovieExportDiagnostic('backpressure-resume', 'Kodarkön tömdes och spelet fortsatte.');
+    addLog('Video encoder caught up; export continues.', false);
+    recordMovieExportDiagnostic('backpressure-resume', 'The encoder queue drained and playback resumed.');
   };
 
   const updateMovieExportProgress = () => {
@@ -1575,7 +1609,7 @@
     if (movieEncoderCatchingUp.value
       && encodingBacklog > 0
       && now - movieEncoderLastProgressAt > 60_000) {
-      movieExportError.value = 'Videokodaren har inte levererat en enda bildruta på 60 sekunder.';
+      movieExportError.value = 'The video encoder did not produce a single frame within 60 seconds.';
       void cancelMovieExport(true);
       return;
     }
@@ -1611,7 +1645,7 @@
       movieLastDiagnosticProgressBucket = progressBucket;
       recordMovieExportDiagnostic(
         'progress',
-        `Exporten nådde ${Math.round(movieExportProgress.value)} procent.`,
+        `Export reached ${Math.round(movieExportProgress.value)} percent.`,
       );
     }
   };
@@ -1632,37 +1666,37 @@
   });
   const analysisProgressLabel = computed(() => {
     switch (analysisProgress.value?.phase) {
-      case 'reading': return 'Läser demot i bakgrunden';
-      case 'hashing': return 'Verifierar demots identitet';
-      case 'cache': return 'Söker i det lokala indexet';
-      case 'parsing': return 'Avkodar demopaket';
-      case 'indexing': return 'Normaliserar matchhändelser';
-      case 'saving': return 'Sparar demoindexet lokalt';
-      default: return 'Startar analysworkern';
+      case 'reading': return 'Reading the demo in the background';
+      case 'hashing': return 'Verifying demo identity';
+      case 'cache': return 'Searching the local index';
+      case 'parsing': return 'Decoding demo packets';
+      case 'indexing': return 'Normalizing match events';
+      case 'saving': return 'Saving the demo index locally';
+      default: return 'Starting the analysis worker';
     }
   });
   const analysisProgressDetail = computed(() => {
     const progress = analysisProgress.value;
-    if (!progress) return 'Förbereder analysen utan att blockera gränssnittet…';
+    if (!progress) return 'Preparing analysis without blocking the interface…';
     if (progress.phase === 'reading' && progress.current !== null && progress.total !== null) {
-      return `${formatBytes(progress.current)} av ${formatBytes(progress.total)}`;
+      return `${formatBytes(progress.current)} of ${formatBytes(progress.total)}`;
     }
     if (progress.phase === 'parsing') {
       const segment = progress.directoryEntry === undefined
         ? ''
-        : `Sektion ${progress.directoryEntry + 1} av ${progress.directoryCount ?? '–'}`;
+        : `Section ${progress.directoryEntry + 1} of ${progress.directoryCount ?? '–'}`;
       const time = progress.demoTimeMs === undefined
         ? ''
-        : ` · demotid ${formatEventTime(progress.demoTimeMs)}`;
-      return `${segment}${time}` || 'Läser protokollmeddelanden…';
+        : ` · demo time ${formatEventTime(progress.demoTimeMs)}`;
+      return `${segment}${time}` || 'Reading protocol messages…';
     }
     if (progress.phase === 'indexing' && progress.current !== null && progress.total !== null) {
-      return `${formatNumber(progress.current)} av ${formatNumber(progress.total)} analysframes`;
+      return `${formatNumber(progress.current)} of ${formatNumber(progress.total)} analysis frames`;
     }
-    if (progress.phase === 'hashing') return 'Beräknar SHA-256 för cacheidentiteten…';
-    if (progress.phase === 'cache') return 'Kontrollerar IndexedDB…';
-    if (progress.phase === 'saving') return 'Indexet blir tillgängligt vid nästa omladdning…';
-    return 'Analyserar demot lokalt…';
+    if (progress.phase === 'hashing') return 'Calculating SHA-256 for the cache identity…';
+    if (progress.phase === 'cache') return 'Checking IndexedDB…';
+    if (progress.phase === 'saving') return 'The index will be available after the next reload…';
+    return 'Analyzing the demo locally…';
   });
 
   const analyzeSelectedDemo = async (selectedDemo: GoldSrcDemo, source: DemoSource) => {
@@ -1694,7 +1728,7 @@
       if (request !== analysisRequest) return;
       analysisError.value = error instanceof Error
         ? error.message
-        : 'Kunde inte analysera demot.';
+        : 'Could not analyze the demo.';
     } finally {
       if (activeAnalysisRun === run) activeAnalysisRun = undefined;
       if (request === analysisRequest) {
@@ -1714,7 +1748,7 @@
       await loadInstalledGameAssets();
     } catch (error) {
       demoInfo.value = undefined;
-      demoError.value = error instanceof Error ? error.message : 'Kunde inte läsa demot.';
+      demoError.value = error instanceof Error ? error.message : 'Could not read the demo.';
     } finally {
       demoLoading.value = false;
     }
@@ -1736,7 +1770,7 @@
       await loadInstalledGameAssets(inspected);
     } catch (error) {
       demoInfo.value = undefined;
-      demoError.value = error instanceof Error ? error.message : 'Kunde inte läsa demot.';
+      demoError.value = error instanceof Error ? error.message : 'Could not read the demo.';
     } finally {
       demoLoading.value = false;
     }
@@ -1745,7 +1779,7 @@
   const entryBuffer = async (entry: GameAssetEntry): Promise<ArrayBuffer> => {
     if ('file' in entry) return entry.file.arrayBuffer();
     const response = await fetch(entry.url);
-    if (!response.ok) throw new Error(`Kunde inte läsa ${entry.path}.`);
+    if (!response.ok) throw new Error(`Could not read ${entry.path}.`);
     return response.arrayBuffer();
   };
 
@@ -1757,7 +1791,7 @@
     mapChecksumMatches.value = false;
     if (!files.length) {
       gameFiles.value = [];
-      gameError.value = 'Mappen innehåller inga filer.';
+      gameError.value = 'The folder does not contain any files.';
       return;
     }
 
@@ -1766,13 +1800,13 @@
     const hasCstrike = normalized.some((path) => path.includes('/cstrike/'));
     if (!hasValve || !hasCstrike) {
       gameFiles.value = files;
-      gameError.value = 'Välj rotmappen som innehåller både valve/ och cstrike/.';
+      gameError.value = 'Select the root folder containing both valve/ and cstrike/.';
       return;
     }
 
     if (!selectedDemo) {
       gameFiles.value = files;
-      gameError.value = 'Välj ett demo innan kartversionen kontrolleras.';
+      gameError.value = 'Select a demo before checking the map version.';
       return;
     }
 
@@ -1780,7 +1814,7 @@
     const candidates = files.filter((_, index) => normalized[index].endsWith(mapSuffix));
     if (!candidates.length) {
       gameFiles.value = files;
-      gameError.value = `${selectedDemo.mapName}.bsp saknas.`;
+      gameError.value = `${selectedDemo.mapName}.bsp is missing.`;
       return;
     }
 
@@ -1809,7 +1843,7 @@
 
     if (!exactMap) {
       gameFiles.value = files;
-      gameError.value = `${selectedDemo.mapName}.bsp finns, men inte version ${formatGoldSrcChecksum(selectedDemo.mapChecksum)}.`;
+      gameError.value = `${selectedDemo.mapName}.bsp was found, but not version ${formatGoldSrcChecksum(selectedDemo.mapChecksum)}.`;
       return;
     }
 
@@ -1909,7 +1943,7 @@
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `replay-lab-export-log-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    anchor.download = `praxxa-hltv-player-export-log-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
@@ -1931,7 +1965,7 @@
     await nextTick();
 
     try {
-      if (!engineCanvas.value) throw new Error('WebGL-ytan kunde inte skapas.');
+      if (!engineCanvas.value) throw new Error('Could not create the WebGL canvas.');
       await DemoEngine.start({
         canvas: engineCanvas.value,
         gameFiles: gameFiles.value,
@@ -1966,11 +2000,11 @@
       if (startAtMs === 0) hudPlaybackStartedAt.value = performance.now();
       applyEngineHudPreset();
       engineCanvas.value.focus();
-      addLog('Xash3D och den riktiga Counter-Strike-klienten är startade.', false);
+      addLog('Xash3D and the original Counter-Strike client are running.', false);
     } catch (error) {
       fragReelActive.value = false;
       fragReelSeeking.value = false;
-      const message = error instanceof Error ? error.message : 'Motorn kunde inte starta.';
+      const message = error instanceof Error ? error.message : 'The engine could not start.';
       addLog(message, true);
       consoleOpen.value = true;
       if (movieExportRunning.value) {
@@ -2034,7 +2068,7 @@
       entityIndex: death.killerSlot,
       nativeHltv,
       weapon: fragWeaponViewModel(death.weapon),
-      label: `${killerLabel} mot ${victimLabel}`,
+      label: `${killerLabel} vs ${victimLabel}`,
       activateAfterMs: nativeHltv
         ? Math.max(250, death.demoTimeMs - startAtMs - 500)
         : Math.max(250, death.demoTimeMs - startAtMs - 1_250),
@@ -2091,7 +2125,7 @@
     movieExportState.value = 'starting';
     recordMovieExportDiagnostic(
       'requested',
-      `Export begärd i ${movieQuality.value.label}${movieIncludeIntro.value ? ' med matchintro' : ' utan intro'}.`,
+      `Export requested in ${movieQuality.value.label}${movieIncludeIntro.value ? ' with match intro' : ' without intro'}.`,
     );
     const temporaryName = safeMovieFilename(
       demoSource.value.name,
@@ -2100,18 +2134,18 @@
     );
     try {
       preparedMovieOutput = await prepareMovieOutput(temporaryName.replace(/\.tmp$/, ''));
-      movieExportNotice.value = `Exporterar direkt till ${preparedMovieOutput.filename}.`;
+      movieExportNotice.value = `Exporting directly to ${preparedMovieOutput.filename}.`;
       recordMovieExportDiagnostic('output-prepared', movieExportNotice.value);
       playFragReel();
     } catch (error) {
       movieExportState.value = 'idle';
       if (error instanceof DOMException && error.name === 'AbortError') {
-        movieExportNotice.value = 'Exporten avbröts innan den startade.';
+        movieExportNotice.value = 'The export was cancelled before it started.';
         return;
       }
       movieExportError.value = error instanceof Error
         ? error.message
-        : 'Kunde inte förbereda videofilen.';
+        : 'Could not prepare the video file.';
       recordMovieExportDiagnostic(
         'prepare-error',
         error instanceof Error ? error.stack ?? error.message : String(error),
@@ -2132,21 +2166,21 @@
       await recorder.stop();
       if (recorder.encodedFrames !== recorder.capturedFrames) {
         throw new Error(
-          `Videokodaren tappade ${recorder.capturedFrames - recorder.encodedFrames} frames; filen godkänns inte.`,
+          `The video encoder dropped ${recorder.capturedFrames - recorder.encodedFrames} frames; the file was rejected.`,
         );
       }
       if (recorder.bytesWritten <= 0) {
-        throw new Error('Videokodaren avslutades utan att skapa någon data.');
+        throw new Error('The video encoder finished without creating any data.');
       }
       const minimumPlausibleBytes = movieEstimatedBytes.value * 0.005;
       if (recorder.bytesWritten < minimumPlausibleBytes) {
         throw new Error(
-          `Videofilen blev orimligt liten (${formatBytes(recorder.bytesWritten)}); `
-          + 'spelbilden kodades sannolikt inte korrekt.',
+          `The video file was implausibly small (${formatBytes(recorder.bytesWritten)}); `
+          + 'the game frames were probably not encoded correctly.',
         );
       }
       const filename = preparedMovieOutput?.filename ?? 'only-frags-video';
-      movieExportNotice.value = `${filename} är färdig och sparad.`;
+      movieExportNotice.value = `${filename} is complete and saved.`;
       recordMovieExportDiagnostic('completed', movieExportNotice.value);
       movieExportState.value = 'complete';
       movieRecorder = undefined;
@@ -2155,9 +2189,9 @@
     } catch (error) {
       movieExportError.value = error instanceof Error
         ? error.message
-        : 'Kunde inte slutföra videofilen.';
+        : 'Could not finalize the video file.';
       if (recorder.fileFinalized && recorder.bytesWritten > 0) {
-        movieExportNotice.value = `${preparedMovieOutput?.filename ?? 'Videofilen'} stängdes korrekt och finns kvar fram till felet.`;
+        movieExportNotice.value = `${preparedMovieOutput?.filename ?? 'The video file'} was closed correctly and contains everything up to the error.`;
       }
       recordMovieExportDiagnostic(
         'finalize-error',
@@ -2178,7 +2212,7 @@
     movieScoreboardStartFrame = 0;
     recordMovieExportDiagnostic(
       keepError ? 'error-stop-requested' : 'user-stop-requested',
-      keepError ? movieExportError.value || 'Exporten stoppades efter ett okänt fel.' : 'Användaren avslutade exporten.',
+      keepError ? movieExportError.value || 'The export stopped after an unknown error.' : 'The user stopped the export.',
       keepError,
     );
     if (DemoEngine.running) {
@@ -2213,15 +2247,15 @@
         }
       }
     } else {
-      await output?.writer?.abort('Exporten avbröts innan kodaren startade.').catch(() => undefined);
+      await output?.writer?.abort('The export was cancelled before the encoder started.').catch(() => undefined);
     }
     movieRecorder = undefined;
     preparedMovieOutput = undefined;
     movieExportState.value = keepError ? 'error' : 'idle';
     if (partialSaved) {
-      movieExportNotice.value = `${output?.filename ?? 'Videofilen'} sparades som en spelbar del fram till avbrottet.`;
+      movieExportNotice.value = `${output?.filename ?? 'The video file'} was saved as a playable partial movie up to the interruption.`;
     } else if (!keepError) {
-      movieExportNotice.value = 'Filmexporten avbröts innan videodata hann skapas.';
+      movieExportNotice.value = 'The movie export was cancelled before any video data was created.';
     }
     if (keepError) {
       fragReelActive.value = false;
@@ -2252,7 +2286,7 @@
     }
     fragReelActive.value = false;
     fragReelSeeking.value = false;
-    addLog('Endast frags avslutat; vanlig uppspelning fortsätter.', false);
+    addLog('Only Frags ended; regular playback continues.', false);
     engineCanvas.value?.focus();
   };
 
@@ -2272,7 +2306,7 @@
     if (action.type === 'wait') return;
     if (startMovieAutomaticScoreboard()) return;
     if (action.type === 'complete') {
-      addLog(`Endast frags klart: ${fragReelDeaths.value.length} frags visade.`, false);
+      addLog(`Only Frags complete: ${fragReelDeaths.value.length} frags shown.`, false);
       const completion = movieCompletionAction(movieExportState.value);
       if (completion === 'finish') {
         void finishMovieExport();
@@ -2283,7 +2317,7 @@
       // Never turn that normal finalization into a destructive cancellation.
       if (completion === 'wait') return;
       if (completion === 'fail') {
-        movieExportError.value = 'Filminspelaren hann inte starta.';
+        movieExportError.value = 'The movie recorder did not have time to start.';
         void cancelMovieExport(true);
         return;
       }
@@ -2303,7 +2337,7 @@
     seeking.value = true;
     setMovieAutomaticScoreboard(false);
     movieRecorder?.pause();
-    addLog(`Endast frags: hoppar till ${formatEventTime(action.targetMs)}.`, false);
+    addLog(`Only Frags: seeking to ${formatEventTime(action.targetMs)}.`, false);
     void DemoEngine.seekTo(action.targetMs)
       .then(() => {
         hudPlaybackStartMs.value = action.targetMs;
@@ -2319,11 +2353,11 @@
         fragReelActive.value = false;
         seeking.value = false;
         fragReelSeeking.value = false;
-        addLog(error instanceof Error ? error.message : 'Kunde inte hoppa till nästa frag.', true);
+        addLog(error instanceof Error ? error.message : 'Could not seek to the next frag.', true);
         if (movieExportRunning.value) {
           movieExportError.value = error instanceof Error
             ? error.message
-            : 'Filmexporten kunde inte hoppa till nästa frag.';
+            : 'The movie export could not seek to the next frag.';
           void cancelMovieExport(true);
         }
       });
@@ -2392,7 +2426,7 @@
 
   const stopExportWhenTabIsHidden = () => {
     if (!document.hidden || !['starting', 'recording'].includes(movieExportState.value)) return;
-    movieExportError.value = 'Exporten stoppades eftersom browserfliken lämnades. En eventuell del sparas.';
+    movieExportError.value = 'The export stopped because the browser tab was left. Any partial movie will be saved.';
     void cancelMovieExport(true);
   };
 
@@ -2413,8 +2447,6 @@
     if (savedMovieIntro === 'true' || savedMovieIntro === 'false') {
       movieIncludeIntro.value = savedMovieIntro === 'true';
     }
-    const savedTheme = window.localStorage.getItem('replay-lab-interface-theme');
-    if (savedTheme === 'replay' || savedTheme === 'quakenet') interfaceTheme.value = savedTheme;
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
     loadBundledDemo();
     window.addEventListener('keydown', showScoreboard, true);
@@ -2429,7 +2461,7 @@
     window.cancelAnimationFrame(hudClockFrame);
     if (movieRecorder) void movieRecorder.cancel();
     else if (preparedMovieOutput?.writer) {
-      void preparedMovieOutput.writer.abort('Sidan stängdes under exporten.').catch(() => undefined);
+      void preparedMovieOutput.writer.abort('The page was closed during export.').catch(() => undefined);
     }
     DemoEngine.stop();
     window.removeEventListener('keydown', showScoreboard, true);

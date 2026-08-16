@@ -40,7 +40,7 @@ const gameRelativePath = (path: string): { path: string; priority: number } | nu
 
 const workerController = async (): Promise<ServiceWorker> => {
   if (!('serviceWorker' in navigator)) {
-    throw new Error('Den här webbläsaren saknar Service Worker-stöd.');
+    throw new Error('This browser does not support Service Workers.');
   }
 
   await navigator.serviceWorker.register('/local-assets-sw.js', { scope: '/' });
@@ -50,7 +50,7 @@ const workerController = async (): Promise<ServiceWorker> => {
 
   return new Promise((resolve, reject) => {
     const timeout = window.setTimeout(
-      () => reject(new Error('Kunde inte aktivera den lokala filbryggan. Ladda om sidan.')),
+      () => reject(new Error('Could not activate the local file bridge. Reload the page.')),
       5000,
     );
     navigator.serviceWorker.addEventListener(
@@ -123,7 +123,7 @@ export async function mountLocalAssets(
   const channel = new MessageChannel();
   const response = new Promise<number>((resolve, reject) => {
     const timeout = window.setTimeout(
-      () => reject(new Error('Den lokala filbryggan svarade inte.')),
+      () => reject(new Error('The local file bridge did not respond.')),
       10000,
     );
     channel.port1.onmessage = (event) => {

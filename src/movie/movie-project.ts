@@ -93,23 +93,23 @@ export type MovieQuality = {
 
 export const MOVIE_QUALITIES: readonly MovieQuality[] = [
   {
-    id: '720p', label: '720p · 60 FPS · FPS-prioritet', width: 1280, height: 720, fps: 60,
+    id: '720p', label: '720p · 60 FPS · FPS priority', width: 1280, height: 720, fps: 60,
     videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 192_000,
   },
   {
-    id: '1080p', label: '1080p · 60 FPS mål · balanserad', width: 1920, height: 1080, fps: 60,
+    id: '1080p', label: '1080p · 60 FPS target · balanced', width: 1920, height: 1080, fps: 60,
     videoBitsPerSecond: 12_000_000, audioBitsPerSecond: 192_000,
   },
   {
-    id: '1440p', label: '1440p · 60 FPS mål · tung', width: 2560, height: 1440, fps: 60,
+    id: '1440p', label: '1440p · 60 FPS target · demanding', width: 2560, height: 1440, fps: 60,
     videoBitsPerSecond: 18_000_000, audioBitsPerSecond: 192_000,
   },
   {
-    id: '2160p', label: '4K · 60 FPS · maximal kvalitet', width: 3840, height: 2160, fps: 60,
+    id: '2160p', label: '4K · 60 FPS · maximum quality', width: 3840, height: 2160, fps: 60,
     videoBitsPerSecond: 50_000_000, audioBitsPerSecond: 192_000,
   },
   {
-    id: 'max-hq', label: 'MAX HQ · 1440p · 60 FPS · jämn', width: 2560, height: 1440, fps: 60,
+    id: 'max-hq', label: 'MAX HQ · 1440p · 60 FPS · smooth', width: 2560, height: 1440, fps: 60,
     videoBitsPerSecond: 36_000_000, audioBitsPerSecond: 192_000,
   },
 ] as const;

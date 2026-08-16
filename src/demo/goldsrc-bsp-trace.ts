@@ -58,13 +58,13 @@ export class GoldSrcBspTracer {
   private readonly headNode: number;
 
   constructor(buffer: ArrayBuffer) {
-    if (buffer.byteLength < BSP_HEADER_SIZE) throw new Error('BSP-headern är ofullständig.');
+    if (buffer.byteLength < BSP_HEADER_SIZE) throw new Error('The BSP header is incomplete.');
     const view = new DataView(buffer);
     const lumps = Array.from({ length: BSP_LUMP_COUNT }, (_, index): Lump => {
       const offset = view.getInt32(4 + index * 8, true);
       const length = view.getInt32(8 + index * 8, true);
       if (offset < 0 || length < 0 || offset + length > buffer.byteLength) {
-        throw new Error(`BSP-lump ${index} ligger utanför filen.`);
+        throw new Error(`BSP lump ${index} is outside the file.`);
       }
       return { offset, length };
     });
@@ -76,7 +76,7 @@ export class GoldSrcBspTracer {
       || nodeLump.length % NODE_SIZE
       || leafLump.length % LEAF_SIZE
       || modelLump.length < MODEL_SIZE) {
-      throw new Error('BSP-kollisionsträdet har ogiltiga lumpstorlekar.');
+      throw new Error('The BSP collision tree has invalid lump sizes.');
     }
     this.planes = Array.from({ length: planeLump.length / PLANE_SIZE }, (_, index) => {
       const offset = planeLump.offset + index * PLANE_SIZE;
@@ -101,14 +101,14 @@ export class GoldSrcBspTracer {
       (_, index) => view.getInt32(leafLump.offset + index * LEAF_SIZE, true),
     );
     this.headNode = view.getInt32(modelLump.offset + 36, true);
-    if (!this.nodes[this.headNode]) throw new Error('BSP-världsmodellens huvudnod saknas.');
+    if (!this.nodes[this.headNode]) throw new Error('The BSP world model head node is missing.');
   }
 
   private contents(nodeIndex: number): number {
-    if (nodeIndex >= 0) throw new Error('Förväntade ett BSP-löv.');
+    if (nodeIndex >= 0) throw new Error('Expected a BSP leaf.');
     const leafIndex = -1 - nodeIndex;
     const contents = this.leafContents[leafIndex];
-    if (contents === undefined) throw new Error('BSP-noden pekar på ett okänt löv.');
+    if (contents === undefined) throw new Error('The BSP node points to an unknown leaf.');
     return contents;
   }
 
@@ -120,7 +120,7 @@ export class GoldSrcBspTracer {
       if (!node || !plane) throw new Error('BSP-noden eller planet saknas.');
       nodeIndex = node.children[dot(point, plane.normal) - plane.distance >= 0 ? 0 : 1];
     }
-    if (nodeIndex >= 0) throw new Error('BSP-trädet överskred maximalt djup.');
+    if (nodeIndex >= 0) throw new Error('The BSP tree exceeded the maximum depth.');
     return this.contents(nodeIndex);
   }
 
@@ -130,7 +130,7 @@ export class GoldSrcBspTracer {
     end: Vector3,
     depth: number,
   ): boolean {
-    if (depth > MAX_TRACE_DEPTH) throw new Error('BSP-strålen överskred maximalt djup.');
+    if (depth > MAX_TRACE_DEPTH) throw new Error('The BSP ray exceeded the maximum depth.');
     if (nodeIndex < 0) return this.contents(nodeIndex) === SOLID_CONTENTS;
     const node = this.nodes[nodeIndex];
     const plane = node && this.planes[node.plane];

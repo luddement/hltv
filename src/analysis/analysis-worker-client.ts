@@ -54,7 +54,7 @@ export const analyzeDemoInWorker = (
     };
     worker.onerror = (event) => {
       finish();
-      reject(new Error(event.message || 'Analysworkern stoppades oväntat.'));
+      reject(new Error(event.message || 'The analysis worker stopped unexpectedly.'));
     };
   });
 
@@ -80,7 +80,7 @@ export const analyzeDemoInWorker = (
     cancel: () => {
       if (settled) return;
       finish();
-      rejectRun(new DOMException('Analysen avbröts.', 'AbortError'));
+      rejectRun(new DOMException('Analysis cancelled.', 'AbortError'));
     },
   };
 };

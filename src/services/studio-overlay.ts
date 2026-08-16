@@ -71,7 +71,7 @@ export class StudioOverlay {
   ) {
     const game = viewer.game as InternalGame | undefined;
     if (!game?.context?.gl || !game.canvas) {
-      throw new Error('HLViewer exponerade inte sin WebGL-yta.');
+      throw new Error('HLViewer did not expose its WebGL surface.');
     }
     this.game = game;
     this.camera.matrixAutoUpdate = false;
@@ -128,7 +128,7 @@ export class StudioOverlay {
 
       if (this.firstVisibleReport && this.getVisibleCount()) {
         this.firstVisibleReport = false;
-        this.report('Studio-overlay aktiv: spelare och vapen renderas från GoldSrc MDL.', false);
+        this.report('Studio overlay active: players and weapons are rendered from GoldSrc MDL.', false);
       }
     } catch (error) {
       this.running = false;
@@ -248,7 +248,7 @@ export class StudioOverlay {
       })
       .catch((error) => {
         this.report(
-          `Kunde inte läsa ${path}: ${error instanceof Error ? error.message : String(error)}`,
+          `Could not read ${path}: ${error instanceof Error ? error.message : String(error)}`,
           true,
         );
         return null;

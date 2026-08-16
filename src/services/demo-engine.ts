@@ -70,7 +70,7 @@ class DemoEngine {
 
   async start(options: DemoEngineOptions): Promise<Xash3D> {
     if (this.running) {
-      throw new Error('Motorn kör redan.');
+      throw new Error('The engine is already running.');
     }
 
     const compatibility = DEMO_COMPATIBILITY_PROFILES[options.compatibilityProfile];
@@ -124,7 +124,7 @@ class DemoEngine {
       options.canvas.width = options.renderSize.width;
       options.canvas.height = options.renderSize.height;
       options.onLog(
-        `Låser renderingsytan till ${options.renderSize.width}×${options.renderSize.height} för filmexport.`,
+        `Locking the render surface to ${options.renderSize.width}×${options.renderSize.height} for movie export.`,
         false,
       );
     }
@@ -143,7 +143,7 @@ class DemoEngine {
     ]);
 
     if (!xash.em) {
-      throw new Error('WebAssembly-filsystemet kunde inte startas.');
+      throw new Error('The WebAssembly file system could not start.');
     }
 
     xash.em.FS.mkdirTree(`${XASH_BASE_DIR}/cstrike`);
@@ -151,7 +151,7 @@ class DemoEngine {
     await XashLoader.writeExtras(xash, extras);
     xash.em.FS.chdir(`${XASH_BASE_DIR}/`);
 
-    options.onLog(`Monterade demot som cstrike/${DEMO_FILENAME}.`, false);
+    options.onLog(`Mounted the demo as cstrike/${DEMO_FILENAME}.`, false);
     options.onLog('Startkommando: playdemo hltv_replay', false);
     xash.main();
     this.xash = xash;
@@ -160,7 +160,7 @@ class DemoEngine {
     // the +playdemo argument is not consumed. Execute it again once CS16Client
     // has registered its demo commands.
     this.scheduleFor(xash, () => {
-      options.onLog('Kör playdemo efter klientinitiering.', false);
+      options.onLog('Running playdemo after client initialization.', false);
       if (compatibility.legacyScoreboard) {
         xash.Cmd_ExecuteString('cl_corpsestay 10');
       }
@@ -192,7 +192,7 @@ class DemoEngine {
       if (startAtMs > 0) {
         options.onSeekStateChange?.(true);
         options.onLog(
-          `Startar om och snabbspolar dolt till vald plats (${Math.round(startAtMs)} ms).`,
+          `Restarting and seeking invisibly to the selected position (${Math.round(startAtMs)} ms).`,
           false,
         );
         xash.Cmd_ExecuteString('volume 0');
@@ -219,7 +219,7 @@ class DemoEngine {
           xash.Cmd_ExecuteString('-showscores');
           xash.Cmd_ExecuteString('hltv_closemenu');
           options.onSeekStateChange?.(false);
-          options.onLog('Dold snabbspolning klar; normal uppspelning återupptas.', false);
+          options.onLog('Hidden seek complete; normal playback resumed.', false);
           const camera = options.reconstructionCamera;
           if (camera) {
             this.scheduleFor(xash, () => {
@@ -227,7 +227,7 @@ class DemoEngine {
               if (camera.nativeHltv) {
                 if (!options.isHltv) {
                   options.onLog(
-                    'Ignorerade HLTV-kamera i ett vanligt POV-demo.',
+                    'Ignored an HLTV camera in a regular POV demo.',
                     true,
                   );
                   return;
@@ -247,7 +247,7 @@ class DemoEngine {
                 xash.Cmd_ExecuteString('bind s +back');
                 xash.Cmd_ExecuteString('bind d +moveright');
                 options.onReconstructionStateChange?.(true);
-                options.onLog(`Dödarens riktiga HLTV-POV aktiv: ${camera.label}.`, false);
+                options.onLog(`Killer's native HLTV POV active: ${camera.label}.`, false);
                 return;
               }
               const commandValue = (value: number) => Number.isFinite(value)
@@ -264,14 +264,14 @@ class DemoEngine {
               xash.Cmd_ExecuteString('hud_draw 1');
               xash.Cmd_ExecuteString('hltv_reconstruction_camera 1');
               options.onReconstructionStateChange?.(true);
-              options.onLog(`Dödarens POV-kamera aktiv: ${camera.label}.`, false);
+              options.onLog(`Killer POV camera active: ${camera.label}.`, false);
               this.scheduleFor(xash, () => {
                 if (!this.running) return;
                 xash.Cmd_ExecuteString('hltv_reconstruction_camera 0');
                 xash.Cmd_ExecuteString('r_drawviewmodel 1');
                 xash.Cmd_ExecuteString('hud_draw 1');
                 options.onReconstructionStateChange?.(false);
-                options.onLog('Dödarkameran avslutad; inspelad POV återställd.', false);
+                options.onLog('Killer camera ended; recorded POV restored.', false);
               }, camera.durationMs);
             }, camera.activateAfterMs);
           }
@@ -291,7 +291,7 @@ class DemoEngine {
     // replay that is already running.
     this.scheduleFor(xash, () => {
       if (!rendererStarted) {
-        options.onLog('Ingen karta efter signon; försöker starta demot igen.', false);
+        options.onLog('No map after sign-on; trying to start the demo again.', false);
         xash.Cmd_ExecuteString('playdemo hltv_replay');
       }
     }, 18_000);
@@ -325,7 +325,7 @@ class DemoEngine {
 
   execute(command: string): void {
     if (!this.xash?.running) {
-      throw new Error('Motorn har inte startat.');
+      throw new Error('The engine has not started.');
     }
     this.xash.Cmd_ExecuteString(command);
   }
@@ -380,7 +380,7 @@ class DemoEngine {
 
   seekTo(targetMs: number): Promise<void> {
     const xash = this.xash;
-    if (!xash?.running) return Promise.reject(new Error('Motorn har inte startat.'));
+    if (!xash?.running) return Promise.reject(new Error('The engine has not started.'));
 
     this.runtimeSeekCompletion?.();
     if (this.runtimeSeekTimer) window.clearTimeout(this.runtimeSeekTimer);

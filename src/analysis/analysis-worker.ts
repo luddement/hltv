@@ -32,12 +32,12 @@ const readSource = async (
 ): Promise<ArrayBuffer> => {
   const response = source.kind === 'url' ? await fetch(source.url) : undefined;
   if (response && !response.ok) {
-    throw new Error(`Kunde inte hämta demot (${response.status}).`);
+    throw new Error(`Could not fetch the demo (${response.status}).`);
   }
 
   const stream = source.kind === 'file' ? source.file.stream() : response?.body;
   if (!stream) {
-    throw new Error('Webbläsaren kunde inte strömma demot till analysworkern.');
+    throw new Error('The browser could not stream the demo to the analysis worker.');
   }
 
   const reader = stream.getReader();
@@ -49,7 +49,7 @@ const readSource = async (
     const { done, value } = await reader.read();
     if (done) break;
     if (offset + value.byteLength > output.byteLength) {
-      throw new Error('Demot var större än storleken som rapporterades vid inspektionen.');
+      throw new Error('The demo was larger than the size reported during inspection.');
     }
     output.set(value, offset);
     offset += value.byteLength;
@@ -57,7 +57,7 @@ const readSource = async (
   }
 
   if (offset !== expectedSize) {
-    throw new Error(`Demot ändrade storlek under analysen (${offset} av ${expectedSize} byte).`);
+    throw new Error(`The demo changed size during analysis (${offset} of ${expectedSize} bytes).`);
   }
   return output.buffer;
 };

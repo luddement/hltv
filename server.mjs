@@ -100,11 +100,11 @@ createServer((request, response) => {
 
   if (!existsSync(filePath)) {
     response.statusCode = 404;
-    response.end('Build saknas. Kör pnpm build först.');
+    response.end('Build missing. Run pnpm build first.');
     return;
   }
 
   sendFile(request, response, filePath);
 }).listen(port, '127.0.0.1', () => {
-  console.log(`HLTV Replay Lab: http://127.0.0.1:${port}`);
+  console.log(`PRAXXA HLTV Player: http://127.0.0.1:${port}`);
 });
