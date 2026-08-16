@@ -265,7 +265,7 @@ const renderCinematic = (context: CanvasRenderingContext2D, frame: MovieHudFrame
 const killfeedColor = (side: MovieKillfeedEntry['killerSide']): string =>
   side === 'TERRORIST' ? '#e6a05b' : side === 'CT' ? '#7ea5e8' : PAPER;
 
-const renderCinematicKillfeed = (
+const renderPresentationKillfeed = (
   context: CanvasRenderingContext2D,
   entries: readonly MovieKillfeedEntry[],
 ) => {
@@ -391,7 +391,7 @@ export const renderMovieHud = (
 ) => {
   if (!frame || frame.preset === 'original' || frame.preset === 'clean') return;
   renderMovieSight(context, frame);
-  if (frame.preset === 'cinematic') renderCinematicKillfeed(context, frame.killfeed);
+  renderPresentationKillfeed(context, frame.killfeed);
   if (!frame.presentation) return;
   if (frame.preset === 'cinematic') renderCinematic(context, frame);
   else if (frame.preset === 'analyst') renderAnalyst(context, frame);
