@@ -12,7 +12,7 @@ export type MovieBackpressureAction = 'continue' | 'pause' | 'wait' | 'resume';
 export type MovieScoreboardCue = 'side-start' | 'side-end';
 
 export const MOVIE_INTRO_DURATION_MS = 3_000;
-export const MOVIE_SCOREBOARD_DURATION_MS = 1_200;
+export const MOVIE_SCOREBOARD_DURATION_MS = 2_000;
 
 export type MovieScoreboardEvent = {
   demoTimeMs: number;

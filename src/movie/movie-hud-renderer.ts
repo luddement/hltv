@@ -3,6 +3,16 @@ export type MovieCrosshairStyle = 'rifle' | 'pistol' | 'smg' | 'heavy';
 
 export type MovieHudReason = { points: number; label: string };
 
+export type MovieKillfeedEntry = {
+  killer: string;
+  victim: string;
+  weapon: string;
+  headshot: boolean;
+  killerSide?: 'TERRORIST' | 'CT';
+  victimSide?: 'TERRORIST' | 'CT';
+  ageMs: number;
+};
+
 export type MovieIntroCard = {
   teams: [string, string];
   matchDate: string;
@@ -30,6 +40,7 @@ export type MovieHudFrame = {
   terroristsAlive: number | string;
   counterTerroristsAlive: number | string;
   reasons: MovieHudReason[];
+  killfeed: MovieKillfeedEntry[];
   timelinePercent: number;
   crosshair: boolean;
   crosshairStyle: MovieCrosshairStyle;
@@ -251,6 +262,52 @@ const renderCinematic = (context: CanvasRenderingContext2D, frame: MovieHudFrame
   context.restore();
 };
 
+const killfeedColor = (side: MovieKillfeedEntry['killerSide']): string =>
+  side === 'TERRORIST' ? '#e6a05b' : side === 'CT' ? '#7ea5e8' : PAPER;
+
+const renderCinematicKillfeed = (
+  context: CanvasRenderingContext2D,
+  entries: readonly MovieKillfeedEntry[],
+) => {
+  const { width } = context.canvas;
+  const scale = width / 1920;
+  const rowHeight = 42 * scale;
+  const right = width - 54 * scale;
+  entries.slice(-4).reverse().forEach((entry, index) => {
+    const y = 58 * scale + index * (rowHeight + 7 * scale);
+    const opacity = entry.ageMs > 5_000
+      ? Math.max(0, 1 - (entry.ageMs - 5_000) / 1_000)
+      : 1;
+    context.save();
+    context.globalAlpha = opacity;
+    context.font = `750 ${15 * scale}px ${SANS}`;
+    const victimWidth = context.measureText(entry.victim.toUpperCase()).width;
+    context.font = `700 ${11 * scale}px ${MONO}`;
+    const weaponLabel = entry.headshot
+      ? `${entry.weapon.toUpperCase()} · HS`
+      : entry.weapon.toUpperCase();
+    const weaponWidth = context.measureText(weaponLabel).width + 24 * scale;
+    context.font = `750 ${15 * scale}px ${SANS}`;
+    const killerWidth = context.measureText(entry.killer.toUpperCase()).width;
+    const rowWidth = Math.min(width * 0.46, killerWidth + weaponWidth + victimWidth + 48 * scale);
+    const left = right - rowWidth;
+    panel(context, left, y, rowWidth, rowHeight, 0.76);
+    context.fillStyle = 'rgba(200,245,66,.65)';
+    context.fillRect(right - 2 * scale, y, 2 * scale, rowHeight);
+
+    const baseline = y + 27 * scale;
+    text(context, entry.victim.toUpperCase(), right - 15 * scale, baseline,
+      15 * scale, killfeedColor(entry.victimSide), 750, 'right');
+    const weaponRight = right - 25 * scale - victimWidth;
+    panel(context, weaponRight - weaponWidth, y + 7 * scale, weaponWidth, 28 * scale, 0.9);
+    text(context, weaponLabel, weaponRight - weaponWidth / 2, baseline,
+      11 * scale, entry.headshot ? ACID : MUTED, 700, 'center', MONO);
+    text(context, entry.killer.toUpperCase(), weaponRight - weaponWidth - 12 * scale, baseline,
+      15 * scale, killfeedColor(entry.killerSide), 750, 'right');
+    context.restore();
+  });
+};
+
 const renderAnalyst = (context: CanvasRenderingContext2D, frame: MovieHudFrame) => {
   const { width, height } = context.canvas;
   const scale = width / 1920;
@@ -334,6 +391,7 @@ export const renderMovieHud = (
 ) => {
   if (!frame || frame.preset === 'original' || frame.preset === 'clean') return;
   renderMovieSight(context, frame);
+  if (frame.preset === 'cinematic') renderCinematicKillfeed(context, frame.killfeed);
   if (!frame.presentation) return;
   if (frame.preset === 'cinematic') renderCinematic(context, frame);
   else if (frame.preset === 'analyst') renderAnalyst(context, frame);

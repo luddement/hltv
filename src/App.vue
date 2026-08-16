@@ -698,6 +698,7 @@
     MovieCrosshairStyle,
     MovieHudFrame,
     MovieIntroCard,
+    MovieKillfeedEntry,
   } from '/@/movie/movie-hud-renderer';
   import {
     MovieRecorder,
@@ -1282,6 +1283,32 @@
     engineCanvas.value?.focus();
   };
 
+  const movieKillfeedSide = (
+    playerId: string | null,
+    atMs: number,
+  ): MovieKillfeedEntry['killerSide'] => {
+    const team = playerHistory(playerId, atMs).team;
+    return team === 'TERRORIST' || team === 'CT' ? team : undefined;
+  };
+
+  const currentMovieKillfeed = (): MovieKillfeedEntry[] => {
+    const nowMs = hudDemoTimeMs.value;
+    return deathEvents.value
+      .filter((entry) => entry.demoTimeMs <= nowMs && nowMs - entry.demoTimeMs < 6_000)
+      .slice(-4)
+      .map((entry) => ({
+        killer: entry.worldKill
+          ? 'Världen'
+          : playerLabel(entry.killerPlayerId, entry.demoTimeMs, entry.killerSlot),
+        victim: playerLabel(entry.victimPlayerId, entry.demoTimeMs, entry.victimSlot),
+        weapon: fragWeaponLabel(entry.weapon),
+        headshot: entry.headshot,
+        killerSide: movieKillfeedSide(entry.killerPlayerId, entry.demoTimeMs),
+        victimSide: movieKillfeedSide(entry.victimPlayerId, entry.demoTimeMs),
+        ageMs: nowMs - entry.demoTimeMs,
+      }));
+  };
+
   const currentMovieHudFrame = (): MovieHudFrame | undefined => {
     if (scoreboardHeld.value) return undefined;
     const activeDeath = activeHudDeath.value;
@@ -1316,6 +1343,7 @@
       terroristsAlive: death.aliveBefore.terrorists.value ?? '–',
       counterTerroristsAlive: death.aliveBefore.counterTerrorists.value ?? '–',
       reasons,
+      killfeed: currentMovieKillfeed(),
       timelinePercent: activeDeath ? hudTimelinePercent.value : 100,
       crosshair: customCrosshairVisible.value,
       crosshairStyle: nativeCrosshairStyle.value,
