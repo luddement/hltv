@@ -63,7 +63,7 @@ index 32e836d..c1560aa 100644
  
 -
 diff --git a/cl_dll/entity.cpp b/cl_dll/entity.cpp
-index 254100f..e642f6a 100644
+index 254100f..a667147 100644
 --- a/cl_dll/entity.cpp
 +++ b/cl_dll/entity.cpp
 @@ -152,9 +152,18 @@ void DLLEXPORT HUD_ProcessPlayerState( struct entity_state_s *dst, const struct
@@ -109,43 +109,13 @@ index 254100f..e642f6a 100644
  	switch( event->event )
  	{
  	case 5001:
-@@ -792,4 +829,3 @@ cl_entity_t DLLEXPORT *HUD_GetUserEntity( int index )
+@@ -792,4 +815,3 @@ cl_entity_t DLLEXPORT *HUD_GetUserEntity( int index )
  {
  	return NULL;
  }
 -
-diff --git a/cl_dll/include/eventscripts.h b/cl_dll/include/eventscripts.h
-index c576f44..fcb2dad 100644
---- a/cl_dll/include/eventscripts.h
-+++ b/cl_dll/include/eventscripts.h
-@@ -65,6 +65,12 @@
- 
- #define IS_FIRSTPERSON_SPEC ( g_iUser1 == OBS_IN_EYE || (g_iUser1 && (gHUD.m_Spectator.m_pip->value == INSET_IN_EYE)) )
- 
-+// Native HLTV has no local clientdata viewmodel clock. Weapon event scripts
-+// publish one serial and timestamp per real first-person shot so the selected
-+// spectator viewmodel can start its animation exactly once.
-+extern int g_ReplayLabMuzzleSerial;
-+extern float g_ReplayLabMuzzleTime;
-+
- // Some of these are HL/TFC specific?
- void EV_GetGunPosition( struct event_args_s *args, Vector &pos, const Vector &origin );
- void EV_GetDefaultShellInfo( struct event_args_s *args, float *origin, float *velocity, float *ShellVelocity, float *ShellOrigin, float *forward, float *right, float *up, float forwardScale, float upScale, float rightScale, bool bReverseDirection = false );
-@@ -87,6 +93,12 @@ inline void EV_MuzzleFlash( void )
- 	if ( !ent )
- 		return;
- 
-+	if( gEngfuncs.pfnGetCvarFloat( "hltv_native_spectator" ) != 0.0f )
-+	{
-+		++g_ReplayLabMuzzleSerial;
-+		g_ReplayLabMuzzleTime = gEngfuncs.GetClientTime();
-+	}
-+
- 	// Or in the muzzle flash
- 	ent->curstate.effects |= EF_MUZZLEFLASH;
- }
 diff --git a/cl_dll/hud.cpp b/cl_dll/hud.cpp
-index 8d29ddd..d41b173 100644
+index 8d29ddd..a78ab47 100644
 --- a/cl_dll/hud.cpp
 +++ b/cl_dll/hud.cpp
 @@ -33,6 +33,8 @@
@@ -236,7 +206,7 @@ index 8d29ddd..d41b173 100644
  {
  	//Weapon prediction already takes care of changing the fog. ( g_lastFOV ).
 diff --git a/cl_dll/hud.h b/cl_dll/hud.h
-index b75b3c9..18e05b9 100644
+index b75b3c9..2b6a27c 100644
 --- a/cl_dll/hud.h
 +++ b/cl_dll/hud.h
 @@ -359,9 +359,10 @@ public:
@@ -689,7 +659,7 @@ index 3d46067..3a4e920 100644
  	m_iScopeArc[0] = gRenderAPI.GL_LoadTexture("sprites/scope_arc_nw.tga", NULL, 0, TF_NEAREST|TF_NOMIPMAP|TF_CLAMP);
  	m_iScopeArc[1] = gRenderAPI.GL_LoadTexture("sprites/scope_arc_ne.tga", NULL, 0, TF_NEAREST|TF_NOMIPMAP|TF_CLAMP);
 diff --git a/cl_dll/hud/spectator_gui.cpp b/cl_dll/hud/spectator_gui.cpp
-index 04b6d26..66c0836 100644
+index 04b6d26..fe05d7a 100644
 --- a/cl_dll/hud/spectator_gui.cpp
 +++ b/cl_dll/hud/spectator_gui.cpp
 @@ -138,8 +138,11 @@ int CHudSpectatorGui::Draw( float flTime )
@@ -776,7 +746,7 @@ index 1f2ad59..7be2c69 100644
  			{
  				if( intermission && !(pList->p->m_iFlags & HUD_INTERMISSION) )
 diff --git a/cl_dll/hud_spectator.cpp b/cl_dll/hud_spectator.cpp
-index 2319f23..9cc8d9a 100644
+index 2319f23..cf4b30f 100644
 --- a/cl_dll/hud_spectator.cpp
 +++ b/cl_dll/hud_spectator.cpp
 @@ -45,6 +45,11 @@ extern vec3_t v_angles;		// last view angle
@@ -888,6 +858,36 @@ index 2319f23..9cc8d9a 100644
  		{
  			return;
  		}
+diff --git a/cl_dll/include/eventscripts.h b/cl_dll/include/eventscripts.h
+index ec76689..6b4d8dd 100644
+--- a/cl_dll/include/eventscripts.h
++++ b/cl_dll/include/eventscripts.h
+@@ -65,6 +65,12 @@
+ 
+ #define IS_FIRSTPERSON_SPEC ( g_iUser1 == OBS_IN_EYE || (g_iUser1 && (gHUD.m_Spectator.m_pip->value == INSET_IN_EYE)) )
+ 
++// Native HLTV has no local clientdata viewmodel clock. Weapon event scripts
++// publish one serial and timestamp per real first-person shot so the selected
++// spectator viewmodel can start its animation exactly once.
++extern int g_ReplayLabMuzzleSerial;
++extern float g_ReplayLabMuzzleTime;
++
+ // Some of these are HL/TFC specific?
+ void EV_GetGunPosition( struct event_args_s *args, Vector &pos, const Vector &origin );
+ void EV_GetDefaultShellInfo( struct event_args_s *args, float *origin, float *velocity, float *ShellVelocity, float *ShellOrigin, float *forward, float *right, float *up, float forwardScale, float upScale, float rightScale, bool bReverseDirection = false );
+@@ -87,6 +93,12 @@ inline void EV_MuzzleFlash( void )
+ 	if ( !ent )
+ 		return;
+ 
++	if( gEngfuncs.pfnGetCvarFloat( "hltv_native_spectator" ) != 0.0f )
++	{
++		++g_ReplayLabMuzzleSerial;
++		g_ReplayLabMuzzleTime = gEngfuncs.GetClientTime();
++	}
++
+ 	// Or in the muzzle flash
+ 	ent->curstate.effects |= EF_MUZZLEFLASH;
+ }
 diff --git a/cl_dll/menu.cpp b/cl_dll/menu.cpp
 index 582bf28..c68aed9 100644
 --- a/cl_dll/menu.cpp
@@ -930,10 +930,35 @@ index 582bf28..c68aed9 100644
  
  	int menuType = reader.ReadByte();
 diff --git a/cl_dll/saytext.cpp b/cl_dll/saytext.cpp
-index 0df0291..daebbc3 100644
+index 0df0291..6a78378 100644
 --- a/cl_dll/saytext.cpp
 +++ b/cl_dll/saytext.cpp
-@@ -129,9 +129,17 @@ int CHudSayText :: Draw( float flTime )
+@@ -47,6 +47,16 @@ static float flScrollTime = 0;  // the time at which the lines next scroll up
+ static int Y_START = 0;
+ static int line_height = 0;
+ 
++static void ReplayLabClearTransientHud( void )
++{
++	gHUD.m_SayText.InitHUDData();
++	gHUD.m_SayText.m_iFlags &= ~HUD_DRAW;
++	flScrollTime = 0;
++	gHUD.m_DeathNotice.InitHUDData();
++	gHUD.m_Message.Reset();
++	gHUD.m_StatusBar.Reset();
++}
++
+ int CHudSayText :: Init( void )
+ {
+ 	gHUD.AddHudElem( this );
+@@ -57,6 +67,7 @@ int CHudSayText :: Init( void )
+ 
+ 	m_HUD_saytext =			gEngfuncs.pfnRegisterVariable( "hud_saytext", "1", 0 );
+ 	m_HUD_saytext_time =	gEngfuncs.pfnRegisterVariable( "hud_saytext_time", "5", 0 );
++	gEngfuncs.pfnAddCommand( "hltv_clear_transient_hud", ReplayLabClearTransientHud );
+ 
+ 	m_iFlags |= HUD_INTERMISSION; // is always drawn during an intermission
+ 
+@@ -129,9 +140,17 @@ int CHudSayText :: Draw( float flTime )
  		int current_x = LINE_START;
  		const char* text = g_szLineBuffer[i];
  		size_t length = strlen(text);
@@ -954,7 +979,7 @@ index 0df0291..daebbc3 100644
  
  		// buffer for accumulating characters of the same color
  		char color_buffer[256] = {0};
-@@ -139,6 +147,17 @@ int CHudSayText :: Draw( float flTime )
+@@ -139,6 +158,17 @@ int CHudSayText :: Draw( float flTime )
  
  		for (size_t c = 0; c < length; c++)
  		{
@@ -972,7 +997,7 @@ index 0df0291..daebbc3 100644
  			// color code parse
  			// '\x01' - normal (yellow); '\0x03' - teamcolor (R GREY B); '\x04' - green
  			if (text[c] == '\x01' || text[c] == '\x03' || text[c] == '\x04')
-@@ -403,11 +422,28 @@ void CHudSayText :: SayTextPrint( const char *pszBuf, int iBufSize, int clientIn
+@@ -403,11 +433,28 @@ void CHudSayText :: SayTextPrint( const char *pszBuf, int iBufSize, int clientIn
  
  #if 1
  	// if it's a say message, search for the players name in the string
@@ -1006,7 +1031,7 @@ index 0df0291..daebbc3 100644
  		if ( pName )
  		{
 diff --git a/cl_dll/view.cpp b/cl_dll/view.cpp
-index 579b2d6..412198b 100644
+index 579b2d6..dfa7670 100644
 --- a/cl_dll/view.cpp
 +++ b/cl_dll/view.cpp
 @@ -34,6 +34,7 @@

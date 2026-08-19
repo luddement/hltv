@@ -10,7 +10,7 @@ import XashLoader, {
 } from '/@/services/xash-loader';
 import type { GameAssetEntry } from '/@/services/local-asset-mount';
 import type { MovieAudioCapture, MoviePcmBlock } from '/@/movie/movie-recorder';
-import { hiddenSeekHudCommands } from '/@/demo/seek-hud';
+import { CLEAR_TRANSIENT_HUD_COMMAND, hiddenSeekHudCommands } from '/@/demo/seek-hud';
 
 const XASH_BASE_DIR = '/rodir';
 const DEMO_FILENAME = 'hltv_replay.dem';
@@ -52,6 +52,9 @@ class DemoEngine {
   private lifecycleTimers = new Set<number>();
 
   private setHiddenSeekHud(xash: Xash3D, hidden: boolean): void {
+    // Töm bufferten INNAN tiderna återställs. Gör man tvärtom hinner de gamla
+    // raderna bli synliga igen i samma ögonblick som livstiden blir positiv.
+    if (!hidden) xash.Cmd_ExecuteString(CLEAR_TRANSIENT_HUD_COMMAND);
     for (const command of hiddenSeekHudCommands(hidden)) {
       xash.Cmd_ExecuteString(command);
     }

@@ -32,7 +32,7 @@ import CSMenuURL from 'cs16-client/cl_dll/menu_emscripten_wasm32.wasm?url';
 // Locally rebuilt from CS16Client with a runtime-selectable legacy scoreboard;
 // modern protocol profiles keep the upstream HP/Money columns.
 // @ts-ignore -- vite url imports
-import CSClientURL from '../../engine-patches/cs16-client-hltv-v14.wasm?url';
+import CSClientURL from '../../engine-patches/cs16-client-hltv-v15.wasm?url';
 // @ts-ignore -- vite url imports
 import CSServerURL from 'cs16-client/dlls/cs_emscripten_wasm32.wasm?url';
 
