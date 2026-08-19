@@ -122,6 +122,13 @@ highlight-ranking och dynamiska CS-filmer finns i
 Målarkitektur, Infrastructure as Code, leverantörsval, säkerhet och en daterad
 kostnadsmodell för serverbaserad Endast frags-rendering finns i
 [docs/CLOUD_RENDERING_IAC_AND_COSTS.md](docs/CLOUD_RENDERING_IAC_AND_COSTS.md).
+En genomförbarhetsutredning för live multiplayer i browsern, med transportval,
+kvarvarande arbete och rättighetsförbehåll, finns i
+[docs/BROWSER_MULTIPLAYER.md](docs/BROWSER_MULTIPLAYER.md). Inget av det är
+implementerat.
+Var demoarkivet ska bo, hur JSON-databasen över alla demos byggs och räknas om
+när fragreglerna ändras, samt uppsättningen i Oracle Cloud finns i
+[docs/HOSTING_AND_INDEXING.md](docs/HOSTING_AND_INDEXING.md).
 Ett kort nuläge för byte av Codex-session finns i
 [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md).
 
