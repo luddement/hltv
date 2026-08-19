@@ -1,0 +1,8 @@
+compartment_ocid           = "ocid1.tenancy.oc1..aaaaaaaaakz67n6saoae245vwuoestgqow32yn77oxx33e2knbbymf3vszwa"
+availability_domain        = "iJtZ:EU-STOCKHOLM-1-AD-1"
+vcn_ocid                   = "ocid1.vcn.oc1.eu-stockholm-1.amaaaaaagfoeuriayygnwklzknaah6gp5vymafiaq3xzjphoqyzxqgsdwt2q"
+subnet_ocid                = "ocid1.subnet.oc1.eu-stockholm-1.aaaaaaaaffqdx7tzyxvyhi3av7nx2mj57x73g545gctumwjc4rmaaje2rwja"
+internet_gateway_ocid      = "ocid1.internetgateway.oc1.eu-stockholm-1.aaaaaaaalk74walqebs6zzfbeeq7mhpbrv36ar4rwwuy5dnn25i5jbh5otva"
+default_route_table_ocid   = "ocid1.routetable.oc1.eu-stockholm-1.aaaaaaaa2ogq6ljczsit4jbp5hemc4qtlotfhlglh5atp724qqicxpsacgtq"
+default_security_list_ocid = "ocid1.securitylist.oc1.eu-stockholm-1.aaaaaaaagdd5c5hygh2ezfm6dw2kxffhsfm5uyvvghu3ndpha7a5ox56kd5q"
+instance_ocid              = "ocid1.instance.oc1.eu-stockholm-1.anqxeljrgfoeuricemiuvpjefpmfttrn3nyeqhiz4aoglzu6bqg56zobdava"

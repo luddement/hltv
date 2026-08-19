@@ -41,3 +41,6 @@ vite.config.js
 *.njsproj
 *.sln
 *.sw?
+
+# Python-bytecode från scripts/
+__pycache__/

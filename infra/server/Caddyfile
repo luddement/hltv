@@ -1,0 +1,62 @@
+# Privat sajt för HLTV Replay Lab. Caddy äger TLS och inloggning; appservern
+# på 127.0.0.1:4173 har ingen egen autentisering och är aldrig nåbar utifrån.
+#
+# DOMAIN sätts i /etc/hltv/site.env. Utan den startar inte Caddy — det är
+# avsiktligt: basic auth över okrypterad HTTP skickar lösenorden i klartext.
+
+# www skickas till apex så att bara en adress är den riktiga — annars måste
+# certifikat, cookies och länkar hanteras på två ställen.
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
+{$DOMAIN} {
+	# Komprimera BARA text och kod. Demofilerna (.dem, octet-stream) hämtas
+	# med HTTP Range för att spola i uppspelningen, och en komprimerad respons
+	# kan inte serveras styckvis — Range och Content-Encoding går inte ihop.
+	# Utan den här matchningen slutar spolning i långa demos att fungera på
+	# ett sätt som ser ut som ett fel i spelaren.
+	encode {
+		zstd
+		gzip
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/wasm*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# Inloggningen avstängd 2026-08-20 på begäran. Sajten är öppen.
+	# Kontona ligger kvar i /etc/hltv/users.caddy — avkommentera blocket och
+	# kör scripts/deploy-config.sh för att slå på den igen.
+	#
+	# basic_auth {
+	# 	import /etc/hltv/users.caddy
+	# }
+
+	# Sökmotorer ska aldrig indexera arkivet.
+	header {
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		-Server
+	}
+
+	handle /robots.txt {
+		respond "User-agent: *
+Disallow: /" 200
+	}
+
+	reverse_proxy 127.0.0.1:4173 {
+		# Demos är stora och spelas upp medan de laddas. Ingen buffring,
+		# och gott om tid för en långsam klient.
+		flush_interval -1
+	}
+
+	log {
+		output file /var/log/caddy/hltv.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

@@ -1,0 +1,9 @@
+# Provider-binärer och plugincache — stora, plattformsspecifika, ska inte i Git.
+.terraform/
+.terraform.tfstate.lock.info
+
+# State ligger MEDVETET i Git enligt beslut. Backupfilen gör det inte.
+*.tfstate.backup
+
+# Planfiler är binära ögonblicksbilder, inte källkod.
+*.tfplan
