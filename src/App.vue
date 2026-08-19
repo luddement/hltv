@@ -956,7 +956,7 @@
   const fragSort = ref<'time' | 'score'>('time');
   const selectedFragId = ref('');
   const expandedFragScoreId = ref('');
-  const hudPreset = ref<HudPreset>('cinematic');
+  const hudPreset = ref<HudPreset>('original');
   const interfaceTheme = ref<InterfaceTheme>('replay');
   const scoreboardHeld = ref(false);
   const fragReelActive = ref(false);
