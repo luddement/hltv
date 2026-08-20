@@ -1031,6 +1031,10 @@
 
   const MOVIE_EXPORT_DIAGNOSTICS_KEY = 'replay-lab-movie-export-diagnostics-v1';
   const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
+  const ARCHIVE_FILTERS_STORAGE_KEY = 'replay-lab-demo-archive-filters-v1';
+  const archiveSortValues: readonly DemoCatalogSort[] = [
+    'date-desc', 'date-asc', 'frag-desc', 'round-desc',
+  ];
 
   const hudPresets: Array<{
     id: HudPreset;
@@ -1885,6 +1889,18 @@
       playlistError.value = 'The browser could not persist the playlist.';
     }
   }, { deep: true });
+  watch([archiveSearch, archiveYear, archiveSort], ([search, year, sort]) => {
+    try {
+      window.localStorage.setItem(ARCHIVE_FILTERS_STORAGE_KEY, JSON.stringify({
+        version: 1,
+        search,
+        year,
+        sort,
+      }));
+    } catch {
+      // Filtering must keep working when storage is disabled or full.
+    }
+  });
   const weaponLabel = fragWeaponLabel;
 
   const applyEngineHudPreset = () => {
@@ -3439,6 +3455,26 @@
   };
 
   onMounted(() => {
+    try {
+      const savedArchiveFilters = JSON.parse(
+        window.localStorage.getItem(ARCHIVE_FILTERS_STORAGE_KEY) ?? 'null',
+      ) as unknown;
+      if (savedArchiveFilters && typeof savedArchiveFilters === 'object') {
+        const filters = savedArchiveFilters as Record<string, unknown>;
+        if (filters.version === 1) {
+          if (typeof filters.search === 'string') archiveSearch.value = filters.search;
+          if (filters.year === 'all'
+            || (typeof filters.year === 'number' && Number.isInteger(filters.year))) {
+            archiveYear.value = filters.year;
+          }
+          if (archiveSortValues.includes(filters.sort as DemoCatalogSort)) {
+            archiveSort.value = filters.sort as DemoCatalogSort;
+          }
+        }
+      }
+    } catch {
+      // Ignore invalid or unavailable saved filter preferences.
+    }
     try {
       const savedPlaylist = window.localStorage.getItem(FRAG_PLAYLIST_STORAGE_KEY);
       if (savedPlaylist) fragPlaylist.value = parseFragPlaylist(JSON.parse(savedPlaylist) as unknown);
