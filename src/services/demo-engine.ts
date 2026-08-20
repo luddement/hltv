@@ -16,7 +16,9 @@ const XASH_BASE_DIR = '/rodir';
 const DEMO_FILENAME = 'hltv_replay.dem';
 const DEMO_PATH = `${XASH_BASE_DIR}/cstrike/${DEMO_FILENAME}`;
 const DEMO_SEEK_STARTUP_COMPENSATION_MS = 1_500;
-const RECONSTRUCTION_CAMERA_SETTLE_MS = 500;
+const PRESENTATION_WARMUP_MIN_MS = 3_000;
+const PRESENTATION_STABLE_FRAME_COUNT = 16;
+const PRESENTATION_STABLE_FRAME_MAX_DELTA_MS = 200;
 
 export type DemoEngineOptions = {
   canvas: HTMLCanvasElement;
@@ -73,6 +75,35 @@ class DemoEngine {
     }, delayMs);
     this.lifecycleTimers.add(timer);
     return timer;
+  }
+
+  private waitForStablePresentation(
+    xash: Xash3D,
+    callback: (elapsedMs: number, stableFrames: number) => void,
+  ): void {
+    const startedAt = performance.now();
+    let previousFrameAt = startedAt;
+    let stableFrames = 0;
+    const sample = (now: number) => {
+      if (this.xash !== xash || !xash.running) return;
+      const elapsedMs = now - startedAt;
+      const frameDeltaMs = now - previousFrameAt;
+      previousFrameAt = now;
+      if (elapsedMs >= PRESENTATION_WARMUP_MIN_MS
+        && frameDeltaMs <= PRESENTATION_STABLE_FRAME_MAX_DELTA_MS) {
+        stableFrames += 1;
+      } else if (frameDeltaMs > PRESENTATION_STABLE_FRAME_MAX_DELTA_MS) {
+        // Shader compilation, texture upload or another main-thread stall
+        // means the scene is not ready. Require a fresh uninterrupted run.
+        stableFrames = 0;
+      }
+      if (stableFrames >= PRESENTATION_STABLE_FRAME_COUNT) {
+        callback(elapsedMs, stableFrames);
+        return;
+      }
+      window.requestAnimationFrame(sample);
+    };
+    window.requestAnimationFrame(sample);
   }
 
   get running(): boolean {
@@ -304,7 +335,13 @@ class DemoEngine {
             xash.Cmd_ExecuteString('sys_timescale 0');
             xash.Cmd_ExecuteString('r_norefresh 0');
             activateCamera();
-            this.scheduleFor(xash, revealPlayback, RECONSTRUCTION_CAMERA_SETTLE_MS);
+            this.waitForStablePresentation(xash, (elapsedMs, stableFrames) => {
+              options.onLog(
+                `First-person scene stable after ${Math.round(elapsedMs)} ms and ${stableFrames} clean frames.`,
+                false,
+              );
+              revealPlayback();
+            });
             return;
           }
 
