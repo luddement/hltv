@@ -788,9 +788,6 @@
               <select v-model="movieQualityId" :disabled="movieExportRunning">
                 <option v-for="quality in MOVIE_QUALITIES" :key="quality.id" :value="quality.id">{{ quality.label }}</option>
               </select>
-              <small :class="['movie-quality-help', { active: movieQuality.fps === 120 }]">
-                120 FPS requires a 120 Hz display and browser rendering at 120 Hz; otherwise frames may be duplicated.
-              </small>
             </label>
             <label class="movie-intro-toggle">
               <input v-model="movieIncludeIntro" type="checkbox" :disabled="movieExportRunning" @change="saveMovieIntroPreference" />
@@ -807,6 +804,9 @@
             >Export movie · {{ formatBytes(playlistMovieEstimatedBytes) }}</button>
           </div>
         </footer>
+        <p :class="['playlist-quality-note', { active: movieQuality.fps === 120 }]">
+          120 FPS requires a 120 Hz display and browser rendering at 120 Hz; otherwise frames may be duplicated.
+        </p>
       </section>
 
       <footer>
