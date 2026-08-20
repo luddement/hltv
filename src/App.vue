@@ -129,6 +129,8 @@
               </div>
               <div><strong>{{ formatNumber(archiveTotals.demos) }}</strong><span>demos</span></div>
               <div><strong>{{ archiveTotals.maps }}</strong><span>kartor</span></div>
+              <div><strong>{{ archiveTotals.ourClans }}</strong><span>egna klaner</span></div>
+              <div><strong>{{ formatNumber(archiveTotals.metClans) }}</strong><span>lag mötta</span></div>
               <div v-if="archiveTotals.topMap">
                 <strong>{{ archiveTotals.topMap.name }}</strong><span>mest spelad</span>
               </div>
@@ -1056,7 +1058,7 @@
 
 <script setup lang="ts">
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-  import { CREW, crewMemberForName } from '/@/archive/crew';
+  import { CLAN_FAMILIES, CREW, crewMemberForName } from '/@/archive/crew';
   import {
     buildReplayRoute,
     EMPTY_REPLAY_ROUTE,
@@ -2874,6 +2876,7 @@
     const demos = (demoCatalog.value?.demos ?? []).filter((d) => d.status === 'complete');
     let seconds = 0; let frags = 0; let rounds = 0; let bytes = 0;
     const maps = new Map<string, number>();
+    const teams = new Set<string>();
     const years = new Set<number>();
     for (const demo of demos) {
       seconds += demo.durationSeconds ?? 0;
@@ -2882,7 +2885,14 @@
       bytes += demo.sizeBytes ?? 0;
       if (demo.year) years.add(demo.year);
       if (demo.map) maps.set(demo.map, (maps.get(demo.map) ?? 0) + 1);
+      for (const team of demo.teams ?? []) {
+        if (team && !/^Team [12]$/.test(team)) teams.add(team.toLocaleLowerCase('en-GB'));
+      }
     }
+    // Egna klaner räknas som familjer, inte stavningar: 322 taggar är sexton
+    // klaner. Motståndarna räknas som distinkta lagnamn, för där finns ingen
+    // kurerad lista att gruppera mot.
+    const ourClans = CLAN_FAMILIES.filter((clan) => [...teams].some((team) => clan.match.test(team))).length;
     const headshots = (crewIndex.value?.members ?? []).reduce((n, m) => n + m.headshots, 0);
     const topMap = [...maps.entries()].sort((a, b) => b[1] - a[1])[0];
     const yearList = [...years].sort();
@@ -2892,6 +2902,8 @@
       hours: Math.floor((seconds % 86400) / 3600),
       minutes: Math.floor((seconds % 3600) / 60),
       maps: maps.size,
+      ourClans,
+      metClans: teams.size,
       topMap: topMap ? { name: topMap[0], count: topMap[1] } : undefined,
       span: yearList.length ? `${yearList[0]}–${yearList.at(-1)}` : '',
     };

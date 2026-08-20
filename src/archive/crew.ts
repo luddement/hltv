@@ -75,3 +75,27 @@ export const crewMemberForName = (name: string): CrewMember | undefined => {
     return member.aliases.some((alias) => tokens.has(alias));
   });
 };
+
+/**
+ * Klanerna gänget spelade i. 322 olika stavningar av klantaggen döljer sexton
+ * faktiska klaner — "praxxa", "pXa" och "PRAXXA" är samma sak, och taggen
+ * skrevs om lika ofta som nicken.
+ */
+export const CLAN_FAMILIES: readonly { name: string; match: RegExp }[] = [
+  { name: 'PraXXa', match: /^(praxxa|pxa|pr4xx4)/ },
+  { name: 'Stickyfingerz', match: /^sticky/ },
+  { name: 'cRAp', match: /^crap/ },
+  { name: 'dik / Delta Iota Kappa', match: /^(dik|gotdik|delta)/ },
+  { name: 'OTRO1337', match: /^otro/ },
+  { name: 'TopGun', match: /^(topgun|team ?topgun)/ },
+  { name: 'Rödalinjen', match: /^r ?o ?dalinjen/ },
+  { name: 'MangoBeat', match: /^mangobeat/ },
+  { name: 'mInc', match: /^minc/ },
+  { name: 'evilLOOk', match: /^evillook/ },
+  { name: "2l'a'tt f'o'r", match: /^2 ?l/ },
+  { name: 'nastygocart', match: /^nastygocart/ },
+  { name: 'nereid', match: /^nereid/ },
+  { name: 'risc', match: /^risc/ },
+  { name: 'Buccaneerz', match: /^buccaneerz/ },
+  { name: 'BajZLan', match: /^bajzlan/ },
+];
