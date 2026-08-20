@@ -16,6 +16,7 @@ const XASH_BASE_DIR = '/rodir';
 const DEMO_FILENAME = 'hltv_replay.dem';
 const DEMO_PATH = `${XASH_BASE_DIR}/cstrike/${DEMO_FILENAME}`;
 const DEMO_SEEK_STARTUP_COMPENSATION_MS = 1_500;
+const RECONSTRUCTION_CAMERA_SETTLE_MS = 500;
 
 export type DemoEngineOptions = {
   canvas: HTMLCanvasElement;
@@ -222,71 +223,93 @@ class DemoEngine {
           if (seekCompleted) return;
           seekCompleted = true;
           if (!this.running) return;
-          xash.Cmd_ExecuteString('sys_timescale 1');
-          xash.Cmd_ExecuteString('r_norefresh 0');
-          this.setHiddenSeekHud(xash, false);
-          xash.Cmd_ExecuteString('volume 0.08');
-          // A +showscores packet consumed during the hidden seek can otherwise
-          // leave the scoreboard latched over the selected highlight.
-          xash.Cmd_ExecuteString('-showscores');
-          xash.Cmd_ExecuteString('hltv_closemenu');
-          options.onSeekStateChange?.(false);
-          options.onLog('Hidden seek complete; normal playback resumed.', false);
           const camera = options.reconstructionCamera;
-          if (camera) {
-            this.scheduleFor(xash, () => {
-              if (!this.running) return;
-              if (camera.nativeHltv) {
-                if (!options.isHltv) {
-                  options.onLog(
-                    'Ignored an HLTV camera in a regular POV demo.',
-                    true,
-                  );
-                  return;
-                }
-                xash.Cmd_ExecuteString('-showscores');
-                xash.Cmd_ExecuteString('hltv_reconstruction_camera 0');
-                xash.Cmd_ExecuteString('spec_autodirector 0');
-                xash.Cmd_ExecuteString('set spec_pip_internal 0');
-                xash.Cmd_ExecuteString('spec_pip 0');
-                xash.Cmd_ExecuteString(`hltv_native_weapon ${camera.weapon}`);
-                xash.Cmd_ExecuteString(`hltv_spec_player ${camera.entityIndex}`);
-                xash.Cmd_ExecuteString('bind SPACE +jump');
-                xash.Cmd_ExecuteString('bind MOUSE1 +attack');
-                xash.Cmd_ExecuteString('bind MOUSE2 +attack2');
-                xash.Cmd_ExecuteString('bind w +forward');
-                xash.Cmd_ExecuteString('bind a +moveleft');
-                xash.Cmd_ExecuteString('bind s +back');
-                xash.Cmd_ExecuteString('bind d +moveright');
-                options.onReconstructionStateChange?.(true);
-                options.onLog(`Killer's native HLTV POV active: ${camera.label}.`, false);
+          const revealPlayback = () => {
+            if (!this.running) return;
+            xash.Cmd_ExecuteString('sys_timescale 1');
+            xash.Cmd_ExecuteString('r_norefresh 0');
+            this.setHiddenSeekHud(xash, false);
+            xash.Cmd_ExecuteString('volume 0.08');
+            // A +showscores packet consumed during the hidden seek can otherwise
+            // leave the scoreboard latched over the selected highlight.
+            xash.Cmd_ExecuteString('-showscores');
+            xash.Cmd_ExecuteString('hltv_closemenu');
+            options.onSeekStateChange?.(false);
+            options.onLog(
+              camera?.activateAfterMs === 0
+                ? 'First-person camera ready; normal playback resumed.'
+                : 'Hidden seek complete; normal playback resumed.',
+              false,
+            );
+          };
+          const activateCamera = () => {
+            if (!camera || !this.running) return;
+            if (camera.nativeHltv) {
+              if (!options.isHltv) {
+                options.onLog(
+                  'Ignored an HLTV camera in a regular POV demo.',
+                  true,
+                );
                 return;
               }
-              const commandValue = (value: number) => Number.isFinite(value)
-                ? value.toFixed(4)
-                : '0';
-              xash.Cmd_ExecuteString(`hltv_reconstruction_x ${commandValue(camera.origin[0])}`);
-              xash.Cmd_ExecuteString(`hltv_reconstruction_y ${commandValue(camera.origin[1])}`);
-              xash.Cmd_ExecuteString(`hltv_reconstruction_z ${commandValue(camera.origin[2])}`);
-              xash.Cmd_ExecuteString(`hltv_reconstruction_pitch ${commandValue(camera.angles[0])}`);
-              xash.Cmd_ExecuteString(`hltv_reconstruction_yaw ${commandValue(camera.angles[1])}`);
-              xash.Cmd_ExecuteString(`hltv_reconstruction_roll ${commandValue(camera.angles[2])}`);
-              xash.Cmd_ExecuteString(`hltv_reconstruction_entity ${camera.entityIndex}`);
+              xash.Cmd_ExecuteString('-showscores');
+              xash.Cmd_ExecuteString('hltv_reconstruction_camera 0');
+              xash.Cmd_ExecuteString('spec_autodirector 0');
+              xash.Cmd_ExecuteString('set spec_pip_internal 0');
+              xash.Cmd_ExecuteString('spec_pip 0');
+              xash.Cmd_ExecuteString(`hltv_native_weapon ${camera.weapon}`);
+              xash.Cmd_ExecuteString(`hltv_spec_player ${camera.entityIndex}`);
+              xash.Cmd_ExecuteString('bind SPACE +jump');
+              xash.Cmd_ExecuteString('bind MOUSE1 +attack');
+              xash.Cmd_ExecuteString('bind MOUSE2 +attack2');
+              xash.Cmd_ExecuteString('bind w +forward');
+              xash.Cmd_ExecuteString('bind a +moveleft');
+              xash.Cmd_ExecuteString('bind s +back');
+              xash.Cmd_ExecuteString('bind d +moveright');
+              options.onReconstructionStateChange?.(true);
+              options.onLog(`Killer's native HLTV POV active: ${camera.label}.`, false);
+              return;
+            }
+            const commandValue = (value: number) => Number.isFinite(value)
+              ? value.toFixed(4)
+              : '0';
+            xash.Cmd_ExecuteString(`hltv_reconstruction_x ${commandValue(camera.origin[0])}`);
+            xash.Cmd_ExecuteString(`hltv_reconstruction_y ${commandValue(camera.origin[1])}`);
+            xash.Cmd_ExecuteString(`hltv_reconstruction_z ${commandValue(camera.origin[2])}`);
+            xash.Cmd_ExecuteString(`hltv_reconstruction_pitch ${commandValue(camera.angles[0])}`);
+            xash.Cmd_ExecuteString(`hltv_reconstruction_yaw ${commandValue(camera.angles[1])}`);
+            xash.Cmd_ExecuteString(`hltv_reconstruction_roll ${commandValue(camera.angles[2])}`);
+            xash.Cmd_ExecuteString(`hltv_reconstruction_entity ${camera.entityIndex}`);
+            xash.Cmd_ExecuteString('r_drawviewmodel 1');
+            xash.Cmd_ExecuteString('hud_draw 1');
+            xash.Cmd_ExecuteString('hltv_reconstruction_camera 1');
+            options.onReconstructionStateChange?.(true);
+            options.onLog(`Killer POV camera active: ${camera.label}.`, false);
+            this.scheduleFor(xash, () => {
+              if (!this.running) return;
+              xash.Cmd_ExecuteString('hltv_reconstruction_camera 0');
               xash.Cmd_ExecuteString('r_drawviewmodel 1');
               xash.Cmd_ExecuteString('hud_draw 1');
-              xash.Cmd_ExecuteString('hltv_reconstruction_camera 1');
-              options.onReconstructionStateChange?.(true);
-              options.onLog(`Killer POV camera active: ${camera.label}.`, false);
-              this.scheduleFor(xash, () => {
-                if (!this.running) return;
-                xash.Cmd_ExecuteString('hltv_reconstruction_camera 0');
-                xash.Cmd_ExecuteString('r_drawviewmodel 1');
-                xash.Cmd_ExecuteString('hud_draw 1');
-                options.onReconstructionStateChange?.(false);
-                options.onLog('Killer camera ended; recorded POV restored.', false);
-              }, camera.durationMs);
-            }, camera.activateAfterMs);
+              options.onReconstructionStateChange?.(false);
+              options.onLog('Killer camera ended; recorded POV restored.', false);
+            }, camera.durationMs);
+          };
+
+          if (camera?.activateAfterMs === 0) {
+            // Keep demo time and audio frozen while native spectator commands
+            // take effect. The seek overlay stays visible until the killer's
+            // first-person camera has rendered and settled, so the requested
+            // preroll begins with the correct POV instead of spending most of
+            // its three seconds waiting for spectator mode to switch.
+            xash.Cmd_ExecuteString('sys_timescale 0');
+            xash.Cmd_ExecuteString('r_norefresh 0');
+            activateCamera();
+            this.scheduleFor(xash, revealPlayback, RECONSTRUCTION_CAMERA_SETTLE_MS);
+            return;
           }
+
+          revealPlayback();
+          if (camera) this.scheduleFor(xash, activateCamera, camera.activateAfterMs);
         };
         // Safety timeout for a missing completion marker. The production engine
         // normally emits the marker immediately after reaching the target.

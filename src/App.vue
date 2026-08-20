@@ -2818,8 +2818,11 @@
       nativeHltv,
       weapon: fragWeaponViewModel(death.weapon),
       label: `${killerLabel} vs ${victimLabel}`,
+      // Native HLTV first person must be selected while the seek overlay is
+      // still up. DemoEngine holds the target frame until this camera is ready,
+      // then starts the full visible preroll from the requested timestamp.
       activateAfterMs: nativeHltv
-        ? Math.max(250, death.demoTimeMs - startAtMs - 500)
+        ? 0
         : Math.max(250, death.demoTimeMs - startAtMs - 1_250),
       durationMs: 5_000,
     };
