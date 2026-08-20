@@ -51,7 +51,10 @@ if [[ $do_app -eq 1 ]]; then
     "$APP/goldsrc-map-crc.mjs" "$APP/demo-assets.json" "$USER_AT:$REMOTE/app/"
 
   note "Byggd frontend (dist)"
-  "${RSYNC[@]}" --delete "$APP/dist/" "$USER_AT:$REMOTE/app/dist/"
+  # demo-index.json genereras PÅ SERVERN av index-demos.mjs och finns inte i
+  # det lokala bygget. Utan undantaget raderar --delete demokatalogen vid varje
+  # deploy, och sajten tappar hela arkivlistan tills indexeringen körts om.
+  "${RSYNC[@]}" --delete --exclude=demo-index.json "$APP/dist/" "$USER_AT:$REMOTE/app/dist/"
 
   note "Basresurser för motorn (game-assets)"
   "${RSYNC[@]}" "$APP/game-assets/" "$USER_AT:$REMOTE/game-assets/"
