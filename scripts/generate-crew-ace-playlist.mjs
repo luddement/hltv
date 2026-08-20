@@ -18,6 +18,7 @@ import { parseArgs } from 'node:util';
 const { values } = parseArgs({ options: {
   member: { type: 'string' },
   count: { type: 'string' },
+  'fast-only': { type: 'boolean', default: false },
   'max-aces-per-demo': { type: 'string', default: '2' },
   analysis: { type: 'string', default: '/srv/hltv/demo-analysis' },
   catalog: { type: 'string', default: '/srv/hltv/app/dist/demo-index.json' },
@@ -165,9 +166,12 @@ for (const entry of catalogEntries) {
 
 // A fixed-size reel only admits whole ace rounds. One-scene aces rank first,
 // then the strongest complete aces, while a soft demo cap keeps the reel varied.
-const rankedAces = [...aceRounds].sort((left, right) =>
-  left.scenes - right.scenes
-  || left.kills.length - right.kills.length
+const aceSpanMs = (ace) => ace.kills.at(-1).demoTimeMs - ace.kills[0].demoTimeMs;
+const eligibleAceRounds = values['fast-only']
+  ? aceRounds.filter((ace) => ace.scenes === 1)
+  : aceRounds;
+const rankedAces = [...eligibleAceRounds].sort((left, right) =>
+  (values['fast-only'] ? aceSpanMs(left) - aceSpanMs(right) : left.scenes - right.scenes)
   || right.score - left.score
   || right.headshots - left.headshots
   || left.demo.path.localeCompare(right.demo.path)
@@ -231,7 +235,9 @@ const playlist = {
   schemaVersion: 1,
   database: 'hltv-archive',
   title: targetCount === undefined
-    ? `${member.name} — alla kompletta ace`
+    ? values['fast-only']
+      ? `${member.name} — alla kompletta snabba ace`
+      : `${member.name} — alla kompletta ace`
     : `${member.name} — ${selectedAceRounds.length} kompletta ace`,
   createdAt: now,
   updatedAt: now,
@@ -244,12 +250,16 @@ const report = {
   member: member.name,
   generatedAt: now,
   playlist: outputPath,
-  rule: 'Exactly five enemy kills against five distinct victims in one valid round; every kill is included. Kills within ten seconds share a scene.',
+  rule: values['fast-only']
+    ? 'Exactly five enemy kills against five distinct victims in one valid round; all five kills must fit one continuous scene.'
+    : 'Exactly five enemy kills against five distinct victims in one valid round; every kill is included. Kills within ten seconds share a scene.',
   candidateDemos: catalogEntries.length,
   demosWithoutRounds,
   unreadableAnalyses,
   rejectedMalformedRounds,
   candidateAceRounds: aceRounds.length,
+  eligibleAceRounds: eligibleAceRounds.length,
+  fastOnly: values['fast-only'],
   selectedAceRounds: selectedAceRounds.length,
   aceDemos: acesByDemo.size,
   frags: items.length,
@@ -258,7 +268,8 @@ const report = {
   headshots: items.filter((item) => item.headshot).length,
   maps: [...new Set(items.map((item) => item.mapName))].sort(),
   aces: [...selectedAceRounds]
-    .sort((left, right) => right.score - left.score
+    .sort((left, right) => (values['fast-only'] ? aceSpanMs(left) - aceSpanMs(right) : 0)
+      || right.score - left.score
       || left.demo.path.localeCompare(right.demo.path)
       || left.kills[0].demoTimeMs - right.kills[0].demoTimeMs)
     .map((ace) => ({
@@ -267,7 +278,7 @@ const report = {
       roundNumber: ace.round.number,
       startMs: ace.kills[0].demoTimeMs,
       endMs: ace.kills.at(-1).demoTimeMs,
-      spanMs: ace.kills.at(-1).demoTimeMs - ace.kills[0].demoTimeMs,
+      spanMs: aceSpanMs(ace),
       kills: ace.kills.length,
       scenes: ace.scenes,
       headshots: ace.headshots,
