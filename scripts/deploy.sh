@@ -56,6 +56,7 @@ if [[ $do_app -eq 1 ]]; then
   # det lokala bygget. Utan undantagen raderar --delete dem vid varje deploy,
   # och sajten tappar arkivlistan respektive spelarstatistiken tills de körts om.
   "${RSYNC[@]}" --delete --exclude=demo-index.json --exclude=crew-index.json \
+    --exclude=playlists/ \
     "$APP/dist/" "$USER_AT:$REMOTE/app/dist/"
 
   # Indexeraren och crew-aggregeringen körs på servern och importerar från
@@ -65,6 +66,7 @@ if [[ $do_app -eq 1 ]]; then
   "${RSYNC[@]}" --delete "$APP/src/" "$USER_AT:$REMOTE/app/src/"
   "${RSYNC[@]}" "$APP/scripts/hltv-node.mjs" "$APP/scripts/index-demos.mjs" \
     "$APP/scripts/build-crew-index.mjs" "$APP/scripts/generate-crew-playlist.mjs" \
+    "$APP/scripts/generate-crew-ace-playlist.mjs" \
     "$APP/scripts/unpack-demo-zips.py" \
     "$APP/scripts/repair-goldsrc-demos.py" "$USER_AT:$REMOTE/app/scripts/"
 
