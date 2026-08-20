@@ -187,6 +187,15 @@
                 </option>
               </select>
             </label>
+            <label class="archive-person-filter">
+              <span>Klan</span>
+              <select v-model="archiveClan">
+                <option value="all">Alla</option>
+                <option v-for="clan in archiveClans" :key="clan.name" :value="clan.name">
+                  {{ clan.name }} · {{ clan.demos }}
+                </option>
+              </select>
+            </label>
             <label>
               <span>Search demos, clans or players</span>
               <input v-model.trim="archiveSearch" type="search" placeholder="crapoffline, luddi, de_nuke…" />
@@ -1058,7 +1067,7 @@
 
 <script setup lang="ts">
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-  import { CLAN_FAMILIES, CREW, crewMemberForName } from '/@/archive/crew';
+  import { CLAN_FAMILIES, CREW, crewMemberForName, nameTokens } from '/@/archive/crew';
   import {
     buildReplayRoute,
     EMPTY_REPLAY_ROUTE,
@@ -1250,6 +1259,7 @@
   const archiveSearch = ref('');
   const archiveYear = ref<'all' | number>('all');
   const archivePerson = ref<'all' | string>('all');
+  const archiveClan = ref<'all' | string>('all');
   const crewIndex = shallowRef<CrewIndex>();
   const archiveSort = ref<DemoCatalogSort>('date-desc');
   const archiveResultLimit = ref(50);
@@ -1363,6 +1373,38 @@
     return map;
   });
 
+  /**
+   * Klanerna per demo. Matchas mot BÅDA källorna: lagnamnen i teams[], och
+   * klantaggen framför spelarnas nick. Ett demo där laget bara heter "Team 1"
+   * bär ändå taggen på namnen, och skulle annars falla ur filtret.
+   */
+  const clansByDemoPath = computed(() => {
+    const map = new Map<string, Set<string>>();
+    for (const demo of demoCatalog.value?.demos ?? []) {
+      if (demo.status !== 'complete') continue;
+      const haystack: string[] = [];
+      for (const team of demo.teams ?? []) haystack.push(team.toLocaleLowerCase('en-GB'));
+      for (const name of demo.players ?? []) haystack.push(...nameTokens(name));
+      const found = new Set<string>();
+      for (const clan of CLAN_FAMILIES) {
+        if (haystack.some((value) => clan.match.test(value))) found.add(clan.name);
+      }
+      if (found.size) map.set(demo.path, found);
+    }
+    return map;
+  });
+
+  const archiveClans = computed(() => {
+    const counts = new Map<string, number>();
+    for (const names of clansByDemoPath.value.values()) {
+      for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return CLAN_FAMILIES
+      .map((clan) => ({ name: clan.name, demos: counts.get(clan.name) ?? 0 }))
+      .filter((clan) => clan.demos > 0)
+      .sort((left, right) => right.demos - left.demos);
+  });
+
   /** Gänget som faktiskt förekommer i arkivet, med antal demos. */
   const archivePeople = computed(() => {
     const counts = new Map<string, number>();
@@ -1376,10 +1418,16 @@
   });
 
   const personFilteredArchive = computed(() => {
-    const entries = demoCatalog.value?.demos ?? [];
-    if (archivePerson.value === 'all') return entries;
-    const lookup = crewByDemoPath.value;
-    return entries.filter((entry) => lookup.get(entry.path)?.has(archivePerson.value));
+    let entries = demoCatalog.value?.demos ?? [];
+    if (archivePerson.value !== 'all') {
+      const lookup = crewByDemoPath.value;
+      entries = entries.filter((entry) => lookup.get(entry.path)?.has(archivePerson.value));
+    }
+    if (archiveClan.value !== 'all') {
+      const lookup = clansByDemoPath.value;
+      entries = entries.filter((entry) => lookup.get(entry.path)?.has(archiveClan.value));
+    }
+    return entries;
   });
 
   const filteredArchiveDemos = computed(() => filterDemoCatalog(
@@ -2336,6 +2384,7 @@
         year,
         sort,
         person: archivePerson.value,
+        clan: archiveClan.value,
       }));
     } catch {
       // Filtering must keep working when storage is disabled or full.
@@ -3995,6 +4044,10 @@
           if (typeof filters.person === 'string'
             && (filters.person === 'all' || CREW.some((member) => member.id === filters.person))) {
             archivePerson.value = filters.person;
+          }
+          if (typeof filters.clan === 'string'
+            && (filters.clan === 'all' || CLAN_FAMILIES.some((clan) => clan.name === filters.clan))) {
+            archiveClan.value = filters.clan;
           }
         }
       }

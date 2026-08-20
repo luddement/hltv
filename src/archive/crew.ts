@@ -88,7 +88,9 @@ export const CLAN_FAMILIES: readonly { name: string; match: RegExp }[] = [
   { name: 'dik / Delta Iota Kappa', match: /^(dik|gotdik|delta)/ },
   { name: 'OTRO1337', match: /^otro/ },
   { name: 'TopGun', match: /^(topgun|team ?topgun)/ },
-  { name: 'Rödalinjen', match: /^r ?o ?dalinjen/ },
+  // Lagnamnen skrevs "dalinjen", "roedaLinjen", aldrig med ö. Ett regex
+  // förankrat i "rö" träffar därför ingenting alls.
+  { name: 'Rödalinjen', match: /dalinjen/ },
   { name: 'MangoBeat', match: /^mangobeat/ },
   { name: 'mInc', match: /^minc/ },
   { name: 'evilLOOk', match: /^evillook/ },
