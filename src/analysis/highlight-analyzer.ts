@@ -408,12 +408,17 @@ export const buildHighlightAnalysis = (
   };
   const roundRatings: RoundRating[] = [];
   for (const round of input.rounds) {
+    if (round.endTimeMs === null || round.endTimeMs <= round.startTimeMs) continue;
     const winningTeam = round.winner.value;
     if (!winningTeam || !teamsForRound(round.roundId).includes(winningTeam)) continue;
     for (const team of [winningTeam]) {
       const teamFrags = fragRatings.filter((rating) =>
         rating.team === team
         && deaths.find((death) => death.eventId === rating.eventId)?.roundId === round.roundId);
+      // A normal competitive side has five opponents. More than five
+      // winning-team frags means the legacy round boundary is not trustworthy
+      // (typically signon history or multiple rounds merged together).
+      if (teamFrags.length > 5) continue;
       const teamMoments = moments.filter((moment) =>
         moment.team === team
         && deaths.find((death) => death.eventId === moment.eventIds[0])?.roundId === round.roundId);

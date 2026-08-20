@@ -19,7 +19,7 @@ import type {
   TeamChangeEvent,
 } from '/@/analysis/schema';
 
-export const ANALYZER_VERSION = '2.5.12';
+export const ANALYZER_VERSION = '2.5.13';
 
 const PARSER_VERSION = 'hlviewer-0.8.5-hltv-analysis-7';
 const ENGINE_WASM_VERSION = '7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4';
@@ -486,6 +486,16 @@ export const normalizeParsedAnalysis = (
           ? 'CT' as const
           : null;
       if (winner) {
+        const currentRound = roundState.currentRound;
+        // HLTV signon snapshots can contain a stale timer and win sound at
+        // exactly 0 ms, followed by historic DeathMsg entries. Treating that
+        // snapshot as a round creates a zero-length R1 that cannot be played
+        // and may appear to contain kills from several old rounds.
+        if (currentRound && atMs <= currentRound.startTimeMs) {
+          const discarded = roundState.discardCurrentRound();
+          if (discarded) forgetRounds([discarded]);
+          return;
+        }
         const activeRound = roundState.endRound(atMs, winner);
         if (!activeRound) return;
         const roundEnd: RoundEndEvent = {

@@ -160,6 +160,30 @@ describe('highlight scoring', () => {
     expect(result.roundRatings.map((rating) => rating.team)).toEqual(['TERRORIST']);
   });
 
+  it('does not rank zero-length or implausibly merged rounds', () => {
+    const zeroLength = input({
+      kind: 'hltv',
+      focusPlayerIds: [],
+      focusTeamHistory: [],
+      evidence: 'unknown',
+    });
+    zeroLength.rounds[0].endTimeMs = zeroLength.rounds[0].startTimeMs;
+    expect(buildHighlightAnalysis(zeroLength).roundRatings).toEqual([]);
+
+    const merged = input({
+      kind: 'hltv',
+      focusPlayerIds: [],
+      focusTeamHistory: [],
+      evidence: 'unknown',
+    });
+    merged.events.push(
+      death('death-6', 6_000, 't-mate', 'ct-2', 2, 4, 2, 1),
+      death('death-7', 6_500, 't-mate', 'ct-3', 2, 5, 2, 1),
+    );
+    merged.rounds[0].deathEventIds.push('death-6', 'death-7');
+    expect(buildHighlightAnalysis(merged).roundRatings).toEqual([]);
+  });
+
   it('only offers native HLTV POV when killer entity data is present at the frag', () => {
     const fixture = input({
       kind: 'hltv',
