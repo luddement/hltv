@@ -47,6 +47,20 @@ www.{$DOMAIN} {
 Disallow: /" 200
 	}
 
+	# Färdiga filmer ligger utanför appens dist-katalog så att vanliga deployer
+	# aldrig kan radera dem. De serveras som rena originalfiler: ingen preview,
+	# omkodning eller komprimering. Content-Disposition gör länken till en
+	# nedladdning även för MP4-filer som webbläsaren annars gärna spelar upp.
+	handle /downloads/* {
+		root * /srv/hltv
+		header {
+			Content-Disposition "attachment"
+			Cache-Control "private, no-transform"
+			X-Content-Type-Options "nosniff"
+		}
+		file_server
+	}
+
 	reverse_proxy 127.0.0.1:4173 {
 		# Demos är stora och spelas upp medan de laddas. Ingen buffring,
 		# och gott om tid för en långsam klient.

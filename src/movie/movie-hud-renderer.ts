@@ -14,11 +14,15 @@ export type MovieKillfeedEntry = {
 };
 
 export type MovieIntroCard = {
+  variant?: 'match' | 'playlist';
   teams: [string, string];
   matchDate: string;
   mapName: string;
   focusKind: 'player' | 'team' | 'match';
   focusLabel: string;
+  fragCount?: number;
+  demoCount?: number;
+  runtimeLabel?: string;
   durationSeconds: number;
 };
 
@@ -105,10 +109,199 @@ const fittedText = (
   text(context, value, x, y, size, color, weight, align, family);
 };
 
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+const easeOutCubic = (value: number): number => 1 - (1 - clamp01(value)) ** 3;
+const smoothstep = (start: number, end: number, value: number): number => {
+  const progress = clamp01((value - start) / (end - start));
+  return progress * progress * (3 - 2 * progress);
+};
+
+const playlistTitleLayout = (
+  context: CanvasRenderingContext2D,
+  rawTitle: string,
+  maxWidth: number,
+  preferredSize: number,
+  minimumSize: number,
+): { lines: string[]; size: number } => {
+  const title = rawTitle.trim().replace(/\s+/g, ' ') || 'Untitled frag film';
+  const splitPoints = [...title.matchAll(/\s+/g)].map((match) => match.index!);
+  if (!splitPoints.length && title.length > 1) {
+    const middle = Math.round(title.length / 2);
+    for (let offset = 0; offset < title.length / 2; offset++) {
+      if (middle - offset > 0) splitPoints.push(middle - offset);
+      if (middle + offset < title.length) splitPoints.push(middle + offset);
+    }
+  }
+
+  for (let size = preferredSize; size >= minimumSize; size -= 1) {
+    context.font = `900 ${size}px ${SANS}`;
+    if (context.measureText(title).width <= maxWidth) return { lines: [title], size };
+
+    let best: { lines: [string, string]; score: number } | undefined;
+    for (const splitAt of splitPoints) {
+      const first = title.slice(0, splitAt).trim();
+      const second = title.slice(splitAt).trim();
+      if (!first || !second) continue;
+      const firstWidth = context.measureText(first).width;
+      const secondWidth = context.measureText(second).width;
+      if (firstWidth > maxWidth || secondWidth > maxWidth) continue;
+      const score = Math.max(firstWidth, secondWidth) + Math.abs(firstWidth - secondWidth) * 0.2;
+      if (!best || score < best.score) best = { lines: [first, second], score };
+    }
+    if (best) return { lines: best.lines, size };
+  }
+
+  context.font = `900 ${minimumSize}px ${SANS}`;
+  let shortened = title;
+  while (shortened.length > 1 && context.measureText(`${shortened}…`).width > maxWidth) {
+    shortened = shortened.slice(0, -1);
+  }
+  return { lines: [`${shortened.trim()}…`], size: minimumSize };
+};
+
+const renderPlaylistIntro = (
+  context: CanvasRenderingContext2D,
+  card: MovieIntroCard,
+  rawProgress: number,
+) => {
+  const { width, height } = context.canvas;
+  const scale = Math.min(width / 1920, height / 1080);
+  const progress = clamp01(rawProgress);
+  const reveal = easeOutCubic(progress / 0.34);
+  const detailsReveal = smoothstep(0.18, 0.48, progress);
+  const exitFade = 1 - smoothstep(0.91, 1, progress);
+  const margin = Math.max(70 * scale, width * 0.072);
+
+  context.save();
+  context.fillStyle = '#040604';
+  context.fillRect(0, 0, width, height);
+
+  const ambientGlow = context.createRadialGradient(
+    width * 0.83, height * 0.34, 0,
+    width * 0.83, height * 0.34, width * 0.72,
+  );
+  ambientGlow.addColorStop(0, 'rgba(200,245,66,.16)');
+  ambientGlow.addColorStop(0.28, 'rgba(90,119,39,.065)');
+  ambientGlow.addColorStop(1, 'rgba(0,0,0,0)');
+  context.fillStyle = ambientGlow;
+  context.fillRect(0, 0, width, height);
+
+  const gridSize = 72 * scale;
+  const gridOffset = (progress * gridSize * 0.35) % gridSize;
+  context.strokeStyle = 'rgba(200,245,66,.038)';
+  context.lineWidth = Math.max(1, scale);
+  context.beginPath();
+  for (let x = gridOffset; x < width; x += gridSize) {
+    context.moveTo(x, 0);
+    context.lineTo(x, height);
+  }
+  for (let y = gridOffset; y < height; y += gridSize) {
+    context.moveTo(0, y);
+    context.lineTo(width, y);
+  }
+  context.stroke();
+
+  context.globalAlpha = exitFade;
+
+  // The large archive number gives the card depth while remaining specific to
+  // this playlist. It is deliberately outline-only so the title always wins.
+  const archiveNumber = String(card.fragCount ?? 0).padStart(3, '0');
+  context.save();
+  context.translate(width * 0.91 + (1 - reveal) * 90 * scale, height * 0.68);
+  context.rotate(-Math.PI / 2);
+  context.font = `900 ${270 * scale}px ${SANS}`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.lineWidth = Math.max(1.5, 2.5 * scale);
+  context.strokeStyle = 'rgba(200,245,66,.10)';
+  context.strokeText(archiveNumber, 0, 0);
+  context.restore();
+
+  const topY = height * 0.105;
+  context.globalAlpha = detailsReveal * exitFade;
+  context.fillStyle = ACID;
+  context.beginPath();
+  context.arc(margin + 5 * scale, topY - 4 * scale, 5 * scale, 0, Math.PI * 2);
+  context.fill();
+  text(context, 'PRAXXA FILMS', margin + 25 * scale, topY,
+    14 * scale, PAPER, 800, 'left', MONO);
+  text(context, 'COUNTER-STRIKE / ARCHIVE CUT', width - margin, topY,
+    12 * scale, '#70796d', 650, 'right', MONO);
+
+  const titleMaxWidth = Math.min(width * 0.72, 1320 * scale);
+  const titleLayout = playlistTitleLayout(
+    context,
+    card.focusLabel,
+    titleMaxWidth,
+    124 * scale,
+    46 * scale,
+  );
+  const lineHeight = titleLayout.size * 0.96;
+  const titleBlockHeight = titleLayout.lines.length * lineHeight;
+  const titleTop = height * 0.43 - titleBlockHeight / 2;
+  const titleX = margin + (1 - reveal) * 88 * scale;
+
+  context.save();
+  context.beginPath();
+  context.rect(margin - 8 * scale, titleTop - 32 * scale,
+    titleMaxWidth + 40 * scale, titleBlockHeight + 82 * scale);
+  context.clip();
+  context.globalAlpha = reveal * exitFade;
+  titleLayout.lines.forEach((line, index) => {
+    text(context, line, titleX, titleTop + (index + 0.82) * lineHeight,
+      titleLayout.size, PAPER, 900, 'left', SANS);
+  });
+  context.restore();
+
+  const ruleY = titleTop + titleBlockHeight + 48 * scale;
+  context.globalAlpha = exitFade;
+  context.fillStyle = 'rgba(200,245,66,.16)';
+  context.fillRect(margin, ruleY, titleMaxWidth, Math.max(1, 2 * scale));
+  context.fillStyle = ACID;
+  context.fillRect(margin, ruleY, titleMaxWidth * reveal, Math.max(2, 4 * scale));
+
+  context.globalAlpha = detailsReveal * exitFade;
+  text(context, 'A COUNTER-STRIKE FRAG FILM', margin, ruleY + 54 * scale,
+    14 * scale, ACID, 750, 'left', MONO);
+
+  const stats = [
+    { label: 'FRAGS', value: String(card.fragCount ?? 0) },
+    { label: 'DEMOS', value: String(card.demoCount ?? 0) },
+    { label: 'RUNTIME', value: card.runtimeLabel || '—' },
+  ];
+  const statsY = height * 0.82;
+  const statWidth = Math.min(210 * scale, width * 0.14);
+  stats.forEach((stat, index) => {
+    const x = margin + index * statWidth;
+    if (index > 0) {
+      context.fillStyle = 'rgba(255,255,255,.12)';
+      context.fillRect(x - 24 * scale, statsY - 29 * scale, Math.max(1, scale), 58 * scale);
+    }
+    text(context, stat.value, x, statsY,
+      30 * scale, index === 0 ? ACID : PAPER, 850, 'left', SANS);
+    text(context, stat.label, x, statsY + 29 * scale,
+      10 * scale, '#717a6e', 650, 'left', MONO);
+  });
+
+  text(context, 'ORIGINAL GAME AUDIO / MULTI-DEMO EDIT', width - margin, height * 0.91,
+    10 * scale, '#596055', 600, 'right', MONO);
+  context.restore();
+
+  if (progress > 0.91) {
+    context.fillStyle = `rgba(4,6,4,${smoothstep(0.91, 1, progress)})`;
+    context.fillRect(0, 0, width, height);
+  }
+};
+
 export const renderMovieIntro = (
   context: CanvasRenderingContext2D,
   card: MovieIntroCard,
+  progress = 1,
 ) => {
+  if (card.variant === 'playlist') {
+    renderPlaylistIntro(context, card, progress);
+    return;
+  }
   const { width, height } = context.canvas;
   const scale = Math.min(width / 1920, height / 1080);
   const centerX = width / 2;
@@ -165,6 +358,131 @@ export const renderMovieIntro = (
   text(context, 'COUNTER-STRIKE MATCH ARCHIVE', centerX, height * 0.91,
     11 * scale, '#596055', 600, 'center', MONO);
   context.restore();
+};
+
+export const renderMovieOutro = (
+  context: CanvasRenderingContext2D,
+  card: MovieIntroCard,
+  rawProgress: number,
+  gameplayFrame?: CanvasImageSource,
+) => {
+  const { width, height } = context.canvas;
+  const scale = Math.min(width / 1920, height / 1080);
+  const progress = clamp01(rawProgress);
+  const transition = smoothstep(0, 0.13, progress);
+  const reveal = easeOutCubic(smoothstep(0.08, 0.38, progress));
+  const detailsReveal = smoothstep(0.22, 0.48, progress);
+  const finalFade = 1 - smoothstep(0.84, 1, progress);
+  const margin = Math.max(70 * scale, width * 0.072);
+
+  context.save();
+  context.fillStyle = '#020302';
+  context.fillRect(0, 0, width, height);
+  if (gameplayFrame && transition < 1) {
+    context.globalAlpha = 1 - transition;
+    context.drawImage(gameplayFrame, 0, 0, width, height);
+    context.globalAlpha = 1;
+  }
+
+  context.globalAlpha = transition;
+  context.fillStyle = '#040604';
+  context.fillRect(0, 0, width, height);
+
+  const glow = context.createRadialGradient(
+    width * 0.2, height * 0.62, 0,
+    width * 0.2, height * 0.62, width * 0.72,
+  );
+  glow.addColorStop(0, 'rgba(200,245,66,.14)');
+  glow.addColorStop(0.32, 'rgba(89,116,39,.055)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  context.fillStyle = glow;
+  context.fillRect(0, 0, width, height);
+
+  const gridSize = 72 * scale;
+  const gridOffset = ((1 - progress) * gridSize * 0.25) % gridSize;
+  context.strokeStyle = 'rgba(200,245,66,.034)';
+  context.lineWidth = Math.max(1, scale);
+  context.beginPath();
+  for (let x = gridOffset; x < width; x += gridSize) {
+    context.moveTo(x, 0);
+    context.lineTo(x, height);
+  }
+  for (let y = gridOffset; y < height; y += gridSize) {
+    context.moveTo(0, y);
+    context.lineTo(width, y);
+  }
+  context.stroke();
+
+  context.globalAlpha = transition * detailsReveal * finalFade;
+  text(context, 'PLAYLIST COMPLETE', margin, height * 0.12,
+    14 * scale, ACID, 750, 'left', MONO);
+  text(context, 'PRAXXA FILMS / ARCHIVE CUT', width - margin, height * 0.12,
+    12 * scale, '#70796d', 650, 'right', MONO);
+
+  const titleMaxWidth = Math.min(width * 0.77, 1400 * scale);
+  const titleLayout = playlistTitleLayout(
+    context,
+    card.focusLabel,
+    titleMaxWidth,
+    112 * scale,
+    44 * scale,
+  );
+  const lineHeight = titleLayout.size * 0.96;
+  const titleBlockHeight = titleLayout.lines.length * lineHeight;
+  const titleTop = height * 0.43 - titleBlockHeight / 2;
+  const titleX = margin + (1 - reveal) * 72 * scale;
+
+  context.save();
+  context.beginPath();
+  context.rect(margin - 8 * scale, titleTop - 30 * scale,
+    titleMaxWidth + 40 * scale, titleBlockHeight + 74 * scale);
+  context.clip();
+  context.globalAlpha = transition * reveal * finalFade;
+  titleLayout.lines.forEach((line, index) => {
+    text(context, line, titleX, titleTop + (index + 0.82) * lineHeight,
+      titleLayout.size, PAPER, 900, 'left', SANS);
+  });
+  context.restore();
+
+  const ruleY = titleTop + titleBlockHeight + 45 * scale;
+  context.globalAlpha = transition * finalFade;
+  context.fillStyle = 'rgba(200,245,66,.15)';
+  context.fillRect(margin, ruleY, titleMaxWidth, Math.max(1, 2 * scale));
+  context.fillStyle = ACID;
+  context.fillRect(margin, ruleY, titleMaxWidth * reveal, Math.max(2, 4 * scale));
+
+  context.globalAlpha = transition * detailsReveal * finalFade;
+  const fragCount = card.fragCount ?? 0;
+  const demoCount = card.demoCount ?? 0;
+  text(context, `${fragCount} FRAGS`, margin, ruleY + 58 * scale,
+    16 * scale, PAPER, 800, 'left', MONO);
+  text(context, '/', margin + 142 * scale, ruleY + 58 * scale,
+    16 * scale, '#626a60', 600, 'left', MONO);
+  text(context, `${demoCount} DEMOS`, margin + 175 * scale, ruleY + 58 * scale,
+    16 * scale, PAPER, 800, 'left', MONO);
+  text(context, 'THANKS FOR WATCHING', margin, height * 0.82,
+    13 * scale, ACID, 750, 'left', MONO);
+  text(context, 'COUNTER-STRIKE LIVES FOREVER', width - margin, height * 0.91,
+    10 * scale, '#596055', 600, 'right', MONO);
+
+  const archiveNumber = String(fragCount).padStart(3, '0');
+  context.save();
+  context.globalAlpha = transition * reveal * finalFade;
+  context.translate(width * 0.91, height * 0.68);
+  context.rotate(-Math.PI / 2);
+  context.font = `900 ${250 * scale}px ${SANS}`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.lineWidth = Math.max(1.5, 2.5 * scale);
+  context.strokeStyle = 'rgba(200,245,66,.09)';
+  context.strokeText(archiveNumber, 0, 0);
+  context.restore();
+  context.restore();
+
+  if (progress > 0.84) {
+    context.fillStyle = `rgba(2,3,2,${smoothstep(0.84, 1, progress)})`;
+    context.fillRect(0, 0, width, height);
+  }
 };
 
 export const renderMovieSight = (

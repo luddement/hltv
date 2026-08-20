@@ -3,7 +3,8 @@
 #
 #   ./scripts/deploy.sh              # app + resurser + skärmdumpar (~2,3 GB)
 #   ./scripts/deploy.sh --demos      # bara demoarkivet (~56 GB, timmar)
-#   ./scripts/deploy.sh --all        # allt
+#   ./scripts/deploy.sh --analysis   # bara lokala analyser (aldrig implicit)
+#   ./scripts/deploy.sh --all        # app + resurser + demoarkiv
 #
 # Idempotent och återupptagbar: rsync överför bara det som skiljer, och en
 # avbruten körning fortsätter där den slutade.
@@ -32,9 +33,10 @@ fi
 # mellan en halv arbetsdag och ett par timmar på en vanlig uppkoppling.
 RSYNC=(rsync -az --partial "${PROGRESS[@]}" -e "ssh -i $KEY")
 
-do_app=1; do_demos=0
+do_app=1; do_demos=0; do_analysis=0
 case "${1:-}" in
   --demos) do_app=0; do_demos=1 ;;
+  --analysis) do_app=0; do_analysis=1 ;;
   --all)   do_demos=1 ;;
   "")      ;;
   *) echo "Okänd flagga: $1" >&2; exit 2 ;;
@@ -87,8 +89,7 @@ if [[ $do_app -eq 1 ]]; then
   note "Skärmdumpar (arkivmaterial, motorn rör dem inte)"
   "${RSYNC[@]}" --include='*.bmp' --exclude='*' "$ROOT/cstrike/" "$USER_AT:$REMOTE/screenshots/"
 
-  note "Demoanalys och referensdemot"
-  "${RSYNC[@]}" "$ROOT/demo-analysis/" "$USER_AT:$REMOTE/demo-analysis/"
+  note "Referensdemot"
   "${RSYNC[@]}" "$ROOT/r60_sthlm.dem" "$USER_AT:$REMOTE/"
 
   # server.mjs letar game-assets i appkatalogen. Symlänk i stället för kopia:
@@ -97,6 +98,14 @@ if [[ $do_app -eq 1 ]]; then
 
   note "Starta om appservern"
   "${SSH[@]}" "$USER_AT" 'sudo systemctl restart hltv-app.service && sudo systemctl is-active hltv-app.service'
+fi
+
+if [[ $do_analysis -eq 1 ]]; then
+  # Serverns analyskatalog är normalt auktoritativ. Den här vägen är explicit
+  # eftersom en vanlig app-deploy annars kan skriva tillbaka äldre lokala
+  # analysversioner över en pågående eller färdig serverindexering.
+  note "Lokala demoanalyser — explicit synk"
+  "${RSYNC[@]}" "$ROOT/demo-analysis/" "$USER_AT:$REMOTE/demo-analysis/"
 fi
 
 if [[ $do_demos -eq 1 ]]; then

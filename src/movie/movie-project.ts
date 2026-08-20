@@ -11,6 +11,7 @@ export type MovieCompletionAction = 'close' | 'fail' | 'finish' | 'wait';
 export type MovieBackpressureAction = 'continue' | 'pause' | 'wait' | 'resume';
 
 export const MOVIE_INTRO_DURATION_MS = 3_000;
+export const MOVIE_OUTRO_DURATION_MS = 4_000;
 export const MOVIE_SCOREBOARD_DURATION_MS = 3_000;
 
 export type MovieScoreboardEvent = {

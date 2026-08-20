@@ -16,6 +16,7 @@ import type { MovieHudFrame, MovieIntroCard } from '/@/movie/movie-hud-renderer'
 import {
   renderMovieHud,
   renderMovieIntro,
+  renderMovieOutro,
   renderMovieSight,
 } from '/@/movie/movie-hud-renderer';
 
@@ -96,6 +97,7 @@ export type MovieRecorderOptions = {
   audioMix?: MovieAudioMix;
   captureMode: MovieCaptureMode;
   intro?: MovieIntroCard;
+  outro?: MovieIntroCard;
   hudFrame: () => MovieHudFrame | undefined;
   onBytes?: (bytes: number) => void;
   onError?: (error: Error) => void;
@@ -137,6 +139,7 @@ export class MovieRecorder {
   private failure?: Error;
   private cancelled = false;
   private finalized = false;
+  private outroStartSeconds?: number;
   private stopped?: Promise<void>;
 
   constructor(private readonly options: MovieRecorderOptions) {
@@ -495,11 +498,10 @@ export class MovieRecorder {
     canvas.height = this.options.quality.height;
     const context = canvas.getContext('2d', { alpha: false });
     if (!context) throw new Error('Could not create the movie intro card.');
-    renderMovieIntro(context, intro);
-
     const duration = 1 / this.options.quality.fps;
     const frameCount = Math.max(1, Math.round(intro.durationSeconds * this.options.quality.fps));
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+      renderMovieIntro(context, intro, frameCount === 1 ? 1 : frameIndex / (frameCount - 1));
       const sample = new VideoSample(canvas, {
         timestamp: frameIndex * duration,
         duration,
@@ -549,7 +551,8 @@ export class MovieRecorder {
   }
 
   private renderDirectSight(sample: VideoSample): VideoSample | HTMLCanvasElement {
-    if (this.options.intro && sample.timestamp < this.options.intro.durationSeconds) return sample;
+    if ((this.outroStartSeconds !== undefined && sample.timestamp >= this.outroStartSeconds)
+      || (this.options.intro && sample.timestamp < this.options.intro.durationSeconds)) return sample;
     const frame = this.options.hudFrame();
     if (!frame || (!frame.crosshair && !frame.scope)) return sample;
 
@@ -700,7 +703,12 @@ export class MovieRecorder {
     });
   }
 
-  private queueAudioBlock(block: MoviePcmBlock, fadeIn: boolean, fadeOut: boolean): void {
+  private queueAudioBlock(
+    block: MoviePcmBlock,
+    fadeIn: boolean,
+    fadeOut: boolean,
+    fadeDurationSeconds = 0.008,
+  ): void {
     const source = this.audioSource;
     if (!source) return;
     const mixedBlock = mixMovieAudioBlock(block, this.queuedAudioFrames, this.options.audioMix);
@@ -709,7 +717,10 @@ export class MovieRecorder {
     if (!frameCount || !channelCount) return;
 
     const planarData = new Float32Array(frameCount * channelCount);
-    const fadeFrames = Math.min(frameCount, Math.max(1, Math.round(mixedBlock.sampleRate * 0.008)));
+    const fadeFrames = Math.min(
+      frameCount,
+      Math.max(1, Math.round(mixedBlock.sampleRate * fadeDurationSeconds)),
+    );
     for (const [channelIndex, channel] of mixedBlock.channels.entries()) {
       const destinationOffset = channelIndex * frameCount;
       if (!fadeIn && !fadeOut) {
@@ -756,15 +767,88 @@ export class MovieRecorder {
     this.options.onError?.(this.failure);
   }
 
+  private async writeOutro(source: VideoSampleSource): Promise<void> {
+    const outro = this.options.outro;
+    if (!outro || outro.durationSeconds <= 0) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = this.options.quality.width;
+    canvas.height = this.options.quality.height;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) throw new Error('Could not create the movie outro card.');
+
+    const snapshot = document.createElement('canvas');
+    snapshot.width = canvas.width;
+    snapshot.height = canvas.height;
+    const snapshotContext = snapshot.getContext('2d', { alpha: false });
+    if (!snapshotContext) throw new Error('Could not capture the final game frame.');
+    snapshotContext.fillStyle = '#000';
+    snapshotContext.fillRect(0, 0, snapshot.width, snapshot.height);
+    const gameplaySurface = this.outputCanvas ?? this.options.sourceCanvas;
+    const scale = Math.min(
+      snapshot.width / gameplaySurface.width,
+      snapshot.height / gameplaySurface.height,
+    );
+    const drawWidth = gameplaySurface.width * scale;
+    const drawHeight = gameplaySurface.height * scale;
+    snapshotContext.drawImage(
+      gameplaySurface,
+      (snapshot.width - drawWidth) / 2,
+      (snapshot.height - drawHeight) / 2,
+      drawWidth,
+      drawHeight,
+    );
+    const finalHudFrame = this.options.hudFrame();
+    if (!this.outputCanvas && finalHudFrame) renderMovieSight(snapshotContext, finalHudFrame);
+
+    const frameDuration = 1 / this.options.quality.fps;
+    const frameCount = Math.max(1, Math.round(outro.durationSeconds * this.options.quality.fps));
+    this.outroStartSeconds = this.capturedFrameCount * frameDuration;
+    for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+      renderMovieOutro(
+        context,
+        outro,
+        frameCount === 1 ? 1 : frameIndex / (frameCount - 1),
+        snapshot,
+      );
+      const sample = new VideoSample(canvas, {
+        timestamp: this.capturedFrameCount * frameDuration,
+        duration: frameDuration,
+      });
+      try {
+        await source.add(sample);
+        this.capturedFrameCount++;
+      } finally {
+        sample.close();
+      }
+    }
+
+    if (this.audioSampleRate && this.audioChannelCount) {
+      const outroAudioFrames = Math.round(outro.durationSeconds * this.audioSampleRate);
+      this.queueAudioBlock({
+        sampleRate: this.audioSampleRate,
+        channels: Array.from(
+          { length: this.audioChannelCount },
+          () => new Float32Array(outroAudioFrames),
+        ),
+      }, false, true, Math.min(1.2, outro.durationSeconds * 0.35));
+      await this.audioQueue;
+    }
+  }
+
   private async finalize(): Promise<void> {
     this.recorderState = 'inactive';
     window.cancelAnimationFrame(this.frameRequest);
     this.unsubscribeAudio?.();
     this.unsubscribeAudio = undefined;
-    this.alignAudioToVideo(true);
+    const hasOutro = Boolean(this.options.outro && this.options.outro.durationSeconds > 0);
+    this.alignAudioToVideo(!hasOutro);
     this.currentAudio?.close();
     this.currentAudio = undefined;
     await Promise.all([this.frameQueue, this.audioQueue]);
+    if (hasOutro && this.videoSource && !this.failure && !this.cancelled) {
+      await this.writeOutro(this.videoSource);
+    }
     this.videoSource?.close();
     this.audioSource?.close();
     const output = this.output;

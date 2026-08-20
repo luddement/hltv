@@ -962,25 +962,27 @@
             <button type="button" :disabled="!fragPlaylist.items.length || movieExportRunning" @click="clearFragPlaylist">Clear playlist</button>
           </div>
           <div class="playlist-run-controls">
-            <label class="movie-quality-select">
-              <span>Export quality</span>
-              <select v-model="movieQualityId" :disabled="movieExportRunning">
-                <option v-for="quality in MOVIE_QUALITIES" :key="quality.id" :value="quality.id">{{ quality.label }}</option>
-              </select>
-            </label>
-            <label class="movie-intro-toggle">
-              <input v-model="movieIncludeIntro" type="checkbox" :disabled="movieExportRunning" @change="saveMovieIntroPreference" />
-              <span>Playlist intro</span>
-            </label>
             <button class="playlist-play-button" type="button" :disabled="!canStartPlaylist" @click="() => playFragPlaylist('playlist')">
               <span class="play-icon"></span> Only Frags
             </button>
-            <button
-              class="playlist-export-button"
-              type="button"
-              :disabled="!canStartPlaylist || !movieExportSupported"
-              @click="exportPlaylistMovie"
-            >Export movie · {{ formatBytes(playlistMovieEstimatedBytes) }}</button>
+            <div class="playlist-export-controls">
+              <label class="movie-quality-select">
+                <span>Export quality</span>
+                <select v-model="movieQualityId" :disabled="movieExportRunning">
+                  <option v-for="quality in MOVIE_QUALITIES" :key="quality.id" :value="quality.id">{{ quality.label }}</option>
+                </select>
+              </label>
+              <label class="movie-intro-toggle">
+                <input v-model="movieIncludeIntro" type="checkbox" :disabled="movieExportRunning" @change="saveMovieIntroPreference" />
+                <span>Intro + outro</span>
+              </label>
+              <button
+                class="playlist-export-button"
+                type="button"
+                :disabled="!canStartPlaylist || !movieExportSupported"
+                @click="exportPlaylistMovie"
+              >Export movie · {{ formatBytes(playlistMovieEstimatedBytes) }}</button>
+            </div>
           </div>
         </footer>
         <p :class="['playlist-quality-note', { active: movieQuality.fps === 120 }]">
@@ -1112,8 +1114,9 @@
           <small v-if="movieEncoderCatchingUp">
             Playback is temporarily frozen while the encoder drains its queue. Movie time and audio are paused together.
           </small>
-          <small v-else>The movie is rendering behind this view. Keep this browser tab open and active.</small>
+          <small v-else>The movie is rendering behind this view. Pointer and keyboard input are locked so spectator controls cannot change the recorded POV.</small>
           <button
+            data-movie-export-cancel
             type="button"
             :disabled="movieExportState === 'finalizing'"
             @click="() => cancelMovieExport()"
@@ -1238,6 +1241,7 @@
   import {
     MOVIE_QUALITIES,
     MOVIE_INTRO_DURATION_MS,
+    MOVIE_OUTRO_DURATION_MS,
     buildFragMovieTimeline,
     estimatedMovieBytes,
     inferDemoMatchDate,
@@ -1904,13 +1908,36 @@
       victim: playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot),
     }),
   );
-  const playlistSegmentDeaths = computed(() => withFragReelDeathCutoffs(
-    activePlaylistSegmentItems.value.flatMap((item) => {
+  const playlistSegmentDeaths = computed(() => {
+    const segmentItems = activePlaylistSegmentItems.value;
+    const resolvedItems = segmentItems.flatMap((item) => {
       const death = resolvePlaylistItemDeath(item);
-      return death ? [death] : [];
-    }),
-    deathEvents.value,
-  ));
+      return death ? [{ item, death }] : [];
+    });
+    const deaths = withFragReelDeathCutoffs(
+      resolvedItems.map(({ death }) => death),
+      deathEvents.value,
+    );
+    return deaths.map((death, index) => {
+      const item = resolvedItems[index]?.item;
+      if (!item) return death;
+      const storedEndMs = Math.max(death.demoTimeMs, item.clipEndTimeMs);
+      const deathAwareEndMs = death.postrollEndTimeMs ?? storedEndMs;
+      const isFinalMovieFrag = fragReelSource.value === 'playlist-movie'
+        && playlistRunCursor.value + index === playlistRunItems.value.length - 1;
+      return {
+        ...death,
+        postrollEndTimeMs: Math.max(
+          death.demoTimeMs,
+          Math.min(
+            storedEndMs,
+            deathAwareEndMs,
+            isFinalMovieFrag ? death.demoTimeMs + 900 : Number.POSITIVE_INFINITY,
+          ),
+        ),
+      };
+    });
+  });
   const activeFragReelDeaths = computed(() => playlistMode.value
     ? playlistSegmentDeaths.value
     : fragReelSource.value === 'round'
@@ -2000,12 +2027,28 @@
     };
   });
   const playlistMovieIntroCard = computed<MovieIntroCard>(() => ({
-    teams: ['HLTV', 'PLAYLIST'],
+    variant: 'playlist',
+    teams: ['', ''],
     matchDate: '',
-    mapName: `${fragPlaylistDemoCount.value} demos`,
+    mapName: '',
     focusKind: 'match',
-    focusLabel: fragPlaylist.value.title,
+    focusLabel: fragPlaylist.value.title.trim() || 'Untitled frag film',
+    fragCount: fragPlaylist.value.items.length,
+    demoCount: fragPlaylistDemoCount.value,
+    runtimeLabel: formatDuration(fragPlaylistDurationMs.value / 1_000),
     durationSeconds: MOVIE_INTRO_DURATION_MS / 1_000,
+  }));
+  const playlistMovieOutroCard = computed<MovieIntroCard>(() => ({
+    variant: 'playlist',
+    teams: ['', ''],
+    matchDate: '',
+    mapName: '',
+    focusKind: 'match',
+    focusLabel: fragPlaylist.value.title.trim() || 'Untitled frag film',
+    fragCount: fragPlaylist.value.items.length,
+    demoCount: fragPlaylistDemoCount.value,
+    runtimeLabel: formatDuration(fragPlaylistDurationMs.value / 1_000),
+    durationSeconds: MOVIE_OUTRO_DURATION_MS / 1_000,
   }));
   const movieQuality = computed(() => MOVIE_QUALITIES.find((quality) =>
     quality.id === movieQualityId.value) ?? MOVIE_QUALITIES[0]);
@@ -2016,7 +2059,9 @@
     movieQuality.value,
   ));
   const playlistMovieEstimatedBytes = computed(() => estimatedMovieBytes(
-    fragPlaylistDurationMs.value + (movieIncludeIntro.value ? MOVIE_INTRO_DURATION_MS : 0),
+    fragPlaylistDurationMs.value + (movieIncludeIntro.value
+      ? MOVIE_INTRO_DURATION_MS + MOVIE_OUTRO_DURATION_MS
+      : 0),
     movieQuality.value,
   ));
   const activeMovieEstimatedBytes = computed(() => fragReelSource.value === 'playlist-movie'
@@ -2850,6 +2895,9 @@
           ? fragReelSource.value === 'playlist-movie'
             ? playlistMovieIntroCard.value
             : movieIntroCard.value
+          : undefined,
+        outro: movieIncludeIntro.value && fragReelSource.value === 'playlist-movie'
+          ? playlistMovieOutroCard.value
           : undefined,
         hudFrame: currentMovieHudFrame,
         onBytes: (bytes) => { movieExportBytes.value = bytes; },
@@ -3875,6 +3923,8 @@
     movieCaptureMode = hudPreset.value === 'original' || hudPreset.value === 'clean'
       ? 'direct'
       : 'composited';
+    if (document.pointerLockElement) document.exitPointerLock();
+    engineCanvas.value?.blur();
     movieExportState.value = 'starting';
     recordMovieExportDiagnostic(
       'playlist-requested',
@@ -4239,6 +4289,30 @@
     void cancelMovieExport(true);
   };
 
+  // Xash/Emscripten installs input listeners above the canvas as well as on
+  // the canvas itself. A visual overlay therefore is not sufficient: clicks
+  // on the export dialog can still look like spectator input to the engine.
+  // Capture and consume every interactive event at window level while movie
+  // frames are being produced. The cancel button is handled here too, so its
+  // click never continues down to the engine listeners.
+  const movieExportInputEvents = [
+    'pointerdown', 'pointerup', 'pointercancel',
+    'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu',
+    'touchstart', 'touchmove', 'touchend',
+    'wheel', 'keydown', 'keyup', 'keypress',
+  ] as const;
+  const blockMovieExportInput: EventListener = (event) => {
+    if (!movieExportRunning.value) return;
+    const cancelTarget = event.target instanceof Element
+      ? event.target.closest('[data-movie-export-cancel]')
+      : null;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (cancelTarget && event.type === 'click' && movieExportState.value !== 'finalizing') {
+      void cancelMovieExport();
+    }
+  };
+
   onMounted(() => {
     commentNickname.value = window.localStorage.getItem(COMMENT_NICKNAME_STORAGE_KEY) ?? '';
     try {
@@ -4310,6 +4384,9 @@
     window.addEventListener('blur', hideScoreboardOnBlur);
     window.addEventListener('error', onWindowError);
     window.addEventListener('unhandledrejection', onUnhandledRejection);
+    movieExportInputEvents.forEach((eventName) => {
+      window.addEventListener(eventName, blockMovieExportInput, { capture: true, passive: false });
+    });
     document.addEventListener('visibilitychange', stopExportWhenTabIsHidden);
   });
   onBeforeUnmount(() => {
@@ -4326,6 +4403,9 @@
     window.removeEventListener('blur', hideScoreboardOnBlur);
     window.removeEventListener('error', onWindowError);
     window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    movieExportInputEvents.forEach((eventName) => {
+      window.removeEventListener(eventName, blockMovieExportInput, { capture: true });
+    });
     document.removeEventListener('visibilitychange', stopExportWhenTabIsHidden);
   });
 </script>
