@@ -344,6 +344,25 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 }
 
 .setup-card.complete { border-color: #42512c; background: #131711; }
+.comments-card { align-self: stretch; }
+.comments-card .card-body { min-height: 292px; }
+.comment-count { min-width: 25px; height: 25px; display: grid; place-items: center; color: var(--acid); border: 1px solid #465135; font: 9px ui-monospace, monospace; }
+.comment-form { display: grid; grid-template-columns: minmax(0, 130px) minmax(0, 1fr); gap: 10px; margin-top: 18px; }
+.comment-form label { display: grid; gap: 6px; color: #697067; font: 8px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.comment-form label:last-of-type { grid-column: 2; grid-row: 1 / span 2; }
+.comment-form input, .comment-form textarea { width: 100%; color: #d5dad2; border: 1px solid #30362e; outline: 0; background: #0c0f0c; font: 9px ui-monospace, monospace; }
+.comment-form input { min-height: 34px; padding: 0 10px; }
+.comment-form textarea { min-height: 78px; padding: 9px 10px; resize: vertical; }
+.comment-form input:focus, .comment-form textarea:focus { border-color: var(--acid); }
+.comment-submit { align-self: end; justify-self: start; margin: 0; }
+.comment-submit:disabled { opacity: .5; cursor: wait; }
+.comment-list { max-height: 174px; overflow: auto; display: grid; gap: 8px; margin-top: 16px; padding-right: 5px; }
+.comment-entry { padding: 10px 11px; border-left: 2px solid #465135; background: #0d100d; }
+.comment-entry header { display: flex; justify-content: space-between; gap: 12px; font: 8px ui-monospace, monospace; }
+.comment-entry header strong { overflow: hidden; color: var(--acid); text-overflow: ellipsis; white-space: nowrap; }
+.comment-entry time { flex: none; color: #626a60; }
+.comment-entry p { margin-top: 6px; color: #bdc3ba; font: 9px/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-empty { margin-top: 20px; color: #697067; font: 9px/1.6 ui-monospace, monospace; }
 .card-number {
   padding-top: 22px;
   color: #5d635c;

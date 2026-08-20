@@ -242,6 +242,58 @@
 
           <div class="connector" aria-hidden="true"><span>→</span></div>
 
+          <article class="setup-card comments-card">
+            <div class="card-number">02</div>
+            <div class="card-body">
+              <div class="card-title-row">
+                <div>
+                  <span class="card-kicker">Match comments</span>
+                  <h3>Notes from the archive</h3>
+                </div>
+                <span class="comment-count">{{ demoComments.length }}</span>
+              </div>
+
+              <form v-if="loadedDemoPath" class="comment-form" @submit.prevent="submitDemoComment">
+                <label>
+                  <span>Nickname</span>
+                  <input
+                    v-model="commentNickname"
+                    maxlength="32"
+                    autocomplete="nickname"
+                    placeholder="Your nickname"
+                    @input="rememberCommentNickname"
+                  />
+                </label>
+                <label>
+                  <span>Comment</span>
+                  <textarea
+                    v-model="commentBody"
+                    maxlength="1000"
+                    rows="3"
+                    placeholder="What should other viewers know about this match?"
+                  ></textarea>
+                </label>
+                <button class="secondary-button comment-submit" type="submit" :disabled="commentSubmitting">
+                  {{ commentSubmitting ? 'Saving…' : 'Post comment' }}
+                </button>
+              </form>
+              <p v-else class="comment-empty">Open a match from the shared archive to read or post comments.</p>
+              <p v-if="commentError" class="analysis-error">{{ commentError }}</p>
+
+              <div v-if="loadedDemoPath" class="comment-list" aria-live="polite">
+                <p v-if="commentsLoading" class="comment-empty">Loading comments…</p>
+                <p v-else-if="!demoComments.length" class="comment-empty">No comments yet. Start the conversation.</p>
+                <article v-for="comment in demoComments" v-else :key="comment.id" class="comment-entry">
+                  <header>
+                    <strong>{{ comment.nickname }}</strong>
+                    <time :datetime="comment.createdAt">{{ formatCommentDate(comment.createdAt) }}</time>
+                  </header>
+                  <p>{{ comment.body }}</p>
+                </article>
+              </div>
+            </div>
+          </article>
+
           <!-- Dolt. Spelresurserna hämtas från servern per demo, så den manuella
                mappväljaren fyller ingen funktion. Att resurserna saknas syns
                ändå: launchHint intill startknappen säger "Incomplete game
@@ -1029,10 +1081,18 @@
     focusTargetId: string;
     scrollAreas: Array<{ selector: string; left: number; top: number }>;
   };
+  type DemoComment = {
+    id: string;
+    demoPath: string;
+    nickname: string;
+    body: string;
+    createdAt: string;
+  };
 
   const MOVIE_EXPORT_DIAGNOSTICS_KEY = 'replay-lab-movie-export-diagnostics-v1';
   const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
   const ARCHIVE_FILTERS_STORAGE_KEY = 'replay-lab-demo-archive-filters-v1';
+  const COMMENT_NICKNAME_STORAGE_KEY = 'replay-lab-comment-nickname-v1';
   const archiveSortValues: readonly DemoCatalogSort[] = [
     'date-desc', 'date-asc', 'frag-desc', 'round-desc',
   ];
@@ -1069,6 +1129,13 @@
   const archiveSort = ref<DemoCatalogSort>('date-desc');
   const archiveResultLimit = ref(50);
   const archiveSelectionPath = ref('');
+  const commentNickname = ref('');
+  const commentBody = ref('');
+  const demoComments = ref<DemoComment[]>([]);
+  const commentsLoading = ref(false);
+  const commentSubmitting = ref(false);
+  const commentError = ref('');
+  let commentsRequest = 0;
   // archiveSelectionPath nollställs när laddningen är klar och duger därför
   // inte som adress. Den här behåller vilken katalogpost som visas.
   const loadedDemoPath = ref('');
@@ -1665,6 +1732,69 @@
         year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC',
       }).format(new Date(value))
     : 'Date unknown';
+  const formatCommentDate = (value: string): string => new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+
+  const rememberCommentNickname = () => {
+    window.localStorage.setItem(COMMENT_NICKNAME_STORAGE_KEY, commentNickname.value);
+  };
+
+  const loadDemoComments = async (demoPath: string) => {
+    const request = ++commentsRequest;
+    demoComments.value = [];
+    commentError.value = '';
+    if (!demoPath) {
+      commentsLoading.value = false;
+      return;
+    }
+    commentsLoading.value = true;
+    try {
+      const response = await fetch(`/api/demo-comments?demo=${encodeURIComponent(demoPath)}`);
+      const result = await response.json() as { comments?: DemoComment[]; error?: string };
+      if (!response.ok) throw new Error(result.error || `Comments could not be loaded (${response.status}).`);
+      if (request === commentsRequest) demoComments.value = result.comments ?? [];
+    } catch (error) {
+      if (request === commentsRequest) {
+        commentError.value = error instanceof Error ? error.message : 'Comments could not be loaded.';
+      }
+    } finally {
+      if (request === commentsRequest) commentsLoading.value = false;
+    }
+  };
+
+  const submitDemoComment = async () => {
+    const demoPath = loadedDemoPath.value;
+    const nickname = commentNickname.value.trim();
+    const body = commentBody.value.trim();
+    if (!demoPath || !nickname || !body || commentSubmitting.value) return;
+    commentSubmitting.value = true;
+    commentError.value = '';
+    rememberCommentNickname();
+    try {
+      const response = await fetch('/api/demo-comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ demoPath, nickname, body }),
+      });
+      const result = await response.json() as { comment?: DemoComment; error?: string };
+      if (!response.ok || !result.comment) {
+        throw new Error(result.error || `The comment could not be saved (${response.status}).`);
+      }
+      demoComments.value.push(result.comment);
+      commentBody.value = '';
+    } catch (error) {
+      commentError.value = error instanceof Error ? error.message : 'The comment could not be saved.';
+    } finally {
+      commentSubmitting.value = false;
+    }
+  };
+
+  watch(loadedDemoPath, (demoPath) => { void loadDemoComments(demoPath); });
   const mircClock = computed(() => new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date()));
@@ -3467,6 +3597,7 @@
   };
 
   onMounted(() => {
+    commentNickname.value = window.localStorage.getItem(COMMENT_NICKNAME_STORAGE_KEY) ?? '';
     try {
       const savedArchiveFilters = JSON.parse(
         window.localStorage.getItem(ARCHIVE_FILTERS_STORAGE_KEY) ?? 'null',

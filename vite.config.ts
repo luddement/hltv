@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig, type Plugin } from 'vite';
 import { createGameAssetManifest } from './game-assets-manifest.mjs';
+import { handleDemoCommentsRequest } from './demo-comments-store.mjs';
 
 const projectDirectory = dirname(fileURLToPath(import.meta.url));
 const bundledDemoPath = resolve(projectDirectory, '../r60_sthlm.dem');
 const demosDirectory = resolve(projectDirectory, '../demos');
 const demoAnalysisDirectory = resolve(projectDirectory, '../demo-analysis');
+const commentsFile = resolve(process.env.HLTV_COMMENTS_FILE || resolve(projectDirectory, '../demo-comments.json'));
 const gameAssetsDirectory = resolve(projectDirectory, 'game-assets');
 const protocol46RuntimePath = resolve(projectDirectory, 'src/vendor/xash-protocol46.js');
 const upstreamRuntimePath = resolve(
@@ -93,6 +95,15 @@ const localArchivePlugin = (): Plugin => ({
       response.setHeader('Content-Length', end - start + 1);
       if (partial) response.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
       createReadStream(safeCandidate, { start, end }).pipe(response);
+    });
+  },
+});
+
+const localCommentsPlugin = (): Plugin => ({
+  name: 'hltv-local-comments',
+  configureServer(server) {
+    server.middlewares.use((request, response, next) => {
+      if (!handleDemoCommentsRequest(request, response, { commentsFile, demosDirectory })) next();
     });
   },
 });
@@ -229,6 +240,7 @@ export default defineConfig({
     vue(),
     localDemoPlugin(),
     localArchivePlugin(),
+    localCommentsPlugin(),
     localGameAssetsPlugin(),
   ],
   resolve: {
