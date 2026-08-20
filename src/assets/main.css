@@ -318,6 +318,17 @@
 .stat-row strong { display: block; color: #d4d9d1; font: 700 15px/1.1 ui-monospace, monospace; }
 .stat-row span { color: #70766e; font: 8px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
 
+/* Senaste kommentarerna: en rad per kommentar, hela raden klickbar och
+   ledande till demot. Texten klipps med ellips — poängen är att se ATT något
+   sagts och av vem, inte att läsa hela tråden här. */
+.latest-comments { padding: 0 29px 16px; }
+.latest-comments ol { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.latest-comments a { display: grid; grid-template-columns: minmax(70px, auto) 1fr minmax(120px, auto); gap: 12px; align-items: baseline; padding: 7px 10px; color: inherit; border: 1px solid #242a23; border-radius: 2px; background: #0c0f0c; text-decoration: none; }
+.latest-comments a:hover { border-color: #3d4a2a; background: rgba(200,245,66,.045); }
+.comment-who { color: var(--acid); font: 700 9px ui-monospace, monospace; }
+.comment-body { overflow: hidden; color: #c5cac2; font: 9px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.comment-where { color: #6d746b; font: 8px ui-monospace, monospace; text-align: right; }
+
 .crew-board { padding: 0 29px 18px; }
 .crew-board-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
 .crew-board-head span { color: #8e968a; font: 9px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .1em; }
@@ -641,7 +652,7 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .frag-row { width: 100%; min-height: 46px; border: 0; border-bottom: 1px solid #1f231f; color: #a7aea4; background: transparent; text-align: left; cursor: default; font: 9px ui-monospace, monospace; }
 .frag-row.selected { box-shadow: inset 2px 0 var(--acid); background: rgba(200,245,66,.065); }
 .frag-row.disabled { opacity: .68; }
-.movie-frag-checkbox { height: 100%; display: grid; place-items: center; cursor: pointer; }
+.movie-frag-checkbox { height: 100%; display: grid; place-items: center start; cursor: pointer; }
 .movie-frag-checkbox input { width: 14px; height: 14px; margin: 0; accent-color: var(--acid); cursor: pointer; }
 .movie-frag-checkbox:has(input:disabled) { cursor: not-allowed; opacity: .4; }
 .frag-number { color: #656d62; font-variant-numeric: tabular-nums; }
@@ -1042,6 +1053,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .signal-card { display: none; }
   .setup-columns { grid-template-columns: 1fr; gap: 16px; }
   .archive-stats { padding-left: 16px; padding-right: 16px; }
+  .latest-comments { padding-left: 16px; padding-right: 16px; }
   .crew-board { padding-left: 16px; padding-right: 16px; }
   .archive-filters { grid-template-columns: 150px minmax(0, 1fr); }
   /* Sökrutan är andra barnet sedan personväljaren lades först. */
@@ -1079,6 +1091,11 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .archive-stats { grid-template-columns: 1fr; gap: 12px; padding-left: 16px; padding-right: 16px; }
   .stat-big strong { font-size: 34px; }
   .stat-row { gap: 8px 18px; }
+  .latest-comments { padding-left: 16px; padding-right: 16px; }
+  /* Tre kolumner blir för trångt på telefon: namn och kommentar staplas,
+     och var/när hamnar under i stället för att klämmas ihop. */
+  .latest-comments a { grid-template-columns: 1fr; gap: 2px; }
+  .comment-where { text-align: left; }
   .crew-board { padding-left: 16px; padding-right: 16px; }
   .crew-board ol { grid-template-columns: 1fr 1fr; }
   .archive-filters { grid-template-columns: 1fr; padding-left: 16px; padding-right: 16px; }

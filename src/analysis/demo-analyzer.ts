@@ -19,7 +19,7 @@ import type {
   TeamChangeEvent,
 } from '/@/analysis/schema';
 
-export const ANALYZER_VERSION = '2.5.13';
+export const ANALYZER_VERSION = '2.5.14';
 
 const PARSER_VERSION = 'hlviewer-0.8.5-hltv-analysis-7';
 const ENGINE_WASM_VERSION = '7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4';
@@ -378,12 +378,17 @@ export const normalizeParsedAnalysis = (
 
       if (name === 'RoundTime' && payload.length >= 2) {
         const roundTimeSeconds = readUint16(payload);
-        const timerReset = previousRoundTimeSeconds === null
-          || roundTimeSeconds - previousRoundTimeSeconds >= ANALYSIS_CONFIG.roundStartResetIncreaseSeconds;
+        const timerReset = previousRoundTimeSeconds !== null
+          && roundTimeSeconds - previousRoundTimeSeconds >= ANALYSIS_CONFIG.roundStartResetIncreaseSeconds;
         previousRoundTimeSeconds = roundTimeSeconds;
         const previousRound = roundState.currentRound;
         const previousStart = previousRound?.startTimeMs ?? -Infinity;
-        const minimumSeconds = sawMatchRestart
+        // Some HLTV recordings begin halfway through a live match and never
+        // contain Game_will_restart_in. Their complete rounds still expose a
+        // short freeze-time timer followed by a reset to 105 seconds. Accept
+        // that observed reset, but do not turn the initial partial timer in
+        // the signon snapshot into a fake round.
+        const minimumSeconds = sawMatchRestart || timerReset
           ? ANALYSIS_CONFIG.roundStartMinimumSeconds
           : 120;
         if (roundTimeSeconds >= minimumSeconds

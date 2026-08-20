@@ -43,7 +43,7 @@ const localDemos = [
     protocol: 47,
     expected: {
       deathEvents: 45,
-      roundCount: 0,
+      roundCount: 5,
       playerSessions: 10,
       headshots: 12,
       suicides: 0,

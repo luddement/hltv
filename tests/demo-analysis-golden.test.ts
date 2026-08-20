@@ -188,26 +188,27 @@ describe.each(fixtures)('protocol $protocol golden analysis', (fixture) => {
 });
 
 describe('legacy round timers', () => {
+  const messageFrame = (
+    time: number,
+    name: string,
+    payload: number[],
+    packetOrdinal: number,
+  ): ParsedAnalysis['frames'][number] => ({
+    time,
+    tick: packetOrdinal,
+    packetOrdinal,
+    directoryEntry: 0,
+    byteOffset: 544 + packetOrdinal * 100,
+    messages: [{ type: 64, data: { name, payload: new Uint8Array(payload) } }],
+  });
+  const tokenPayload = (token: string): number[] => [
+    1,
+    ...new TextEncoder().encode(token),
+    0,
+  ];
+
   it('accepts a reset 105-second timer after match restart and drops interrupted starts', async () => {
     const parsed = parsedAnalysis(protocol47);
-    const messageFrame = (
-      time: number,
-      name: string,
-      payload: number[],
-      packetOrdinal: number,
-    ): ParsedAnalysis['frames'][number] => ({
-      time,
-      tick: packetOrdinal,
-      packetOrdinal,
-      directoryEntry: 0,
-      byteOffset: 544 + packetOrdinal * 100,
-      messages: [{ type: 64, data: { name, payload: new Uint8Array(payload) } }],
-    });
-    const tokenPayload = (token: string): number[] => [
-      1,
-      ...new TextEncoder().encode(token),
-      0,
-    ];
     parsed.frames = [
       messageFrame(0, 'RoundTime', [90, 0], 0),
       messageFrame(10, 'TextMsg', tokenPayload('#Game_will_restart_in'), 1),
@@ -231,6 +232,32 @@ describe('legacy round timers', () => {
     }))).toEqual([
       { startTimeMs: 50_000, winner: 'CT' },
       { startTimeMs: 80_000, winner: 'TERRORIST' },
+    ]);
+  });
+
+  it('recovers full 105-second rounds when an HLTV recording starts mid-match', async () => {
+    const parsed = parsedAnalysis(protocol47);
+    parsed.frames = [
+      messageFrame(0, 'RoundTime', [74, 0], 0),
+      messageFrame(7, 'SendAudio', tokenPayload('%!MRAD_terwin'), 1),
+      messageFrame(12, 'RoundTime', [8, 0], 2),
+      messageFrame(20, 'RoundTime', [105, 0], 3),
+      messageFrame(55, 'SendAudio', tokenPayload('%!MRAD_terwin'), 4),
+      messageFrame(60, 'RoundTime', [8, 0], 5),
+      messageFrame(68, 'RoundTime', [105, 0], 6),
+      messageFrame(120, 'SendAudio', tokenPayload('%!MRAD_ctwin'), 7),
+    ];
+    const demo = demoMetadata(protocol47);
+    demo.duration = 130;
+    const { normalizeParsedAnalysis } = await import('/@/analysis/demo-analyzer');
+    const index = normalizeParsedAnalysis(parsed, demo, fixtureIdentity);
+
+    expect(index.rounds.map((round) => ({
+      startTimeMs: round.startTimeMs,
+      winner: round.winner.value,
+    }))).toEqual([
+      { startTimeMs: 20_000, winner: 'TERRORIST' },
+      { startTimeMs: 68_000, winner: 'CT' },
     ]);
   });
 });

@@ -135,6 +135,23 @@
             </div>
           </div>
 
+          <div v-if="latestComments.length" class="latest-comments">
+            <div class="crew-board-head">
+              <span>Senaste kommentarerna</span>
+              <small>klicka för att öppna demot</small>
+            </div>
+            <ol>
+              <li v-for="row in latestComments" :key="row.comment.id">
+                <a :href="buildReplayRoute({ ...EMPTY_REPLAY_ROUTE, demoPath: row.demoPath })"
+                   @click.prevent="openArchiveDemoByPath(row.demoPath)">
+                  <span class="comment-who">{{ row.comment.nickname }}</span>
+                  <span class="comment-body">{{ row.comment.body }}</span>
+                  <span class="comment-where">{{ row.filename }} · {{ commentAge(row.comment.createdAt) }}</span>
+                </a>
+              </li>
+            </ol>
+          </div>
+
           <div v-if="crewIndex" class="crew-board">
             <div class="crew-board-head">
               <span>Gänget</span>
@@ -1042,6 +1059,7 @@
   import { CREW, crewMemberForName } from '/@/archive/crew';
   import {
     buildReplayRoute,
+    EMPTY_REPLAY_ROUTE,
     parseReplayRoute,
     type ReplayRoute,
   } from '/@/app/replay-route';
@@ -1922,6 +1940,34 @@
     window.localStorage.setItem(COMMENT_NICKNAME_STORAGE_KEY, commentNickname.value);
   };
 
+  /**
+   * De fem senaste kommentarerna i hela arkivet.
+   *
+   * Byggs ur ?scope=catalog som redan laddats — den returnerar de fem senaste
+   * PER demo, vilket är mer än nog för att plocka fram de fem senaste totalt.
+   * Ingen extra förfrågan behövs.
+   */
+  const latestComments = computed(() => {
+    const rows: { comment: DemoComment; demoPath: string; filename: string }[] = [];
+    for (const [demoPath, summary] of archiveComments.value) {
+      const filename = demoPath.split('/').pop() ?? demoPath;
+      for (const comment of summary.comments) rows.push({ comment, demoPath, filename });
+    }
+    return rows
+      .sort((left, right) => right.comment.createdAt.localeCompare(left.comment.createdAt))
+      .slice(0, 5);
+  });
+
+  const commentAge = (iso: string): string => {
+    const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (minutes < 1) return 'nyss';
+    if (minutes < 60) return `${minutes} min sedan`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} tim sedan`;
+    const days = Math.round(hours / 24);
+    return days < 31 ? `${days} d sedan` : new Date(iso).toLocaleDateString('sv-SE');
+  };
+
   const emptyCommentSummary: DemoCommentSummary = { count: 0, comments: [] };
   const archiveCommentsFor = (demoPath: string): DemoCommentSummary =>
     archiveComments.value.get(demoPath) ?? emptyCommentSummary;
@@ -2049,6 +2095,13 @@
     if (!route.anchor) return;
     await nextTick();
     document.getElementById(route.anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  /** Öppnar ett demo ur katalogen på sökväg, som en delad länk gör. */
+  const openArchiveDemoByPath = (demoPath: string) => {
+    const entry = demoCatalog.value?.demos.find((demo) => demo.path === demoPath);
+    if (!entry) return;
+    void loadArchiveDemo(entry);
   };
 
   const onPopState = () => {
