@@ -186,3 +186,51 @@ describe.each(fixtures)('protocol $protocol golden analysis', (fixture) => {
     });
   }
 });
+
+describe('legacy round timers', () => {
+  it('accepts a reset 105-second timer after match restart and drops interrupted starts', async () => {
+    const parsed = parsedAnalysis(protocol47);
+    const messageFrame = (
+      time: number,
+      name: string,
+      payload: number[],
+      packetOrdinal: number,
+    ): ParsedAnalysis['frames'][number] => ({
+      time,
+      tick: packetOrdinal,
+      packetOrdinal,
+      directoryEntry: 0,
+      byteOffset: 544 + packetOrdinal * 100,
+      messages: [{ type: 64, data: { name, payload: new Uint8Array(payload) } }],
+    });
+    const tokenPayload = (token: string): number[] => [
+      1,
+      ...new TextEncoder().encode(token),
+      0,
+    ];
+    parsed.frames = [
+      messageFrame(0, 'RoundTime', [90, 0], 0),
+      messageFrame(10, 'TextMsg', tokenPayload('#Game_will_restart_in'), 1),
+      messageFrame(20, 'RoundTime', [105, 0], 2),
+      messageFrame(30, 'TextMsg', tokenPayload('#Game_will_restart_in'), 3),
+      messageFrame(40, 'RoundTime', [8, 0], 4),
+      messageFrame(50, 'RoundTime', [105, 0], 5),
+      messageFrame(60, 'SendAudio', tokenPayload('%!MRAD_ctwin'), 6),
+      messageFrame(70, 'RoundTime', [8, 0], 7),
+      messageFrame(80, 'RoundTime', [105, 0], 8),
+      messageFrame(90, 'SendAudio', tokenPayload('%!MRAD_terwin'), 9),
+    ];
+    const demo = demoMetadata(protocol47);
+    demo.duration = 100;
+    const { normalizeParsedAnalysis } = await import('/@/analysis/demo-analyzer');
+    const index = normalizeParsedAnalysis(parsed, demo, fixtureIdentity);
+
+    expect(index.rounds.map((round) => ({
+      startTimeMs: round.startTimeMs,
+      winner: round.winner.value,
+    }))).toEqual([
+      { startTimeMs: 50_000, winner: 'CT' },
+      { startTimeMs: 80_000, winner: 'TERRORIST' },
+    ]);
+  });
+});

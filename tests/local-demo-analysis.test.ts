@@ -193,7 +193,8 @@ describe('local binary demo goldens', () => {
         && Math.abs(event.demoTimeMs - 86_816) < 100);
       const mp5Rating = index.fragRatings.find((entry) =>
         entry.eventId === mp5Headshot?.eventId);
-      expect(mp5Rating?.score).toBe(35);
+      expect(mp5Rating?.score).toBe(45);
+      expect(mp5Rating?.reasons.some((entry) => entry.code === 'round_win')).toBe(true);
       expect(mp5Rating?.reasons.some((entry) => entry.code === 'trade')).toBe(false);
     },
     30_000,
