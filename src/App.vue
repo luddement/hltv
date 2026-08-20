@@ -408,7 +408,7 @@
               </div>
             </div>
 
-            <div class="frag-reel-launcher">
+            <div id="only-frags" class="frag-reel-launcher">
               <div class="frag-reel-copy">
                 <span>Only Frags playback</span>
                 <strong>Watch every frag by the selected player or team</strong>
@@ -787,7 +787,12 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+  import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+  import {
+    buildReplayRoute,
+    parseReplayRoute,
+    type ReplayRoute,
+  } from '/@/app/replay-route';
   import {
     analyzeDemoInWorker,
     type WorkerAnalysisRun,
@@ -912,18 +917,13 @@
     { id: 'clean', short: '00', label: 'Clean', detail: 'No HUD' },
   ];
 
-  const bundledDemo: DemoSource = {
-    kind: 'url',
-    name: 'r60_sthlm.dem',
-    url: '/demos/r60_sthlm.dem',
-  };
-
   const demoInput = ref<HTMLInputElement>();
   const folderInput = ref<HTMLInputElement>();
   const engineCanvas = ref<HTMLCanvasElement>();
   const demoInfo = ref<GoldSrcDemo>();
-  const demoSource = ref<DemoSource>(bundledDemo);
-  const demoLoading = ref(true);
+  const demoSource = ref<DemoSource>();
+  // Utan startdemo pågår ingen laddning; annars fastnar UI:t i väntläge.
+  const demoLoading = ref(false);
   const demoError = ref('');
   const demoCatalog = shallowRef<DemoCatalog>();
   const catalogLoading = ref(true);
@@ -933,6 +933,9 @@
   const archiveSort = ref<DemoCatalogSort>('date-desc');
   const archiveResultLimit = ref(50);
   const archiveSelectionPath = ref('');
+  // archiveSelectionPath nollställs när laddningen är klar och duger därför
+  // inte som adress. Den här behåller vilken katalogpost som visas.
+  const loadedDemoPath = ref('');
   const gameFiles = ref<GameAssetEntry[]>([]);
   const gameError = ref('');
   const mapChecksumMatches = ref(false);
@@ -1346,7 +1349,7 @@
       : logicalTeamName(highlightTeam.value));
   const fragMovieTimeline = computed(() => buildFragMovieTimeline(movieFragDeaths.value));
   const movieMatchDateLabel = computed(() => {
-    const inferred = inferDemoMatchDate(demoSource.value.name);
+    const inferred = inferDemoMatchDate(demoSource.value?.name ?? '');
     if (!inferred) return '';
     const [year, month, day] = inferred.split('-').map(Number);
     return new Intl.DateTimeFormat('en-GB', {
@@ -1458,6 +1461,69 @@
   const mircClock = computed(() => new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date()));
+
+  // --- delbara länkar -----------------------------------------------------
+  // Adressen speglar vald demo och Only Frags-inställningarna, så att en
+  // kopierad länk återskapar exakt den vyn. Hashen används bara till
+  // rullningsmål, aldrig till tillstånd.
+  const currentReplayRoute = computed<ReplayRoute>(() => ({
+    demoPath: loadedDemoPath.value,
+    team: highlightTeam.value,
+    player: fragPlayer.value,
+    search: fragSearch.value,
+    sort: fragSort.value,
+    headshotsOnly: headshotsOnly.value,
+    anchor: '',
+  }));
+
+  // Sant medan vi läser adressen och skriver in den i tillståndet. Utan den
+  // skulle synkningen skriva tillbaka halvfärdiga lägen medan demon laddas.
+  let applyingRoute = false;
+
+  const applyReplayRoute = async (route: ReplayRoute) => {
+    applyingRoute = true;
+    try {
+      if (route.demoPath && route.demoPath !== loadedDemoPath.value) {
+        const entry = demoCatalog.value?.demos.find((demo) => demo.path === route.demoPath);
+        if (!entry) {
+          demoError.value = `Demon ${route.demoPath} finns inte i katalogen.`;
+          return;
+        }
+        // Måste inväntas: loadArchiveDemo nollställer lag och spelare, så
+        // filtren nedan skulle annars skrivas över av laddningen.
+        await loadArchiveDemo(entry);
+      }
+      highlightTeam.value = route.team as 'all' | LogicalTeamId;
+      fragPlayer.value = route.player;
+      fragSearch.value = route.search;
+      fragSort.value = route.sort;
+      headshotsOnly.value = route.headshotsOnly;
+    } finally {
+      applyingRoute = false;
+    }
+
+    if (!route.anchor) return;
+    await nextTick();
+    document.getElementById(route.anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const onPopState = () => {
+    void applyReplayRoute(parseReplayRoute(window.location.href));
+  };
+
+  watch(currentReplayRoute, (route, previous) => {
+    if (applyingRoute) return;
+    const next = buildReplayRoute(route);
+    if (next === `${window.location.pathname}${window.location.search}`) return;
+    // Byte av demo är en ny vy och förtjänar en post i historiken, så
+    // bakåtknappen tar dig till föregående demo. Filterjusteringar skriver
+    // över samma post i stället för att fylla historiken med varje tangent.
+    if (route.demoPath !== previous.demoPath) {
+      window.history.pushState(null, '', next);
+    } else {
+      window.history.replaceState(null, '', next);
+    }
+  });
 
   const onHighlightTeamSelect = (event: Event) => {
     highlightTeam.value = (event.target as HTMLSelectElement).value as 'all' | LogicalTeamId;
@@ -1982,22 +2048,6 @@
     }
   };
 
-  const loadBundledDemo = async () => {
-    demoLoading.value = true;
-    demoError.value = '';
-    try {
-      demoInfo.value = await inspectDemoUrl(bundledDemo.name, bundledDemo.url);
-      demoSource.value = bundledDemo;
-      void analyzeSelectedDemo(demoInfo.value, bundledDemo);
-      await loadInstalledGameAssets();
-    } catch (error) {
-      demoInfo.value = undefined;
-      demoError.value = error instanceof Error ? error.message : 'Could not read the demo.';
-    } finally {
-      demoLoading.value = false;
-    }
-  };
-
   const loadDemoCatalog = async () => {
     catalogLoading.value = true;
     catalogError.value = '';
@@ -2018,6 +2068,7 @@
     activeAnalysisRun?.cancel();
     analysisRequest += 1;
     archiveSelectionPath.value = entry.path;
+    loadedDemoPath.value = entry.path;
     demoLoading.value = true;
     demoError.value = '';
     analysisLoading.value = true;
@@ -2077,6 +2128,7 @@
       const inspected = await inspectDemoFile(file);
       demoInfo.value = inspected;
       demoSource.value = { kind: 'file', name: file.name, file };
+      loadedDemoPath.value = '';
       void analyzeSelectedDemo(inspected, demoSource.value);
       await loadInstalledGameAssets(inspected);
     } catch (error) {
@@ -2264,7 +2316,7 @@
     reconstructionCamera?: DemoEngineOptions['reconstructionCamera'],
   ) => {
     const selectedDemo = demoInfo.value;
-    if (!canLaunch.value || !selectedDemo) return;
+    if (!canLaunch.value || !selectedDemo || !demoSource.value) return;
     launching.value = true;
     engineVisible.value = true;
     engineStarted.value = false;
@@ -2421,7 +2473,7 @@
   };
 
   const exportFragMovie = async () => {
-    if (!canStartMovieExport.value || movieExportRunning.value) return;
+    if (!canStartMovieExport.value || movieExportRunning.value || !demoSource.value) return;
     movieExportError.value = '';
     movieExportNotice.value = '';
     movieExportBytes.value = 0;
@@ -2761,8 +2813,13 @@
       movieIncludeIntro.value = savedMovieIntro === 'true';
     }
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
-    loadBundledDemo();
-    loadDemoCatalog();
+    // Ingen demo laddas vid start om adressen inte pekar ut en. Katalogen
+    // måste finnas först, eftersom en delad länk slås upp mot den.
+    const initialRoute = parseReplayRoute(window.location.href);
+    void loadDemoCatalog().then(() => {
+      if (initialRoute.demoPath) void applyReplayRoute(initialRoute);
+    });
+    window.addEventListener('popstate', onPopState);
     window.addEventListener('keydown', showScoreboard, true);
     window.addEventListener('keyup', hideScoreboard, true);
     window.addEventListener('blur', hideScoreboardOnBlur);
@@ -2771,6 +2828,7 @@
     document.addEventListener('visibilitychange', stopExportWhenTabIsHidden);
   });
   onBeforeUnmount(() => {
+    window.removeEventListener('popstate', onPopState);
     activeAnalysisRun?.cancel();
     window.cancelAnimationFrame(hudClockFrame);
     if (movieRecorder) void movieRecorder.cancel();
