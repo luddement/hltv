@@ -307,6 +307,29 @@
 .archive-person-filter select { border-color: #3d4a2a; color: var(--acid); }
 .archive-person-filter select:focus-visible { outline: 2px solid var(--acid); outline-offset: 1px; }
 
+/* Arkivets nyckeltal och gängets topplista. Siffrorna är stora med flit —
+   207 dygn och en miljon frags är hela poängen med arkivet, inte en fotnot. */
+.archive-stats { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; padding: 0 29px 16px; }
+.stat-big strong { display: block; color: var(--acid); font: 700 42px/1 ui-monospace, monospace; }
+.stat-big span { display: block; margin-top: 2px; color: #8e968a; font: 9px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .1em; }
+.stat-big small { display: block; margin-top: 4px; color: #626961; font: 8px ui-monospace, monospace; }
+.stat-row { display: flex; flex-wrap: wrap; gap: 8px 26px; }
+.stat-row div { min-width: 64px; }
+.stat-row strong { display: block; color: #d4d9d1; font: 700 15px/1.1 ui-monospace, monospace; }
+.stat-row span { color: #70766e; font: 8px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
+
+.crew-board { padding: 0 29px 18px; }
+.crew-board-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.crew-board-head span { color: #8e968a; font: 9px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .1em; }
+.crew-board-head small { color: #5b6259; font: 8px ui-monospace, monospace; }
+.crew-board ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.crew-board button { width: 100%; display: grid; gap: 2px; padding: 8px 10px; text-align: left; color: inherit; border: 1px solid #242a23; border-radius: 2px; background: #0c0f0c; cursor: pointer; }
+.crew-board button:hover { border-color: #3d4a2a; background: rgba(200,245,66,.045); }
+.crew-board li.active button { border-color: var(--acid); background: rgba(200,245,66,.08); }
+.crew-board b { color: #d4d9d1; font: 700 11px ui-monospace, monospace; }
+.crew-frags { color: var(--acid); font: 700 17px/1 ui-monospace, monospace; }
+.crew-meta { color: #6d746b; font: 8px ui-monospace, monospace; }
+
 .archive-filters { display: grid; grid-template-columns: 168px minmax(220px, 1fr) 150px; gap: 12px; padding: 0 29px 17px; }
 .archive-filters label { min-width: 0; display: grid; gap: 5px; }
 .archive-filters label > span { color: #70766e; font: 8px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
@@ -1018,6 +1041,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .hero-grid { grid-template-columns: 1fr; gap: 26px; padding-top: 34px; }
   .signal-card { display: none; }
   .setup-columns { grid-template-columns: 1fr; gap: 16px; }
+  .archive-stats { padding-left: 16px; padding-right: 16px; }
+  .crew-board { padding-left: 16px; padding-right: 16px; }
   .archive-filters { grid-template-columns: 150px minmax(0, 1fr); }
   /* Sökrutan är andra barnet sedan personväljaren lades först. */
   .archive-filters label:nth-child(2) { grid-column: 1 / -1; }
@@ -1051,6 +1076,11 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .hero-copy h1 { font-size: 48px; }
   .setup-heading, .setup-columns, .launch-row { padding-left: 16px; padding-right: 16px; }
   .archive-heading { align-items: flex-start; flex-direction: column; padding-left: 16px; padding-right: 16px; }
+  .archive-stats { grid-template-columns: 1fr; gap: 12px; padding-left: 16px; padding-right: 16px; }
+  .stat-big strong { font-size: 34px; }
+  .stat-row { gap: 8px 18px; }
+  .crew-board { padding-left: 16px; padding-right: 16px; }
+  .crew-board ol { grid-template-columns: 1fr 1fr; }
   .archive-filters { grid-template-columns: 1fr; padding-left: 16px; padding-right: 16px; }
   .archive-filters label:nth-child(2) { grid-column: auto; }
   .archive-row { grid-template-columns: 82px minmax(150px, 1fr) 54px 46px; padding-left: 16px; padding-right: 16px; }

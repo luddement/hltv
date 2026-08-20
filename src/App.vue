@@ -116,6 +116,48 @@
             <span class="archive-result-count">{{ filteredArchiveDemos.length }} matches</span>
           </div>
 
+          <div v-if="demoCatalog" class="archive-stats">
+            <div class="stat-big">
+              <strong>{{ archiveTotals.days }}</strong><span>dygn inspelat</span>
+              <small>{{ archiveTotals.hours }} tim {{ archiveTotals.minutes }} min · {{ archiveTotals.span }}</small>
+            </div>
+            <div class="stat-row">
+              <div><strong>{{ formatNumber(archiveTotals.frags) }}</strong><span>frags</span></div>
+              <div><strong>{{ formatNumber(archiveTotals.rounds) }}</strong><span>ronder</span></div>
+              <div v-if="archiveTotals.headshots">
+                <strong>{{ formatNumber(archiveTotals.headshots) }}</strong><span>headshots</span>
+              </div>
+              <div><strong>{{ formatNumber(archiveTotals.demos) }}</strong><span>demos</span></div>
+              <div><strong>{{ archiveTotals.maps }}</strong><span>kartor</span></div>
+              <div v-if="archiveTotals.topMap">
+                <strong>{{ archiveTotals.topMap.name }}</strong><span>mest spelad</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="crewIndex" class="crew-board">
+            <div class="crew-board-head">
+              <span>Gänget</span>
+              <small>klicka för att filtrera arkivet</small>
+            </div>
+            <ol>
+              <li
+                v-for="member in crewIndex.members"
+                :key="member.id"
+                :class="{ active: archivePerson === member.id }"
+              >
+                <button type="button" @click="archivePerson = archivePerson === member.id ? 'all' : member.id">
+                  <b>{{ member.name }}</b>
+                  <span class="crew-frags">{{ formatNumber(member.frags) }}</span>
+                  <span class="crew-meta">
+                    {{ member.demos }} demos · {{ Math.round(member.seconds / 3600) }} h
+                    · {{ member.headshotPercent }} % hs · K/D {{ member.ratio ?? '–' }}
+                  </span>
+                </button>
+              </li>
+            </ol>
+          </div>
+
           <div class="archive-filters">
             <label class="archive-person-filter">
               <span>Person</span>
@@ -1188,6 +1230,7 @@
   const archiveSearch = ref('');
   const archiveYear = ref<'all' | number>('all');
   const archivePerson = ref<'all' | string>('all');
+  const crewIndex = shallowRef<CrewIndex>();
   const archiveSort = ref<DemoCatalogSort>('date-desc');
   const archiveResultLimit = ref(50);
   const archiveSelectionPath = ref('');
@@ -2754,6 +2797,53 @@
     }
   };
 
+  type CrewIndexMember = {
+    id: string; name: string; demos: number; seconds: number;
+    frags: number; deaths: number; headshots: number;
+    headshotPercent: number; ratio: number | null; years: number[];
+    topMaps: { value: string; count: number }[];
+    topNicks: { value: string; count: number }[];
+  };
+  type CrewIndex = { generatedAt: string; members: CrewIndexMember[] };
+
+  const loadCrewIndex = async () => {
+    try {
+      const response = await fetch('/crew-index.json');
+      if (!response.ok) return;
+      crewIndex.value = await response.json() as CrewIndex;
+    } catch {
+      // Statistiken är utsmyckning; arkivet fungerar utan den.
+    }
+  };
+
+  /** Summor över hela arkivet, räknade ur katalogen som redan är laddad. */
+  const archiveTotals = computed(() => {
+    const demos = (demoCatalog.value?.demos ?? []).filter((d) => d.status === 'complete');
+    let seconds = 0; let frags = 0; let rounds = 0; let bytes = 0;
+    const maps = new Map<string, number>();
+    const years = new Set<number>();
+    for (const demo of demos) {
+      seconds += demo.durationSeconds ?? 0;
+      frags += demo.fragCount ?? 0;
+      rounds += demo.roundCount ?? 0;
+      bytes += demo.sizeBytes ?? 0;
+      if (demo.year) years.add(demo.year);
+      if (demo.map) maps.set(demo.map, (maps.get(demo.map) ?? 0) + 1);
+    }
+    const headshots = (crewIndex.value?.members ?? []).reduce((n, m) => n + m.headshots, 0);
+    const topMap = [...maps.entries()].sort((a, b) => b[1] - a[1])[0];
+    const yearList = [...years].sort();
+    return {
+      demos: demos.length, seconds, frags, rounds, bytes, headshots,
+      days: Math.floor(seconds / 86400),
+      hours: Math.floor((seconds % 86400) / 3600),
+      minutes: Math.floor((seconds % 3600) / 60),
+      maps: maps.size,
+      topMap: topMap ? { name: topMap[0], count: topMap[1] } : undefined,
+      span: yearList.length ? `${yearList[0]}–${yearList.at(-1)}` : '',
+    };
+  });
+
   const loadDemoCatalog = async () => {
     catalogLoading.value = true;
     catalogError.value = '';
@@ -3875,6 +3965,7 @@
     // måste finnas först, eftersom en delad länk slås upp mot den.
     const initialRoute = parseReplayRoute(window.location.href);
     void loadArchiveComments();
+    void loadCrewIndex();
     void loadDemoCatalog().then(() => {
       if (initialRoute.demoPath) void applyReplayRoute(initialRoute);
     });
