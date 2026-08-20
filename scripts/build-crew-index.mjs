@@ -53,18 +53,32 @@ for (const year of await readdir(resolve(values.analysis))) {
       namesById.set(player.playerId, [...names]);
     }
 
-    // playerId -> crew-id, och vilka i gänget som fanns i demot.
+    // Föräldralös analys: reparationen skrev *.repaired.dem, indexeraren hann
+    // analysera den, och utbytet döpte sedan om filen. Den sökvägen finns inte
+    // i katalogen och ska inte räknas.
+    if (!demo || demo.status !== 'complete') continue;
+
+    // playerId -> crew-id, för att kunna tillskriva frags och headshots.
     const crewById = new Map();
-    const present = new Set();
     for (const [id, names] of namesById) {
       for (const name of names) {
         const member = crewMemberForName(name);
         if (!member) continue;
         crewById.set(id, member.id);
-        present.add(member.id);
         stats.get(member.id).nicks.set(name, (stats.get(member.id).nicks.get(name) ?? 0) + 1);
         break;
       }
+    }
+
+    // MEDLEMSKAP kommer från katalogens players[], inte från sessionsnamnen.
+    // Det är samma källa som arkivfiltret använder, så antalet demos här och
+    // antalet träffar i filtret blir per definition lika. Sessionerna missar
+    // enstaka namn — sju demos skilde innan — och då hade sidan visat en
+    // siffra som inte gick att klicka fram.
+    const present = new Set();
+    for (const name of demo.players ?? []) {
+      const member = crewMemberForName(name);
+      if (member) present.add(member.id);
     }
     if (!present.size) continue;
 
