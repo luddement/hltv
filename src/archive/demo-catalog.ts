@@ -31,7 +31,7 @@ export type DemoCatalog = {
   demos: DemoCatalogEntry[];
 };
 
-export type DemoCatalogSort = 'date-desc' | 'date-asc' | 'frag-desc' | 'round-desc';
+export type DemoCatalogSort = 'date-desc' | 'date-asc' | 'frag-desc' | 'round-desc' | 'comments-desc';
 
 const searchableText = (entry: DemoCatalogEntry): string => [
   entry.filename,
@@ -59,6 +59,7 @@ export const filterDemoCatalog = (
   query: string,
   year: 'all' | number,
   sort: DemoCatalogSort,
+  commentCounts: ReadonlyMap<string, number> = new Map(),
 ): DemoCatalogEntry[] => {
   const normalizedQuery = query.normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -78,6 +79,10 @@ export const filterDemoCatalog = (
     }
     if (sort === 'round-desc') {
       return descendingScore(left.topRoundScore, right.topRoundScore)
+        || descendingDate(left, right);
+    }
+    if (sort === 'comments-desc') {
+      return (commentCounts.get(right.path) ?? 0) - (commentCounts.get(left.path) ?? 0)
         || descendingDate(left, right);
     }
     if (sort === 'date-asc') {

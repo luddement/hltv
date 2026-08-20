@@ -128,8 +128,12 @@ describe('highlight scoring', () => {
     expect(clutchMoment?.eventIds).toEqual(['death-1', 'death-2', 'death-3']);
     expect(clutchMoment?.rating.score).toBeGreaterThanOrEqual(85);
     expect(clutchMoment?.rating.reasons.map((entry) => entry.code)).toContain('multi_kill');
-    expect(terroristRound?.score).toBeGreaterThanOrEqual(75);
-    expect(terroristRound?.reasons.map((entry) => entry.code)).toContain('clutch_round');
+    const winningFragTotal = result.fragRatings
+      .filter((rating) => rating.team === 'TERRORIST')
+      .reduce((total, rating) => total + rating.score, 0);
+    expect(terroristRound?.score).toBe(Math.round(winningFragTotal / 5));
+    expect(terroristRound?.reasons.map((entry) => entry.code)).toContain('winning_team_frags');
+    expect(result.roundRatings.map((rating) => rating.team)).toEqual(['TERRORIST']);
   });
 
   it('limits POV highlights to the focus team and marks teammate frags as killfeed-only', () => {
@@ -154,6 +158,30 @@ describe('highlight scoring', () => {
       .toBe('killfeed_only');
     expect(result.fragRatings.some((rating) => rating.eventId === 'death-5')).toBe(false);
     expect(result.roundRatings.map((rating) => rating.team)).toEqual(['TERRORIST']);
+  });
+
+  it('does not rank zero-length or implausibly merged rounds', () => {
+    const zeroLength = input({
+      kind: 'hltv',
+      focusPlayerIds: [],
+      focusTeamHistory: [],
+      evidence: 'unknown',
+    });
+    zeroLength.rounds[0].endTimeMs = zeroLength.rounds[0].startTimeMs;
+    expect(buildHighlightAnalysis(zeroLength).roundRatings).toEqual([]);
+
+    const merged = input({
+      kind: 'hltv',
+      focusPlayerIds: [],
+      focusTeamHistory: [],
+      evidence: 'unknown',
+    });
+    merged.events.push(
+      death('death-6', 6_000, 't-mate', 'ct-2', 2, 4, 2, 1),
+      death('death-7', 6_500, 't-mate', 'ct-3', 2, 5, 2, 1),
+    );
+    merged.rounds[0].deathEventIds.push('death-6', 'death-7');
+    expect(buildHighlightAnalysis(merged).roundRatings).toEqual([]);
   });
 
   it('only offers native HLTV POV when killer entity data is present at the frag', () => {

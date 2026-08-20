@@ -72,7 +72,7 @@ export const prepareMovieOutput = async (
 ): Promise<PreparedMovieOutput> => {
   const container = preferredMovieContainer();
   if (!container) {
-    throw new Error('This browser does not provide the WebCodecs support required for stable 60 FPS export.');
+    throw new Error('This browser does not provide the WebCodecs support required for high-frame-rate export.');
   }
   const filename = `${filenameWithoutExtension}.${container.extension}`;
   const picker = (window as SaveFileWindow).showSaveFilePicker;
@@ -112,6 +112,7 @@ export class MovieRecorder {
   private bufferTarget?: BufferTarget;
   private videoSource?: VideoSampleSource;
   private audioSource?: AudioSampleSource;
+  private currentAudio?: MovieAudioCapture;
   private unsubscribeAudio?: () => void;
   private audioQueue: Promise<void> = Promise.resolve();
   private readonly pendingAudioBlocks: Array<{ block: MoviePcmBlock; fadeIn: boolean }> = [];
@@ -238,6 +239,7 @@ export class MovieRecorder {
     });
     output.addAudioTrack(audioSource);
     this.audioSource = audioSource;
+    this.currentAudio = audioCapture;
 
     this.output = output as Output<Mp4OutputFormat, Target>;
     this.videoSource = videoSource;
@@ -287,6 +289,8 @@ export class MovieRecorder {
     const codec = ((width >= 3840 || height >= 2160) && fps >= 60)
       || ((width >= 2560 || height >= 1440) && fps > 60)
       ? 'avc1.640034'
+      : ((width >= 1920 || height >= 1080) && fps > 60)
+        ? 'avc1.640033'
       : width >= 2560 || height >= 1440
         ? 'avc1.640033'
       : width >= 1920 || height >= 1080
@@ -403,6 +407,19 @@ export class MovieRecorder {
     this.recorderState = 'recording';
   }
 
+  /** Reconnects PCM after a playlist switches to a fresh Xash runtime. */
+  replaceAudioCapture(audio: MovieAudioCapture): void {
+    if (this.recorderState === 'unstarted' || this.recorderState === 'inactive') {
+      throw new Error('The movie recorder is not ready for a new audio source.');
+    }
+    this.unsubscribeAudio?.();
+    this.unsubscribeAudio = undefined;
+    this.currentAudio?.close();
+    this.currentAudio = audio;
+    this.audioNeedsFadeIn = true;
+    this.unsubscribeAudio = audio.subscribe(this.captureAudioBlock);
+  }
+
   async stop(): Promise<void> {
     if (this.stopped) return this.stopped;
     this.stopped = this.finalize();
@@ -418,7 +435,8 @@ export class MovieRecorder {
     this.unsubscribeAudio = undefined;
     this.pendingAudioBlocks.length = 0;
     this.audioSource?.close();
-    this.options.audio?.close();
+    this.currentAudio?.close();
+    this.currentAudio = undefined;
     await Promise.all([
       this.frameQueue.catch(() => undefined),
       this.audioQueue.catch(() => undefined),
@@ -741,7 +759,8 @@ export class MovieRecorder {
     this.unsubscribeAudio?.();
     this.unsubscribeAudio = undefined;
     this.alignAudioToVideo(true);
-    this.options.audio?.close();
+    this.currentAudio?.close();
+    this.currentAudio = undefined;
     await Promise.all([this.frameQueue, this.audioQueue]);
     this.videoSource?.close();
     this.audioSource?.close();

@@ -49,6 +49,10 @@ describe('demo catalog', () => {
     expect(filterDemoCatalog(demos, '', 2004, 'date-desc')).toEqual([demos[0]]);
     expect(filterDemoCatalog(demos, '', 'all', 'frag-desc')).toEqual([demos[0], demos[1]]);
     expect(filterDemoCatalog(demos, '', 'all', 'round-desc')).toEqual([demos[1], demos[0]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'comments-desc', new Map([
+      [demos[0].path, 1],
+      [demos[1].path, 3],
+    ]))).toEqual([demos[1], demos[0]]);
   });
 
   it('formats matchups and safely encodes nested archive URLs', () => {

@@ -55,6 +55,20 @@ export class RoundAliveReducer {
     return round;
   }
 
+  discardCurrentRound(): RoundSummary | undefined {
+    const round = this.currentRound;
+    if (!round || round.endTimeMs !== null) return undefined;
+    this.rounds.pop();
+    for (const player of this.players.values()) player.alive = null;
+    return round;
+  }
+
+  clearRounds(): RoundSummary[] {
+    const removed = this.rounds.splice(0);
+    for (const player of this.players.values()) player.alive = null;
+    return removed;
+  }
+
   aliveCounts(): AliveCounts {
     return {
       terrorists: this.knownCount('TERRORIST'),

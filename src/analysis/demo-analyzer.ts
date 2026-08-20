@@ -14,17 +14,19 @@ import type {
   ReplayEvent,
   ReplayEventBase,
   RoundEndEvent,
+  RoundSummary,
   RoundStartEvent,
   TeamChangeEvent,
 } from '/@/analysis/schema';
 
-export const ANALYZER_VERSION = '2.5.9';
+export const ANALYZER_VERSION = '2.5.13';
 
 const PARSER_VERSION = 'hlviewer-0.8.5-hltv-analysis-7';
 const ENGINE_WASM_VERSION = '7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4';
 const CLIENT_WASM_VERSION = '77a2a892a598c6c14a5214fe41a92a85ac38af099665f7660bcc33e4f47c2995';
 const ANALYSIS_CONFIG = {
-  roundStartMinimumSeconds: 120,
+  roundStartMinimumSeconds: 60,
+  roundStartResetIncreaseSeconds: 30,
   roundStartDebounceMs: 5_000,
   roundEndAudioTokens: ['%!MRAD_terwin', '%!MRAD_ctwin'],
 } as const;
@@ -201,10 +203,24 @@ export const normalizeParsedAnalysis = (
   const focusPlayerIds = new Set<string>();
   const eventResources = new Map<number, string>();
   const observedShots: ObservedShot[] = [];
+  const legacyTimerRoundIds = new Set<string>();
+  let previousRoundTimeSeconds: number | null = null;
+  let sawMatchRestart = false;
 
   const nextEventId = (): string => `event-${++eventSequence}`;
   const playerForSlot = (slot: number): MutablePlayerState | undefined =>
     activeSlots.get(slot);
+
+  const forgetRounds = (removedRounds: RoundSummary[]): void => {
+    const removedIds = new Set(removedRounds.map((round) => round.roundId));
+    if (!removedIds.size) return;
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (!event.roundId || !removedIds.has(event.roundId)) continue;
+      if (event.type === 'round_start' || event.type === 'round_end') events.splice(index, 1);
+      else event.roundId = null;
+    }
+  };
 
   const closeSession = (slot: number, atMs: number): void => {
     const state = activeSlots.get(slot);
@@ -327,6 +343,20 @@ export const normalizeParsedAnalysis = (
       const payload = message.data.payload;
       const name = String(message.data.name ?? '');
 
+      if (name === 'TextMsg' && payload.length >= 2) {
+        const token = readCString(payload, 1).toLowerCase();
+        if (token.startsWith('#game_will_restart_in')) {
+          const currentRound = roundState.currentRound;
+          const removedRounds = currentRound
+            && legacyTimerRoundIds.has(currentRound.roundId)
+            ? [roundState.discardCurrentRound()].filter((round): round is RoundSummary => Boolean(round))
+            : [];
+          forgetRounds(removedRounds);
+          sawMatchRestart = true;
+        }
+        return;
+      }
+
       if (name === 'TeamInfo' && payload.length >= 2) {
         const slot = payload[0];
         const team = readCString(payload, 1);
@@ -348,10 +378,19 @@ export const normalizeParsedAnalysis = (
 
       if (name === 'RoundTime' && payload.length >= 2) {
         const roundTimeSeconds = readUint16(payload);
-        const previousStart = roundState.currentRound?.startTimeMs ?? -Infinity;
-        if (roundTimeSeconds >= ANALYSIS_CONFIG.roundStartMinimumSeconds
+        const timerReset = previousRoundTimeSeconds === null
+          || roundTimeSeconds - previousRoundTimeSeconds >= ANALYSIS_CONFIG.roundStartResetIncreaseSeconds;
+        previousRoundTimeSeconds = roundTimeSeconds;
+        const previousRound = roundState.currentRound;
+        const previousStart = previousRound?.startTimeMs ?? -Infinity;
+        const minimumSeconds = sawMatchRestart
+          ? ANALYSIS_CONFIG.roundStartMinimumSeconds
+          : 120;
+        if (roundTimeSeconds >= minimumSeconds
+          && (roundTimeSeconds >= 120 || timerReset || previousRound?.endTimeMs !== null)
           && atMs - previousStart >= ANALYSIS_CONFIG.roundStartDebounceMs) {
           const activeRound = roundState.startRound(atMs);
+          if (roundTimeSeconds < 120) legacyTimerRoundIds.add(activeRound.roundId);
           const roundEvent: RoundStartEvent = {
             ...eventBase(nextEventId(), frame, message, messageOrdinal, activeRound.roundId),
             evidence: 'derived',
@@ -447,6 +486,16 @@ export const normalizeParsedAnalysis = (
           ? 'CT' as const
           : null;
       if (winner) {
+        const currentRound = roundState.currentRound;
+        // HLTV signon snapshots can contain a stale timer and win sound at
+        // exactly 0 ms, followed by historic DeathMsg entries. Treating that
+        // snapshot as a round creates a zero-length R1 that cannot be played
+        // and may appear to contain kills from several old rounds.
+        if (currentRound && atMs <= currentRound.startTimeMs) {
+          const discarded = roundState.discardCurrentRound();
+          if (discarded) forgetRounds([discarded]);
+          return;
+        }
         const activeRound = roundState.endRound(atMs, winner);
         if (!activeRound) return;
         const roundEnd: RoundEndEvent = {

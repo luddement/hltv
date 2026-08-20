@@ -5,7 +5,7 @@ import {
   type FragReelEvent,
 } from '/@/demo/frag-reel';
 
-export type MovieQualityId = '720p' | '1080p' | '1440p' | '2160p' | 'max-hq';
+export type MovieQualityId = '720p' | '720p-120' | '1080p' | '1080p-120' | '1440p' | '2160p' | 'max-hq' | 'max-hq-120';
 export type MovieExportState = 'idle' | 'starting' | 'recording' | 'finalizing' | 'complete' | 'error';
 export type MovieCompletionAction = 'close' | 'fail' | 'finish' | 'wait';
 export type MovieBackpressureAction = 'continue' | 'pause' | 'wait' | 'resume';
@@ -97,8 +97,16 @@ export const MOVIE_QUALITIES: readonly MovieQuality[] = [
     videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 192_000,
   },
   {
+    id: '720p-120', label: '720p · 120 FPS · motion priority', width: 1280, height: 720, fps: 120,
+    videoBitsPerSecond: 16_000_000, audioBitsPerSecond: 192_000,
+  },
+  {
     id: '1080p', label: '1080p · 60 FPS target · balanced', width: 1920, height: 1080, fps: 60,
     videoBitsPerSecond: 12_000_000, audioBitsPerSecond: 192_000,
+  },
+  {
+    id: '1080p-120', label: '1080p · 120 FPS · demanding', width: 1920, height: 1080, fps: 120,
+    videoBitsPerSecond: 28_000_000, audioBitsPerSecond: 192_000,
   },
   {
     id: '1440p', label: '1440p · 60 FPS target · demanding', width: 2560, height: 1440, fps: 60,
@@ -111,6 +119,10 @@ export const MOVIE_QUALITIES: readonly MovieQuality[] = [
   {
     id: 'max-hq', label: 'MAX HQ · 1440p · 60 FPS · smooth', width: 2560, height: 1440, fps: 60,
     videoBitsPerSecond: 36_000_000, audioBitsPerSecond: 192_000,
+  },
+  {
+    id: 'max-hq-120', label: 'MAX HQ · 1440p · 120 FPS · extreme', width: 2560, height: 1440, fps: 120,
+    videoBitsPerSecond: 72_000_000, audioBitsPerSecond: 192_000,
   },
 ] as const;
 

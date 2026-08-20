@@ -408,10 +408,17 @@ export const buildHighlightAnalysis = (
   };
   const roundRatings: RoundRating[] = [];
   for (const round of input.rounds) {
-    for (const team of teamsForRound(round.roundId)) {
+    if (round.endTimeMs === null || round.endTimeMs <= round.startTimeMs) continue;
+    const winningTeam = round.winner.value;
+    if (!winningTeam || !teamsForRound(round.roundId).includes(winningTeam)) continue;
+    for (const team of [winningTeam]) {
       const teamFrags = fragRatings.filter((rating) =>
         rating.team === team
         && deaths.find((death) => death.eventId === rating.eventId)?.roundId === round.roundId);
+      // A normal competitive side has five opponents. More than five
+      // winning-team frags means the legacy round boundary is not trustworthy
+      // (typically signon history or multiple rounds merged together).
+      if (teamFrags.length > 5) continue;
       const teamMoments = moments.filter((moment) =>
         moment.team === team
         && deaths.find((death) => death.eventId === moment.eventIds[0])?.roundId === round.roundId);
@@ -419,57 +426,30 @@ export const buildHighlightAnalysis = (
         (best, moment) => !best || moment.rating.score > best.rating.score ? moment : best,
         undefined,
       );
-      const reasons: ScoreReason[] = [];
-      if (bestMoment) {
-        reasons.push(reason(
-          'best_moment',
-          `Bästa momentet ${bestMoment.rating.score}/100`,
-          Math.round(bestMoment.rating.score * 0.45),
-        ));
-      }
-      if (round.winner.value === team) reasons.push(reason('round_win', 'Vinner ronden', 15));
-      if (teamFrags.length) {
-        reasons.push(reason(
-          'team_frags',
-          `${teamFrags.length} lagfrags`,
-          Math.min(20, teamFrags.length * 4),
+      // A team round is deliberately just the winning side's frag work across
+      // the complete round. Five 100-point frags produce a 100-point round;
+      // bomb context, comeback heuristics and losing-team highlights cannot
+      // move the ranking and make it feel arbitrary.
+      const fragScoreTotal = teamFrags.reduce((total, rating) => total + rating.score, 0);
+      const roundFragScore = clampScore(fragScoreTotal / 5);
+      const bestFragScore = Math.max(0, ...teamFrags.map((rating) => rating.score));
+      const reasons: ScoreReason[] = [
+        reason(
+          'winning_team_frags',
+          `${teamFrags.length} ${teamFrags.length === 1 ? 'frag' : 'frags'} by the winner`,
+          roundFragScore,
           'observed',
-        ));
-      }
-      let maxDisadvantage = 0;
-      let clutch = false;
-      for (const rating of teamFrags) {
-        const death = deaths.find((entry) => entry.eventId === rating.eventId);
-        if (!death) continue;
-        const own = team === 'TERRORIST'
-          ? death.aliveBefore.terrorists.value
-          : death.aliveBefore.counterTerrorists.value;
-        const enemy = team === 'TERRORIST'
-          ? death.aliveBefore.counterTerrorists.value
-          : death.aliveBefore.terrorists.value;
-        if (own !== null && enemy !== null) {
-          maxDisadvantage = Math.max(maxDisadvantage, enemy - own);
-          clutch ||= own === 1 && enemy >= 2;
-        }
-      }
-      if (maxDisadvantage > 0) {
-        reasons.push(reason(
-          'comeback',
-          `Spelar från ${maxDisadvantage} spelares underläge`,
-          Math.min(15, maxDisadvantage * 5),
-        ));
-      }
-      if (clutch) reasons.push(reason('clutch_round', 'Clutchläge i ronden', 10));
-      const bombEvents = input.events.filter((event) =>
-        event.roundId === round.roundId && event.type.startsWith('bomb_'));
-      if (bombEvents.length) {
-        reasons.push(reason('bomb_context', 'Bombhändelse påverkar ronden', 5, 'observed'));
+        ),
+        reason('frag_score_total', `Frag value ${fragScoreTotal}/500`, 0, 'observed'),
+      ];
+      if (bestFragScore) {
+        reasons.push(reason('best_frag', `Best frag ${bestFragScore}/100`, 0, 'observed'));
       }
 
       const confidenceParts = teamFrags.map((rating) => rating.confidence);
       const confidence = confidenceParts.length
         ? confidenceParts.reduce((total, value) => total + value, 0) / confidenceParts.length
-        : round.winner.value ? 0.65 : 0.45;
+        : round.winner.evidence === 'observed' ? 0.75 : 0.65;
       roundRatings.push({
         roundId: round.roundId,
         team,

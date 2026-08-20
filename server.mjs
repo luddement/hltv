@@ -4,12 +4,14 @@ import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGameAssetManifest } from './game-assets-manifest.mjs';
 import { formatGoldSrcChecksum } from './goldsrc-map-crc.mjs';
+import { handleDemoCommentsRequest } from './demo-comments-store.mjs';
 
 const appDirectory = dirname(fileURLToPath(import.meta.url));
 const distDirectory = resolve(appDirectory, 'dist');
 const demoPath = resolve(appDirectory, '../r60_sthlm.dem');
 const demosDirectory = resolve(appDirectory, '../demos');
 const demoAnalysisDirectory = resolve(appDirectory, '../demo-analysis');
+const commentsFile = resolve(process.env.HLTV_COMMENTS_FILE || resolve(appDirectory, '../demo-comments.json'));
 const gameAssetsDirectory = resolve(appDirectory, 'game-assets');
 const demoAssetPaths = new Set(
   JSON.parse(readFileSync(resolve(appDirectory, 'demo-assets.json'), 'utf8')),
@@ -67,6 +69,8 @@ const archiveFile = (root, relativePath) => {
 
 createServer((request, response) => {
   const requestPath = decodeURIComponent((request.url || '/').split('?')[0]);
+
+  if (handleDemoCommentsRequest(request, response, { commentsFile, demosDirectory })) return;
 
   if (requestPath === '/demos/r60_sthlm.dem') {
     sendFile(request, response, demoPath, true);

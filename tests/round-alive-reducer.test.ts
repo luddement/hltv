@@ -49,4 +49,17 @@ describe('RoundAliveReducer', () => {
     });
     expect(reducer.endRound(9_500, 'CT')).toBeUndefined();
   });
+
+  it('can discard an interrupted round or clear pre-match rounds', () => {
+    const reducer = new RoundAliveReducer();
+    reducer.startRound(1_000);
+    expect(reducer.discardCurrentRound()?.roundId).toBe('round-1');
+    expect(reducer.rounds).toHaveLength(0);
+
+    reducer.startRound(2_000);
+    reducer.endRound(3_000, 'CT');
+    reducer.startRound(4_000);
+    expect(reducer.clearRounds().map((round) => round.roundId)).toEqual(['round-1', 'round-2']);
+    expect(reducer.rounds).toHaveLength(0);
+  });
 });
