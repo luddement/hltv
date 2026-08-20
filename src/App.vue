@@ -117,6 +117,15 @@
           </div>
 
           <div class="archive-filters">
+            <label class="archive-person-filter">
+              <span>Person</span>
+              <select v-model="archivePerson">
+                <option value="all">Alla</option>
+                <option v-for="person in archivePeople" :key="person.id" :value="person.id">
+                  {{ person.name }} · {{ person.demos }}
+                </option>
+              </select>
+            </label>
             <label>
               <span>Search demos, clans or players</span>
               <input v-model.trim="archiveSearch" type="search" placeholder="crapoffline, luddi, de_nuke…" />
@@ -988,6 +997,7 @@
 
 <script setup lang="ts">
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+  import { CREW, crewMemberForName } from '/@/archive/crew';
   import {
     buildReplayRoute,
     parseReplayRoute,
@@ -1177,6 +1187,7 @@
   const catalogError = ref('');
   const archiveSearch = ref('');
   const archiveYear = ref<'all' | number>('all');
+  const archivePerson = ref<'all' | string>('all');
   const archiveSort = ref<DemoCatalogSort>('date-desc');
   const archiveResultLimit = ref(50);
   const archiveSelectionPath = ref('');
@@ -1273,8 +1284,43 @@
   const archiveYears = computed(() => [...new Set(
     demoCatalog.value?.demos.flatMap((entry) => entry.year === null ? [] : [entry.year]) ?? [],
   )].sort((left, right) => right - left));
+  // Vilka i gänget som finns i varje demo, uträknat EN gång per katalog.
+  // Att köra namnmatchningen inne i filtret hade betytt 6226 demos gånger
+  // ~15 spelarnamn vid varje tangenttryck i sökrutan.
+  const crewByDemoPath = computed(() => {
+    const map = new Map<string, Set<string>>();
+    for (const demo of demoCatalog.value?.demos ?? []) {
+      const ids = new Set<string>();
+      for (const name of demo.players ?? []) {
+        const member = crewMemberForName(name);
+        if (member) ids.add(member.id);
+      }
+      if (ids.size) map.set(demo.path, ids);
+    }
+    return map;
+  });
+
+  /** Gänget som faktiskt förekommer i arkivet, med antal demos. */
+  const archivePeople = computed(() => {
+    const counts = new Map<string, number>();
+    for (const ids of crewByDemoPath.value.values()) {
+      for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return CREW
+      .map((member) => ({ ...member, demos: counts.get(member.id) ?? 0 }))
+      .filter((member) => member.demos > 0)
+      .sort((left, right) => right.demos - left.demos);
+  });
+
+  const personFilteredArchive = computed(() => {
+    const entries = demoCatalog.value?.demos ?? [];
+    if (archivePerson.value === 'all') return entries;
+    const lookup = crewByDemoPath.value;
+    return entries.filter((entry) => lookup.get(entry.path)?.has(archivePerson.value));
+  });
+
   const filteredArchiveDemos = computed(() => filterDemoCatalog(
-    demoCatalog.value?.demos ?? [],
+    personFilteredArchive.value,
     archiveSearch.value,
     archiveYear.value,
     archiveSort.value,
@@ -2191,6 +2237,7 @@
         search,
         year,
         sort,
+        person: archivePerson.value,
       }));
     } catch {
       // Filtering must keep working when storage is disabled or full.
@@ -3787,6 +3834,12 @@
           }
           if (archiveSortValues.includes(filters.sort as DemoCatalogSort)) {
             archiveSort.value = filters.sort as DemoCatalogSort;
+          }
+          // Personen valideras mot rostern: en sparad id som tagits bort ur
+          // crew.ts skulle annars filtrera bort hela arkivet utan förklaring.
+          if (typeof filters.person === 'string'
+            && (filters.person === 'all' || CREW.some((member) => member.id === filters.person))) {
+            archivePerson.value = filters.person;
           }
         }
       }
