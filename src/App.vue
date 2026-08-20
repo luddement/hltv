@@ -228,7 +228,12 @@
 
           <div class="connector" aria-hidden="true"><span>→</span></div>
 
-          <article :class="['setup-card', { complete: gameReady }]">
+          <!-- Spelresurserna hämtas numera från servern per demo, så den
+               manuella mappväljaren behövs inte i normalfallet. Kortet är dock
+               enda stället som visar VARFÖR resurserna inte duger — checklistan
+               och gameError — och canLaunch kräver gameReady. Därför döljs det
+               när allt stämmer och dyker upp när motorn inte kan starta. -->
+          <article v-if="!gameReady" :class="['setup-card', { complete: gameReady }]">
             <div class="card-number">02</div>
             <div class="card-body">
               <div class="card-title-row">
@@ -441,17 +446,16 @@
                   />
                   <span>Movie</span>
                 </label>
-                <span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span>
+                <span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span><span></span>
               </div>
               <template v-for="(death, index) in filteredDeaths" :key="death.eventId">
+                <!-- Raden är medvetet inte klickbar. Hela ytan som träffyta
+                     gjorde det för lätt att starta uppspelning av misstag när
+                     man egentligen skulle kryssa i en ruta eller läsa poängen.
+                     Uppspelning kräver nu ett tryck på play-knappen. -->
                 <div
                   :class="['frag-row', { selected: selectedFragId === death.eventId, disabled: !canLaunch }]"
                   role="row"
-                  :tabindex="canLaunch ? 0 : -1"
-                  :aria-disabled="!canLaunch"
-                  @click="canLaunch && playFrag(death)"
-                  @keydown.enter="canLaunch && playFrag(death)"
-                  @keydown.space.prevent="canLaunch && playFrag(death)"
                 >
                   <label
                     class="movie-frag-checkbox"
@@ -487,8 +491,15 @@
                       title="Show score calculation"
                       @click.stop="toggleFragScoreDetails(death.eventId)"
                     >i</button>
-                    <i aria-hidden="true">▶</i>
                   </span>
+                  <button
+                    class="frag-play"
+                    type="button"
+                    :disabled="!canLaunch"
+                    :aria-label="`Play frag ${index + 1}`"
+                    :title="canLaunch ? 'Play from three seconds before the frag' : 'Open a demo first'"
+                    @click.stop="playFrag(death)"
+                  ><span aria-hidden="true">▶</span></button>
                 </div>
                 <div
                   v-if="expandedFragScoreId === death.eventId"
@@ -2439,7 +2450,16 @@
     };
   };
 
+  // DemoEngine.start() kastar "The engine is already running." om motorn lever.
+  // launchDemo stänger den inte själv, och den får inte göra det heller:
+  // closeEngine() nollställer fragReelActive, som playFragReel sätter strax
+  // innan. Därför stängs motorn först i varje anropare, före tillståndet sätts.
+  const stopEngineBeforeLaunch = () => {
+    if (engineStarted.value || engineVisible.value || DemoEngine.running) closeEngine();
+  };
+
   const playFrag = (death: DeathEvent) => {
+    stopEngineBeforeLaunch();
     fragReelActive.value = false;
     selectedFragId.value = death.eventId;
     const startAtMs = Math.max(0, death.demoTimeMs - 3_000);
@@ -2448,6 +2468,7 @@
   };
 
   const playMatch = () => {
+    stopEngineBeforeLaunch();
     fragReelActive.value = false;
     hudPlaybackStartMs.value = 0;
     void launchDemo();
@@ -2458,6 +2479,8 @@
     const first = activeFragReelDeaths.value[0];
     const canStart = source === 'movie' ? canStartMovieExport.value : canStartFragReel.value;
     if (!canStart || !first) return;
+    // Före flaggorna sätts: closeEngine() skulle annars slå av rullen direkt.
+    stopEngineBeforeLaunch();
     fragReelActive.value = true;
     fragReelSeeking.value = false;
     fragReelIndex.value = 0;

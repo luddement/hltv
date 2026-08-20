@@ -563,7 +563,7 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .frag-header,
 .frag-row {
   display: grid;
-  grid-template-columns: 72px 28px 70px minmax(250px, 1.6fr) minmax(90px, .6fr) 54px 78px;
+  grid-template-columns: 72px 28px 70px minmax(250px, 1.6fr) minmax(90px, .6fr) 54px 78px 56px;
   align-items: center;
   gap: 11px;
   padding: 0 16px;
@@ -572,10 +572,10 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .movie-select-all { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .movie-select-all input { width: 13px; height: 13px; margin: 0; accent-color: var(--acid); cursor: pointer; }
 .movie-select-all:has(input:disabled) { cursor: not-allowed; opacity: .45; }
-.frag-row { width: 100%; min-height: 41px; border: 0; border-bottom: 1px solid #1f231f; color: #a7aea4; background: transparent; text-align: left; cursor: pointer; font: 9px ui-monospace, monospace; }
+.frag-row { width: 100%; min-height: 46px; border: 0; border-bottom: 1px solid #1f231f; color: #a7aea4; background: transparent; text-align: left; cursor: default; font: 9px ui-monospace, monospace; }
 .frag-row:hover { background: rgba(200,245,66,.045); }
 .frag-row.selected { box-shadow: inset 2px 0 var(--acid); background: rgba(200,245,66,.065); }
-.frag-row.disabled { cursor: not-allowed; opacity: .68; }
+.frag-row.disabled { opacity: .68; }
 .movie-frag-checkbox { height: 100%; display: grid; place-items: center; cursor: pointer; }
 .movie-frag-checkbox input { width: 14px; height: 14px; margin: 0; accent-color: var(--acid); cursor: pointer; }
 .movie-frag-checkbox:has(input:disabled) { cursor: not-allowed; opacity: .4; }
@@ -591,6 +591,29 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .frag-score { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .frag-score b { color: var(--acid); font-size: 10px; }
 .frag-score i { color: #697266; font-size: 7px; font-style: normal; }
+/* Play-knappen är den enda vägen till uppspelning sedan radklicket togs bort,
+   så den ska vara omöjlig att missa och lätt att träffa. 34px på pekskärm är
+   i underkant mot riktlinjen om 44px, därför växer den i mobilbrytpunkten. */
+.frag-play {
+  width: 100%;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #11140d;
+  border: 0;
+  border-radius: 2px;
+  background: var(--acid);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition: background .12s ease, transform .12s ease;
+}
+.frag-play:hover:not(:disabled) { background: #dbff5c; }
+.frag-play:active:not(:disabled) { transform: scale(.94); }
+.frag-play:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.frag-play:disabled { color: #6b7166; background: #232821; cursor: not-allowed; }
+
 .frag-score-info {
   width: 18px;
   height: 18px;
@@ -915,6 +938,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .analysis-heading { align-items: flex-start; flex-direction: column; }
   .highlight-overview { grid-template-columns: 1fr; }
   .highlight-overview > section + section { border-top: 1px solid #262b25; border-left: 0; }
+  .frag-header,
+  .frag-row { grid-template-columns: 64px 26px 62px minmax(200px, 1fr) minmax(78px, .6fr) 48px 66px 52px; }
   .frag-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .frag-reel-launcher { align-items: stretch; flex-direction: column; }
   .frag-reel-controls { justify-content: flex-start; }
@@ -946,7 +971,9 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .analysis-stats { width: 100%; justify-content: space-between; gap: 8px; }
   .frag-filter-fields { grid-template-columns: 1fr; }
   .frag-header,
-  .frag-row { grid-template-columns: 58px 24px 54px minmax(170px, 1fr) 45px; }
+  .frag-row { grid-template-columns: 46px 20px 48px minmax(120px, 1fr) 42px 46px; }
+  .frag-row { min-height: 52px; }
+  .frag-play { height: 44px; font-size: 14px; }
   .frag-header > :nth-child(5),
   .frag-row > :nth-child(5),
   .frag-header > :nth-child(6),
