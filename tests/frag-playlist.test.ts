@@ -42,9 +42,22 @@ describe('frag playlist', () => {
     })).toThrow('duplicate item IDs');
   });
 
-  it('uses database-stable identity and sums visible clip time', () => {
+  it('uses database-stable identity and measures the actual recorded timeline', () => {
     expect(playlistItemKey(item)).toBe('2005/match.dem\n10000\nalice\nbob\nak47\n1');
-    expect(playlistDurationMs([item, { ...item, id: 'item-2' }])).toBe(12_000);
+    expect(playlistDurationMs([item, { ...item, id: 'item-2' }])).toBe(6_000);
+    expect(playlistDurationMs([item, {
+      ...item,
+      id: 'item-2',
+      eventId: 'event-20',
+      demoTimeMs: 18_000,
+      clipStartTimeMs: 15_000,
+      clipEndTimeMs: 21_000,
+    }])).toBe(14_000);
+    expect(playlistDurationMs([item, {
+      ...item,
+      id: 'item-3',
+      demoPath: '2005/another.dem',
+    }])).toBe(12_000);
     expect(safePlaylistFilename('NiP vs SK — Best!')).toBe('nip-vs-sk-best.hltv-playlist.json');
   });
 

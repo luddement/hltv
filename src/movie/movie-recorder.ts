@@ -10,6 +10,7 @@ import {
   type StreamTargetChunk,
   type Target,
 } from 'mediabunny';
+import { mixMovieAudioBlock, type MovieAudioMix } from '/@/movie/movie-audio-mixer';
 import type { MovieQuality } from '/@/movie/movie-project';
 import type { MovieHudFrame, MovieIntroCard } from '/@/movie/movie-hud-renderer';
 import {
@@ -92,6 +93,7 @@ export type MovieRecorderOptions = {
   quality: MovieQuality;
   output: PreparedMovieOutput;
   audio?: MovieAudioCapture;
+  audioMix?: MovieAudioMix;
   captureMode: MovieCaptureMode;
   intro?: MovieIntroCard;
   hudFrame: () => MovieHudFrame | undefined;
@@ -701,13 +703,14 @@ export class MovieRecorder {
   private queueAudioBlock(block: MoviePcmBlock, fadeIn: boolean, fadeOut: boolean): void {
     const source = this.audioSource;
     if (!source) return;
-    const frameCount = block.channels[0]?.length ?? 0;
-    const channelCount = block.channels.length;
+    const mixedBlock = mixMovieAudioBlock(block, this.queuedAudioFrames, this.options.audioMix);
+    const frameCount = mixedBlock.channels[0]?.length ?? 0;
+    const channelCount = mixedBlock.channels.length;
     if (!frameCount || !channelCount) return;
 
     const planarData = new Float32Array(frameCount * channelCount);
-    const fadeFrames = Math.min(frameCount, Math.max(1, Math.round(block.sampleRate * 0.008)));
-    for (const [channelIndex, channel] of block.channels.entries()) {
+    const fadeFrames = Math.min(frameCount, Math.max(1, Math.round(mixedBlock.sampleRate * 0.008)));
+    for (const [channelIndex, channel] of mixedBlock.channels.entries()) {
       const destinationOffset = channelIndex * frameCount;
       if (!fadeIn && !fadeOut) {
         planarData.set(channel, destinationOffset);
@@ -727,8 +730,8 @@ export class MovieRecorder {
       data: planarData,
       format: 'f32-planar',
       numberOfChannels: channelCount,
-      sampleRate: block.sampleRate,
-      timestamp: this.queuedAudioFrames / block.sampleRate,
+      sampleRate: mixedBlock.sampleRate,
+      timestamp: this.queuedAudioFrames / mixedBlock.sampleRate,
     });
     this.queuedAudioFrames += frameCount;
     this.audioQueue = this.audioQueue.then(async () => {

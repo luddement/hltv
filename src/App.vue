@@ -853,6 +853,106 @@
         </div>
         <p v-else class="playlist-empty">Select frags in any archive demo and add them here.</p>
 
+        <section class="playlist-music" aria-labelledby="playlist-music-heading">
+          <header class="playlist-music-heading">
+            <div>
+              <span>Movie soundtrack</span>
+              <strong id="playlist-music-heading">Music timeline</strong>
+              <small>Mixed with the CS audio during movie export · files stay in this browser tab.</small>
+            </div>
+            <div class="playlist-music-actions">
+              <input
+                ref="playlistMusicInput"
+                class="sr-only"
+                type="file"
+                multiple
+                accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg,.mp3,.m4a,.aac,.wav,.ogg"
+                @change="importPlaylistMusic"
+              />
+              <button
+                type="button"
+                :disabled="playlistMusicLoading || movieExportRunning"
+                @click="playlistMusicInput?.click()"
+              >{{ playlistMusicLoading ? 'Decoding…' : 'Add music files' }}</button>
+              <button
+                type="button"
+                :disabled="!playlistMusicTracks.length || movieExportRunning"
+                @click="arrangePlaylistMusic"
+              >Auto arrange</button>
+            </div>
+          </header>
+
+          <div class="playlist-music-mix">
+            <label>
+              <span>CS sound <b>{{ Math.round(playlistGameVolume * 100) }}%</b></span>
+              <input v-model.number="playlistGameVolume" type="range" min="0" max="1" step="0.05" :disabled="movieExportRunning" />
+            </label>
+            <label>
+              <span>Music <b>{{ Math.round(playlistMusicVolume * 100) }}%</b></span>
+              <input v-model.number="playlistMusicVolume" type="range" min="0" max="1" step="0.05" :disabled="movieExportRunning" />
+            </label>
+            <label>
+              <span>Crossfade <b>{{ playlistMusicCrossfade.toFixed(1) }} s</b></span>
+              <input v-model.number="playlistMusicCrossfade" type="range" min="0" max="5" step="0.5" :disabled="movieExportRunning" />
+            </label>
+            <div>
+              <span>Music ends</span>
+              <strong>{{ formatDuration(playlistMusicEndSeconds) }}</strong>
+            </div>
+          </div>
+
+          <div v-if="playlistMusicTracks.length" class="playlist-music-tracks">
+            <article v-for="(track, index) in playlistMusicTracks" :key="track.id">
+              <span class="playlist-music-index">{{ index + 1 }}</span>
+              <div class="playlist-music-name">
+                <strong>{{ track.name }}</strong>
+                <small>{{ formatDuration(movieMusicTrackDuration(track)) }} available after trim</small>
+              </div>
+              <label>
+                <span>Start in movie</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  :disabled="movieExportRunning"
+                  :value="track.startAtSeconds"
+                  @change="updatePlaylistMusicNumber(track.id, 'startAtSeconds', ($event.currentTarget as HTMLInputElement).value)"
+                />
+              </label>
+              <label>
+                <span>Start in song</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  :disabled="movieExportRunning"
+                  :value="track.trimStartSeconds"
+                  @change="updatePlaylistMusicNumber(track.id, 'trimStartSeconds', ($event.currentTarget as HTMLInputElement).value)"
+                />
+              </label>
+              <label>
+                <span>Track volume</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  :disabled="movieExportRunning"
+                  :value="track.volume"
+                  @change="updatePlaylistMusicNumber(track.id, 'volume', ($event.currentTarget as HTMLInputElement).value)"
+                />
+              </label>
+              <div class="playlist-music-track-actions">
+                <button type="button" :disabled="index === 0 || movieExportRunning" title="Move up" @click="movePlaylistMusic(index, -1)">↑</button>
+                <button type="button" :disabled="index === playlistMusicTracks.length - 1 || movieExportRunning" title="Move down" @click="movePlaylistMusic(index, 1)">↓</button>
+                <button type="button" :disabled="movieExportRunning" title="Remove" @click="removePlaylistMusic(track.id)">×</button>
+              </div>
+            </article>
+          </div>
+          <p v-else class="playlist-music-empty">Add MP3, WAV, M4A/AAC or OGG files. Browser codec support decides which files can be decoded.</p>
+          <small v-if="playlistMusicError" class="movie-export-error">{{ playlistMusicError }}</small>
+        </section>
+
         <footer class="playlist-project-footer">
           <div class="playlist-feedback">
             <small v-if="playlistNotice" class="movie-export-notice">{{ playlistNotice }}</small>
@@ -1164,6 +1264,11 @@
     type MovieCaptureMode,
   } from '/@/movie/movie-recorder';
   import {
+    movieMusicTrackDuration,
+    type MovieAudioMix,
+    type MovieMusicTrack,
+  } from '/@/movie/movie-audio-mixer';
+  import {
     FRAG_PLAYLIST_STORAGE_KEY,
     createFragPlaylist,
     parseFragPlaylist,
@@ -1245,6 +1350,7 @@
   const demoInput = ref<HTMLInputElement>();
   const folderInput = ref<HTMLInputElement>();
   const playlistImportInput = ref<HTMLInputElement>();
+  const playlistMusicInput = ref<HTMLInputElement>();
   const engineCanvas = ref<HTMLCanvasElement>();
   const engineCanvasGeneration = ref(0);
   let engineCanvasCaptureReady = false;
@@ -1326,6 +1432,12 @@
   const fragPlaylist = ref(createFragPlaylist());
   const playlistNotice = ref('');
   const playlistError = ref('');
+  const playlistMusicTracks = shallowRef<MovieMusicTrack[]>([]);
+  const playlistMusicLoading = ref(false);
+  const playlistMusicError = ref('');
+  const playlistGameVolume = ref(0.7);
+  const playlistMusicVolume = ref(0.55);
+  const playlistMusicCrossfade = ref(1.5);
   const playlistRunItems = shallowRef<FragPlaylistItem[]>([]);
   const playlistRunCursor = ref(0);
   const playlistTransitioning = ref(false);
@@ -1846,6 +1958,17 @@
   const fragPlaylistDemoCount = computed(() => new Set(
     fragPlaylist.value.items.map((item) => item.demoPath),
   ).size);
+  const playlistMusicEndSeconds = computed(() => playlistMusicTracks.value.reduce(
+    (end, track) => Math.max(end, track.startAtSeconds + movieMusicTrackDuration(track)),
+    0,
+  ));
+  const playlistAudioMix = computed<MovieAudioMix | undefined>(() =>
+    playlistMusicTracks.value.length ? {
+      tracks: playlistMusicTracks.value,
+      gameVolume: playlistGameVolume.value,
+      musicVolume: playlistMusicVolume.value,
+      crossfadeSeconds: playlistMusicCrossfade.value,
+    } : undefined);
   const movieMatchDateLabel = computed(() => {
     const inferred = inferDemoMatchDate(demoSource.value?.name ?? '');
     if (!inferred) return '';
@@ -2224,6 +2347,97 @@
       title,
       updatedAt: new Date().toISOString(),
     };
+  };
+  const arrangePlaylistMusic = () => {
+    let cursor = 0;
+    playlistMusicTracks.value = playlistMusicTracks.value.map((track) => {
+      const arranged = { ...track, startAtSeconds: Math.max(0, cursor) };
+      cursor = arranged.startAtSeconds
+        + movieMusicTrackDuration(arranged)
+        - playlistMusicCrossfade.value;
+      return arranged;
+    });
+  };
+  const importPlaylistMusic = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const files = [...(input.files ?? [])];
+    input.value = '';
+    if (!files.length || playlistMusicLoading.value) return;
+    playlistMusicLoading.value = true;
+    playlistMusicError.value = '';
+    const context = new AudioContext();
+    const additions: MovieMusicTrack[] = [];
+    const failures: string[] = [];
+    try {
+      for (const file of files) {
+        try {
+          const buffer = await context.decodeAudioData(await file.arrayBuffer());
+          if (!buffer.length || !buffer.numberOfChannels) throw new Error('empty audio');
+          additions.push({
+            id: crypto.randomUUID(),
+            name: file.name,
+            sampleRate: buffer.sampleRate,
+            channels: Array.from(
+              { length: Math.min(2, buffer.numberOfChannels) },
+              (_, channel) => buffer.getChannelData(channel),
+            ),
+            startAtSeconds: 0,
+            trimStartSeconds: 0,
+            volume: 1,
+          });
+        } catch {
+          failures.push(file.name);
+        }
+      }
+    } finally {
+      await context.close().catch(() => undefined);
+      playlistMusicLoading.value = false;
+    }
+    if (additions.length) {
+      let cursor = Math.max(
+        0,
+        playlistMusicEndSeconds.value
+          - (playlistMusicTracks.value.length ? playlistMusicCrossfade.value : 0),
+      );
+      const arrangedAdditions = additions.map((track) => {
+        const arranged = { ...track, startAtSeconds: cursor };
+        cursor = Math.max(
+          0,
+          cursor + movieMusicTrackDuration(arranged) - playlistMusicCrossfade.value,
+        );
+        return arranged;
+      });
+      playlistMusicTracks.value = [...playlistMusicTracks.value, ...arrangedAdditions];
+    }
+    if (failures.length) {
+      playlistMusicError.value = `Could not decode: ${failures.join(', ')}. Try MP3 or WAV.`;
+    }
+  };
+  const updatePlaylistMusicNumber = (
+    id: string,
+    field: 'startAtSeconds' | 'trimStartSeconds' | 'volume',
+    rawValue: string,
+  ) => {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return;
+    playlistMusicTracks.value = playlistMusicTracks.value.map((track) => {
+      if (track.id !== id) return track;
+      const maximum = field === 'trimStartSeconds'
+        ? Math.max(0, (track.channels[0]?.length ?? 0) / track.sampleRate - 0.05)
+        : field === 'volume' ? 1 : Number.POSITIVE_INFINITY;
+      return { ...track, [field]: Math.min(maximum, Math.max(0, value)) };
+    });
+  };
+  const movePlaylistMusic = (index: number, offset: -1 | 1) => {
+    const target = index + offset;
+    if (target < 0 || target >= playlistMusicTracks.value.length) return;
+    const tracks = [...playlistMusicTracks.value];
+    [tracks[index], tracks[target]] = [tracks[target]!, tracks[index]!];
+    playlistMusicTracks.value = tracks;
+    arrangePlaylistMusic();
+  };
+  const removePlaylistMusic = (id: string) => {
+    playlistMusicTracks.value = playlistMusicTracks.value.filter((track) => track.id !== id);
   };
   const addSelectedFragsToPlaylist = () => {
     playlistError.value = '';
@@ -2628,6 +2842,9 @@
         quality: movieQuality.value,
         output: preparedMovieOutput,
         audio,
+        audioMix: fragReelSource.value === 'playlist-movie'
+          ? playlistAudioMix.value
+          : undefined,
         captureMode: movieCaptureMode,
         intro: movieIncludeIntro.value
           ? fragReelSource.value === 'playlist-movie'

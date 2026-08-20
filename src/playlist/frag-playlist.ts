@@ -1,3 +1,5 @@
+import { FRAG_REEL_CONTINUOUS_GAP_MS } from '/@/demo/frag-reel';
+
 export const FRAG_PLAYLIST_SCHEMA_VERSION = 1 as const;
 export const FRAG_PLAYLIST_STORAGE_KEY = 'replay-lab-frag-playlist-v1';
 
@@ -160,8 +162,29 @@ export const resolvePlaylistDeath = <T extends PlaylistDeathCandidate>(
     Math.abs(left.demoTimeMs - item.demoTimeMs) - Math.abs(right.demoTimeMs - item.demoTimeMs))[0];
 };
 
-export const playlistDurationMs = (items: readonly FragPlaylistItem[]): number =>
-  items.reduce((total, item) => total + item.clipEndTimeMs - item.clipStartTimeMs, 0);
+/** Duration of the recorded timeline, including continuous gaps but excluding seeks. */
+export const playlistDurationMs = (items: readonly FragPlaylistItem[]): number => {
+  let durationMs = 0;
+  let activeStartMs = 0;
+  let activeEndMs = 0;
+  let previous: FragPlaylistItem | undefined;
+  for (const item of items) {
+    const continuous = previous
+      && previous.demoPath === item.demoPath
+      && item.demoTimeMs >= previous.demoTimeMs
+      && item.demoTimeMs - previous.demoTimeMs <= FRAG_REEL_CONTINUOUS_GAP_MS;
+    if (continuous) {
+      activeEndMs = Math.max(activeEndMs, item.clipEndTimeMs);
+    } else {
+      if (previous) durationMs += Math.max(0, activeEndMs - activeStartMs);
+      activeStartMs = item.clipStartTimeMs;
+      activeEndMs = item.clipEndTimeMs;
+    }
+    previous = item;
+  }
+  if (previous) durationMs += Math.max(0, activeEndMs - activeStartMs);
+  return durationMs;
+};
 
 export const safePlaylistFilename = (title: string): string => {
   const clean = title.normalize('NFKD')
