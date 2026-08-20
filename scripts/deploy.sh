@@ -47,7 +47,8 @@ note() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 if [[ $do_app -eq 1 ]]; then
   note "Appens kod (beroendefri — bara node:-inbyggda moduler)"
   "${SSH[@]}" "$USER_AT" "mkdir -p $REMOTE/app"
-  "${RSYNC[@]}" "$APP/server.mjs" "$APP/game-assets-manifest.mjs" \
+  "${RSYNC[@]}" "$APP/server.mjs" "$APP/demo-comments-store.mjs" \
+    "$APP/game-assets-manifest.mjs" \
     "$APP/goldsrc-map-crc.mjs" "$APP/demo-assets.json" "$USER_AT:$REMOTE/app/"
 
   note "Byggd frontend (dist)"
