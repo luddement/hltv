@@ -4,6 +4,7 @@ import {
   parseFragPlaylist,
   playlistDurationMs,
   playlistItemKey,
+  resolvePlaylistDeath,
   safePlaylistFilename,
 } from '../src/playlist/frag-playlist';
 
@@ -42,8 +43,31 @@ describe('frag playlist', () => {
   });
 
   it('uses database-stable identity and sums visible clip time', () => {
-    expect(playlistItemKey(item)).toBe('2005/match.dem\nevent-10');
+    expect(playlistItemKey(item)).toBe('2005/match.dem\n10000\nalice\nbob\nak47\n1');
     expect(playlistDurationMs([item, { ...item, id: 'item-2' }])).toBe(12_000);
     expect(safePlaylistFilename('NiP vs SK — Best!')).toBe('nip-vs-sk-best.hltv-playlist.json');
+  });
+
+  it('recovers an old frag reference and prefers stable packet identity afterward', () => {
+    const deaths = [{
+      eventId: 'event-14',
+      demoTimeMs: 10_000,
+      weapon: 'ak47',
+      headshot: true,
+      packetOrdinal: 321,
+      source: { messageOrdinal: 2 },
+      killer: 'alice',
+      victim: 'bob',
+    }];
+    expect(resolvePlaylistDeath(item, deaths, (death) => ({
+      killer: death.killer,
+      victim: death.victim,
+    }))?.eventId).toBe('event-14');
+    expect(resolvePlaylistDeath({
+      ...item,
+      demoTimeMs: 99_999,
+      sourcePacketOrdinal: 321,
+      sourceMessageOrdinal: 2,
+    }, deaths)?.eventId).toBe('event-14');
   });
 });

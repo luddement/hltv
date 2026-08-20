@@ -7,6 +7,8 @@ export type FragPlaylistItem = {
   demoName: string;
   demoSha256: string | null;
   eventId: string;
+  sourcePacketOrdinal?: number;
+  sourceMessageOrdinal?: number;
   demoTimeMs: number;
   clipStartTimeMs: number;
   clipEndTimeMs: number;
@@ -53,6 +55,12 @@ const parseItem = (value: unknown, index: number): FragPlaylistItem => {
     demoName: text(item.demoName, 'demoName'),
     demoSha256: item.demoSha256 === null ? null : text(item.demoSha256, 'demoSha256'),
     eventId: text(item.eventId, 'eventId'),
+    ...(typeof item.sourcePacketOrdinal === 'number' && Number.isInteger(item.sourcePacketOrdinal)
+      ? { sourcePacketOrdinal: finiteNumber(item.sourcePacketOrdinal, 'sourcePacketOrdinal') }
+      : {}),
+    ...(typeof item.sourceMessageOrdinal === 'number' && Number.isInteger(item.sourceMessageOrdinal)
+      ? { sourceMessageOrdinal: finiteNumber(item.sourceMessageOrdinal, 'sourceMessageOrdinal') }
+      : {}),
     demoTimeMs: finiteNumber(item.demoTimeMs, 'demoTimeMs'),
     clipStartTimeMs,
     clipEndTimeMs,
@@ -102,8 +110,55 @@ export const parseFragPlaylist = (value: unknown): FragPlaylist => {
 };
 
 export const playlistItemKey = (
-  item: Pick<FragPlaylistItem, 'demoPath' | 'eventId'>,
-): string => `${item.demoPath}\n${item.eventId}`;
+  item: Pick<FragPlaylistItem, 'demoPath' | 'demoTimeMs' | 'killer' | 'victim' | 'weapon' | 'headshot'>,
+): string => [
+  item.demoPath,
+  item.demoTimeMs,
+  item.killer.trim().toLocaleLowerCase('en-GB'),
+  item.victim.trim().toLocaleLowerCase('en-GB'),
+  item.weapon.trim().toLocaleLowerCase('en-GB'),
+  item.headshot ? '1' : '0',
+].join('\n');
+
+export type PlaylistDeathCandidate = {
+  eventId: string;
+  demoTimeMs: number;
+  weapon: string;
+  headshot: boolean;
+  packetOrdinal: number;
+  source: { messageOrdinal: number };
+};
+
+export const resolvePlaylistDeath = <T extends PlaylistDeathCandidate>(
+  item: FragPlaylistItem,
+  deaths: readonly T[],
+  labelsFor?: (death: T) => { killer: string; victim: string },
+): T | undefined => {
+  const exactId = deaths.find((death) => death.eventId === item.eventId);
+  if (exactId) return exactId;
+  if (item.sourcePacketOrdinal !== undefined && item.sourceMessageOrdinal !== undefined) {
+    const exactSource = deaths.find((death) =>
+      death.packetOrdinal === item.sourcePacketOrdinal
+      && death.source.messageOrdinal === item.sourceMessageOrdinal);
+    if (exactSource) return exactSource;
+  }
+  const normalize = (value: string) => value.trim().toLocaleLowerCase('en-GB');
+  const candidates = deaths.filter((death) =>
+    Math.abs(death.demoTimeMs - item.demoTimeMs) <= 100
+    && normalize(death.weapon) === normalize(item.weapon)
+    && death.headshot === item.headshot);
+  if (!candidates.length) return undefined;
+  if (labelsFor) {
+    const labeled = candidates.find((death) => {
+      const labels = labelsFor(death);
+      return normalize(labels.killer) === normalize(item.killer)
+        && normalize(labels.victim) === normalize(item.victim);
+    });
+    if (labeled) return labeled;
+  }
+  return [...candidates].sort((left, right) =>
+    Math.abs(left.demoTimeMs - item.demoTimeMs) - Math.abs(right.demoTimeMs - item.demoTimeMs))[0];
+};
 
 export const playlistDurationMs = (items: readonly FragPlaylistItem[]): number =>
   items.reduce((total, item) => total + item.clipEndTimeMs - item.clipStartTimeMs, 0);

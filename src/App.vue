@@ -1042,6 +1042,7 @@
     parseFragPlaylist,
     playlistDurationMs,
     playlistItemKey,
+    resolvePlaylistDeath,
     safePlaylistFilename,
     type FragPlaylistItem,
   } from '/@/playlist/frag-playlist';
@@ -1550,9 +1551,17 @@
     }
     return items;
   });
+  const resolvePlaylistItemDeath = (item: FragPlaylistItem) => resolvePlaylistDeath(
+    item,
+    deathEvents.value,
+    (death) => ({
+      killer: playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot),
+      victim: playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot),
+    }),
+  );
   const playlistSegmentDeaths = computed(() => withFragReelDeathCutoffs(
     activePlaylistSegmentItems.value.flatMap((item) => {
-      const death = deathEvents.value.find((entry) => entry.eventId === item.eventId);
+      const death = resolvePlaylistItemDeath(item);
       return death ? [death] : [];
     }),
     deathEvents.value,
@@ -1927,7 +1936,16 @@
     const existing = new Set(fragPlaylist.value.items.map(playlistItemKey));
     const additions: FragPlaylistItem[] = [];
     for (const death of movieFragDeaths.value) {
-      const identity = playlistItemKey({ demoPath, eventId: death.eventId });
+      const killer = playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot);
+      const victim = playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot);
+      const identity = playlistItemKey({
+        demoPath,
+        demoTimeMs: death.demoTimeMs,
+        killer,
+        victim,
+        weapon: death.weapon,
+        headshot: death.headshot,
+      });
       if (existing.has(identity)) continue;
       existing.add(identity);
       additions.push({
@@ -1936,12 +1954,14 @@
         demoName: entry.filename,
         demoSha256: entry.sha256,
         eventId: death.eventId,
+        sourcePacketOrdinal: death.packetOrdinal,
+        sourceMessageOrdinal: death.source.messageOrdinal,
         demoTimeMs: death.demoTimeMs,
         clipStartTimeMs: Math.max(0, death.demoTimeMs - FRAG_REEL_PREROLL_MS),
         clipEndTimeMs: fragReelEndTimeMs(death),
         mapName: demoInfo.value.mapName,
-        killer: playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot),
-        victim: playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot),
+        killer,
+        victim,
         weapon: death.weapon,
         headshot: death.headshot,
         score: fragRatingById.value.get(death.eventId)?.score ?? null,
@@ -1956,6 +1976,39 @@
   };
   const removePlaylistItem = (id: string) => {
     commitPlaylistItems(fragPlaylist.value.items.filter((item) => item.id !== id));
+  };
+  const migratePlaylistSegmentItems = (
+    segmentItems: readonly FragPlaylistItem[],
+    segmentDeaths: readonly DeathEvent[],
+  ) => {
+    const replacements = new Map<string, FragPlaylistItem>();
+    segmentItems.forEach((item, index) => {
+      const death = segmentDeaths[index];
+      if (!death) return;
+      const eventChanged = death.eventId !== item.eventId
+        || death.packetOrdinal !== item.sourcePacketOrdinal
+        || death.source.messageOrdinal !== item.sourceMessageOrdinal;
+      if (!eventChanged) return;
+      const timeDeltaMs = death.demoTimeMs - item.demoTimeMs;
+      replacements.set(item.id, {
+        ...item,
+        eventId: death.eventId,
+        sourcePacketOrdinal: death.packetOrdinal,
+        sourceMessageOrdinal: death.source.messageOrdinal,
+        demoTimeMs: death.demoTimeMs,
+        clipStartTimeMs: Math.max(0, item.clipStartTimeMs + timeDeltaMs),
+        clipEndTimeMs: Math.max(0, item.clipEndTimeMs + timeDeltaMs),
+        killer: playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot),
+        victim: playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot),
+        weapon: death.weapon,
+        headshot: death.headshot,
+        score: fragRatingById.value.get(death.eventId)?.score ?? item.score,
+      });
+    });
+    if (!replacements.size) return;
+    playlistRunItems.value = playlistRunItems.value.map((item) => replacements.get(item.id) ?? item);
+    commitPlaylistItems(fragPlaylist.value.items.map((item) => replacements.get(item.id) ?? item));
+    playlistNotice.value = `${replacements.size} playlist ${replacements.size === 1 ? 'frag was' : 'frags were'} updated to the current demo index.`;
   };
   const movePlaylistItem = (index: number, offset: -1 | 1) => {
     const target = index + offset;
@@ -3149,6 +3202,7 @@
     if (segmentDeaths.length !== segmentItems.length) {
       throw new Error(`${item.demoName} no longer contains every playlist frag.`);
     }
+    migratePlaylistSegmentItems(segmentItems, segmentDeaths);
     const perspective = bundle.analysis.demo.perspective.kind;
     const invalidDeath = segmentDeaths.find((death) => !isFragReelEligible(
       perspective,
