@@ -444,7 +444,17 @@ class DemoEngine {
     // No presentation commands are needed immediately before destroying the
     // entire WASM runtime. Sending them into GoldSrc's command allocator while
     // shutdown begins can race command teardown and trigger a double free.
-    if (xash?.running) xash.quit();
+    if (xash?.running) {
+      try {
+        xash.quit();
+      } catch (error) {
+        // Emscripten may unwind a normal runtime exit by throwing its numeric
+        // status sentinel (observed as Infinity after a demo reaches EOF).
+        // Preserve actual JavaScript failures while treating that sentinel as
+        // the successful shutdown it represents.
+        if (error instanceof Error) throw error;
+      }
+    }
   }
 }
 

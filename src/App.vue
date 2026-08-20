@@ -440,16 +440,16 @@
 
             <div class="frag-list" role="table" aria-label="Frag list">
               <div class="frag-header" role="row">
-                <label class="movie-select-all" title="Select or deselect every visible movie frag">
+                <label class="movie-select-all" title="Select or deselect every visible playlist frag">
                   <input
                     type="checkbox"
                     :checked="movieAllFragsSelected"
                     :indeterminate.prop="movieSomeFragsSelected"
                     :disabled="!movieSelectableFragIds.size || movieExportRunning"
-                    aria-label="Select or deselect every visible movie frag"
+                    aria-label="Select or deselect every visible playlist frag"
                     @change="onMovieSelectAllCheckbox"
                   />
-                  <span>Movie</span>
+                  <span>Queue</span>
                 </label>
                 <span>#</span><span>Time</span><span>Frag</span><span>Weapon</span><span>Round</span><span>Score</span><span></span>
               </div>
@@ -464,14 +464,14 @@
                 >
                   <label
                     class="movie-frag-checkbox"
-                    :title="movieSelectableFragIds.has(death.eventId) ? 'Include this frag in the movie' : 'This frag cannot be exported from the recorded POV'"
+                    :title="movieSelectableFragIds.has(death.eventId) ? 'Include this frag in the playlist selection' : 'This frag cannot be replayed from the recorded POV'"
                     @click.stop
                   >
                     <input
                       type="checkbox"
                       :checked="isMovieFragSelected(death.eventId)"
                       :disabled="!movieSelectableFragIds.has(death.eventId) || movieExportRunning"
-                      :aria-label="`Include frag ${index + 1} in movie`"
+                      :aria-label="`Include frag ${index + 1} in playlist selection`"
                       @change="onMovieFragCheckbox(death.eventId, $event)"
                     />
                   </label>
@@ -542,44 +542,24 @@
               Click a frag to start three seconds before the event.
             </p>
 
-            <section class="movie-export-section" aria-labelledby="movie-export-heading">
+            <section class="movie-export-section" aria-labelledby="playlist-add-heading">
               <div class="movie-export-copy">
-                <span>Movie export · {{ movieFragDeaths.length }}/{{ fragReelDeaths.length }} frags selected</span>
-                <strong id="movie-export-heading">Create a high-quality Only Frags movie</strong>
-                <small>
-                  {{ formatDuration((fragMovieTimeline.durationMs + (movieIncludeIntro ? MOVIE_INTRO_DURATION_MS : 0)) / 1_000) }} · approximately {{ formatBytes(movieEstimatedBytes) }}
-                </small>
-                <small v-if="movieExportNotice" class="movie-export-notice">{{ movieExportNotice }}</small>
-                <small v-if="movieExportError" class="movie-export-error">{{ movieExportError }}</small>
+                <span>Playlist · {{ movieFragDeaths.length }}/{{ fragReelDeaths.length }} frags selected</span>
+                <strong id="playlist-add-heading">Add the selected frags to your playlist</strong>
+                <small v-if="loadedDemoPath">The shared demo and exact event IDs are saved with each frag.</small>
+                <small v-else>Only demos from the shared HLTV archive can be used in portable playlists.</small>
               </div>
               <div class="movie-export-controls">
                 <div class="movie-selection-actions">
                   <button type="button" :disabled="movieExportRunning" @click="selectAllMovieFrags">Select all</button>
                   <button type="button" :disabled="movieExportRunning" @click="clearMovieFrags">Clear all</button>
                 </div>
-                <label class="movie-quality-select">
-                  <span>Export quality</span>
-                  <select v-model="movieQualityId" :disabled="movieExportRunning">
-                    <option v-for="quality in MOVIE_QUALITIES" :key="quality.id" :value="quality.id">
-                      {{ quality.label }}
-                    </option>
-                  </select>
-                </label>
-                <label class="movie-intro-toggle">
-                  <input
-                    v-model="movieIncludeIntro"
-                    type="checkbox"
-                    :disabled="movieExportRunning"
-                    @change="saveMovieIntroPreference"
-                  />
-                  <span>Match intro</span>
-                </label>
                 <button
                   class="movie-export-button"
                   type="button"
-                  :disabled="!canStartMovieExport || !movieExportSupported || movieExportRunning"
-                  @click="exportFragMovie"
-                >Create movie</button>
+                  :disabled="!canAddSelectedToPlaylist"
+                  @click="addSelectedFragsToPlaylist"
+                >Add {{ movieFragDeaths.length }} to playlist</button>
               </div>
             </section>
           </template>
@@ -626,6 +606,85 @@
         </div>
       </section>
 
+      <section id="frag-playlist" class="playlist-project" aria-labelledby="playlist-heading">
+        <header class="playlist-project-heading">
+          <div>
+            <p class="step-label">Multi-demo project</p>
+            <h2 id="playlist-heading">Frag playlist</h2>
+            <span>Persistent in this browser · portable across everyone using the same HLTV database.</span>
+          </div>
+          <div class="playlist-file-actions">
+            <input
+              ref="playlistImportInput"
+              class="sr-only"
+              type="file"
+              accept="application/json,.json"
+              @change="importFragPlaylist"
+            />
+            <button type="button" @click="playlistImportInput?.click()">Import playlist</button>
+            <button type="button" :disabled="!fragPlaylist.items.length" @click="exportFragPlaylist">Export playlist</button>
+          </div>
+        </header>
+
+        <div class="playlist-project-meta">
+          <label>
+            <span>Playlist name</span>
+            <input v-model="fragPlaylist.title" type="text" maxlength="100" @change="updatePlaylistTitle" />
+          </label>
+          <div><span>Frags</span><strong>{{ fragPlaylist.items.length }}</strong></div>
+          <div><span>Demos</span><strong>{{ fragPlaylistDemoCount }}</strong></div>
+          <div><span>Clip time</span><strong>{{ formatDuration(fragPlaylistDurationMs / 1_000) }}</strong></div>
+        </div>
+
+        <div v-if="fragPlaylist.items.length" class="playlist-items">
+          <article v-for="(item, index) in fragPlaylist.items" :key="item.id" class="playlist-item">
+            <span class="playlist-position">{{ index + 1 }}</span>
+            <div class="playlist-item-copy">
+              <strong>{{ item.killer }} → {{ item.victim }} <em v-if="item.headshot">HS</em></strong>
+              <small>{{ item.demoName }} · {{ item.mapName }} · {{ formatEventTime(item.demoTimeMs) }} · {{ weaponLabel(item.weapon) }}</small>
+            </div>
+            <b>{{ item.score ?? '–' }}</b>
+            <div class="playlist-item-actions">
+              <button type="button" :disabled="index === 0 || movieExportRunning" title="Move up" @click="movePlaylistItem(index, -1)">↑</button>
+              <button type="button" :disabled="index === fragPlaylist.items.length - 1 || movieExportRunning" title="Move down" @click="movePlaylistItem(index, 1)">↓</button>
+              <button type="button" :disabled="movieExportRunning" title="Remove" @click="removePlaylistItem(item.id)">×</button>
+            </div>
+          </article>
+        </div>
+        <p v-else class="playlist-empty">Select frags in any archive demo and add them here.</p>
+
+        <footer class="playlist-project-footer">
+          <div class="playlist-feedback">
+            <small v-if="playlistNotice" class="movie-export-notice">{{ playlistNotice }}</small>
+            <small v-if="playlistError" class="movie-export-error">{{ playlistError }}</small>
+            <small v-if="movieExportNotice" class="movie-export-notice">{{ movieExportNotice }}</small>
+            <small v-if="movieExportError" class="movie-export-error">{{ movieExportError }}</small>
+            <button type="button" :disabled="!fragPlaylist.items.length || movieExportRunning" @click="clearFragPlaylist">Clear playlist</button>
+          </div>
+          <div class="playlist-run-controls">
+            <label class="movie-quality-select">
+              <span>Export quality</span>
+              <select v-model="movieQualityId" :disabled="movieExportRunning">
+                <option v-for="quality in MOVIE_QUALITIES" :key="quality.id" :value="quality.id">{{ quality.label }}</option>
+              </select>
+            </label>
+            <label class="movie-intro-toggle">
+              <input v-model="movieIncludeIntro" type="checkbox" :disabled="movieExportRunning" @change="saveMovieIntroPreference" />
+              <span>Playlist intro</span>
+            </label>
+            <button class="playlist-play-button" type="button" :disabled="!canStartPlaylist" @click="() => playFragPlaylist('playlist')">
+              <span class="play-icon"></span> Only Frags
+            </button>
+            <button
+              class="playlist-export-button"
+              type="button"
+              :disabled="!canStartPlaylist || !movieExportSupported"
+              @click="exportPlaylistMovie"
+            >Export movie · {{ formatBytes(playlistMovieEstimatedBytes) }}</button>
+          </div>
+        </footer>
+      </section>
+
       <footer>
         <span>Runs on Xash3D-FWGS + CS16Client</span>
         <span>GoldSrc lives forever.</span>
@@ -649,8 +708,8 @@
 
       <div v-else-if="seeking" class="seek-loader">
         <div class="loader-ring"></div>
-        <strong>Seeking to the selected position</strong>
-        <span>Video and audio are disabled while the scene is rebuilt.</span>
+        <strong>{{ playlistTransitioning ? 'Loading the next playlist demo' : 'Seeking to the selected position' }}</strong>
+        <span>{{ playlistTransitioning ? 'The next recording and its assets were preloaded when possible.' : 'Video and audio are disabled while the scene is rebuilt.' }}</span>
       </div>
 
       <div
@@ -739,7 +798,7 @@
         <div class="movie-export-card">
           <span>HQ-EXPORT · {{ movieQuality.label }}</span>
           <strong>{{ movieExportStatusLabel }}</strong>
-          <p>{{ fragReelTeamLabel }} · {{ fragReelIndex + 1 }}/{{ activeFragReelDeaths.length }} frags</p>
+          <p>{{ fragReelTeamLabel }} · {{ fragReelDisplayIndex }}/{{ fragReelDisplayCount }} frags</p>
           <div class="movie-export-progress"><i :style="{ width: `${movieExportProgress}%` }"></i></div>
           <small>
             {{ Math.round(movieExportProgress) }}% · {{ formatBytes(movieExportBytes) }} written
@@ -777,7 +836,7 @@
           {{ engineStarted ? 'Engine running' : 'Starting…' }}
         </div>
         <div v-if="fragReelActive" class="frag-reel-status">
-          <span>ONLY FRAGS · {{ fragReelTeamLabel }} <strong>{{ fragReelIndex + 1 }}/{{ activeFragReelDeaths.length }}</strong></span>
+          <span>ONLY FRAGS · {{ fragReelTeamLabel }} <strong>{{ fragReelDisplayIndex }}/{{ fragReelDisplayCount }}</strong></span>
           <i aria-hidden="true"></i>
           <span>SCORE <strong>{{ activeFragReelScore }}/100</strong></span>
         </div>
@@ -865,6 +924,7 @@
   import { formatDemoTime } from '/@/demo/demo-time';
   import {
     FRAG_REEL_PREROLL_MS,
+    fragReelEndTimeMs,
     isFragReelEligible,
     nextFragReelAction,
     withFragReelDeathCutoffs,
@@ -898,6 +958,15 @@
     type MovieCaptureMode,
   } from '/@/movie/movie-recorder';
   import {
+    FRAG_PLAYLIST_STORAGE_KEY,
+    createFragPlaylist,
+    parseFragPlaylist,
+    playlistDurationMs,
+    playlistItemKey,
+    safePlaylistFilename,
+    type FragPlaylistItem,
+  } from '/@/playlist/frag-playlist';
+  import {
     prepareStaticAssetCache,
     type GameAssetEntry,
   } from '/@/services/local-asset-mount';
@@ -920,6 +989,13 @@
   };
   type HudPreset = 'original' | 'cinematic' | 'analyst' | 'movie' | 'clean';
   type InterfaceTheme = 'replay' | 'quakenet';
+  type PlaylistDemoBundle = {
+    entry: DemoCatalogEntry;
+    inspected: GoldSrcDemo;
+    source: Extract<DemoSource, { kind: 'url' }>;
+    buffer: ArrayBuffer;
+    analysis: DemoAnalysisIndex;
+  };
 
   const MOVIE_EXPORT_DIAGNOSTICS_KEY = 'replay-lab-movie-export-diagnostics-v1';
   const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
@@ -939,6 +1015,7 @@
 
   const demoInput = ref<HTMLInputElement>();
   const folderInput = ref<HTMLInputElement>();
+  const playlistImportInput = ref<HTMLInputElement>();
   const engineCanvas = ref<HTMLCanvasElement>();
   const demoInfo = ref<GoldSrcDemo>();
   const demoSource = ref<DemoSource>();
@@ -983,7 +1060,7 @@
   const interfaceTheme = ref<InterfaceTheme>('replay');
   const scoreboardHeld = ref(false);
   const fragReelActive = ref(false);
-  const fragReelSource = ref<'playback' | 'movie'>('playback');
+  const fragReelSource = ref<'playback' | 'movie' | 'playlist' | 'playlist-movie'>('playback');
   const fragReelSeeking = ref(false);
   const fragReelIndex = ref(0);
   const hudPlaybackStartMs = ref(0);
@@ -1002,6 +1079,12 @@
   const movieRenderFps = ref(0);
   const movieEncoderCatchingUp = ref(false);
   const movieExportDiagnostics = ref<MovieExportDiagnostic[]>([]);
+  const fragPlaylist = ref(createFragPlaylist());
+  const playlistNotice = ref('');
+  const playlistError = ref('');
+  const playlistRunItems = shallowRef<FragPlaylistItem[]>([]);
+  const playlistRunCursor = ref(0);
+  const playlistTransitioning = ref(false);
   let hudClockFrame = 0;
   let analysisRequest = 0;
   let assetRequest = 0;
@@ -1017,6 +1100,10 @@
   let movieAutomaticScoreboardVisible = false;
   let movieScoreboardStartFrame = 0;
   const movieScoreboardsShown = new Set<string>();
+  let playlistSuppressRoute = false;
+  let playlistRunGeneration = 0;
+  let playlistTransitionPromise: Promise<void> | undefined;
+  const playlistDemoBundles = new Map<string, Promise<PlaylistDemoBundle>>();
   const verifiedWallbangEventIds = shallowRef<ReadonlySet<string>>(new Set());
   let activeScoringMapBuffer: ArrayBuffer | undefined;
 
@@ -1342,9 +1429,37 @@
   const movieSomeFragsSelected = computed(() => !movieAllFragsSelected.value
     && [...movieSelectableFragIds.value].some((eventId) =>
       !movieExcludedFragIds.value.has(eventId)));
-  const activeFragReelDeaths = computed(() => fragReelSource.value === 'movie'
-    ? movieFragDeaths.value
-    : fragReelDeaths.value);
+  const playlistMode = computed(() => fragReelSource.value === 'playlist'
+    || fragReelSource.value === 'playlist-movie');
+  const activePlaylistSegmentItems = computed(() => {
+    const first = playlistRunItems.value[playlistRunCursor.value];
+    if (!first) return [];
+    const items: FragPlaylistItem[] = [];
+    for (let index = playlistRunCursor.value; index < playlistRunItems.value.length; index += 1) {
+      const item = playlistRunItems.value[index];
+      if (!item || item.demoPath !== first.demoPath) break;
+      items.push(item);
+    }
+    return items;
+  });
+  const playlistSegmentDeaths = computed(() => withFragReelDeathCutoffs(
+    activePlaylistSegmentItems.value.flatMap((item) => {
+      const death = deathEvents.value.find((entry) => entry.eventId === item.eventId);
+      return death ? [death] : [];
+    }),
+    deathEvents.value,
+  ));
+  const activeFragReelDeaths = computed(() => playlistMode.value
+    ? playlistSegmentDeaths.value
+    : fragReelSource.value === 'movie'
+      ? movieFragDeaths.value
+      : fragReelDeaths.value);
+  const fragReelDisplayIndex = computed(() => playlistMode.value
+    ? playlistRunCursor.value + fragReelIndex.value + 1
+    : fragReelIndex.value + 1);
+  const fragReelDisplayCount = computed(() => playlistMode.value
+    ? playlistRunItems.value.length
+    : activeFragReelDeaths.value.length);
   const movieScoreboardEvents = computed(() => {
     const focusTeam = fragPlayer.value !== 'all'
       ? logicalTeamIdForPlayer(fragPlayer.value)
@@ -1358,17 +1473,25 @@
         : 'CT' as const,
     }));
   });
-  const fragReelTeamLabel = computed(() => fragPlayer.value !== 'all'
-    ? playerLabel(fragPlayer.value)
-    : highlightTeam.value === 'all'
-      ? logicalMatchupLabel.value
-      : logicalTeamName(highlightTeam.value));
-  const fragReelTeamShortLabel = computed(() => fragPlayer.value !== 'all'
-    ? playerLabel(fragPlayer.value)
-    : highlightTeam.value === 'all'
-      ? 'Both'
-      : logicalTeamName(highlightTeam.value));
+  const fragReelTeamLabel = computed(() => playlistMode.value
+    ? fragPlaylist.value.title
+    : fragPlayer.value !== 'all'
+      ? playerLabel(fragPlayer.value)
+      : highlightTeam.value === 'all'
+        ? logicalMatchupLabel.value
+        : logicalTeamName(highlightTeam.value));
+  const fragReelTeamShortLabel = computed(() => playlistMode.value
+    ? 'Playlist'
+    : fragPlayer.value !== 'all'
+      ? playerLabel(fragPlayer.value)
+      : highlightTeam.value === 'all'
+        ? 'Both'
+        : logicalTeamName(highlightTeam.value));
   const fragMovieTimeline = computed(() => buildFragMovieTimeline(movieFragDeaths.value));
+  const fragPlaylistDurationMs = computed(() => playlistDurationMs(fragPlaylist.value.items));
+  const fragPlaylistDemoCount = computed(() => new Set(
+    fragPlaylist.value.items.map((item) => item.demoPath),
+  ).size);
   const movieMatchDateLabel = computed(() => {
     const inferred = inferDemoMatchDate(demoSource.value?.name ?? '');
     if (!inferred) return '';
@@ -1399,6 +1522,14 @@
       durationSeconds: MOVIE_INTRO_DURATION_MS / 1_000,
     };
   });
+  const playlistMovieIntroCard = computed<MovieIntroCard>(() => ({
+    teams: ['HLTV', 'PLAYLIST'],
+    matchDate: '',
+    mapName: `${fragPlaylistDemoCount.value} demos`,
+    focusKind: 'match',
+    focusLabel: fragPlaylist.value.title,
+    durationSeconds: MOVIE_INTRO_DURATION_MS / 1_000,
+  }));
   const movieQuality = computed(() => MOVIE_QUALITIES.find((quality) =>
     quality.id === movieQualityId.value) ?? MOVIE_QUALITIES[0]);
   const movieEstimatedBytes = computed(() => estimatedMovieBytes(
@@ -1407,6 +1538,13 @@
       + (movieIncludeIntro.value ? MOVIE_INTRO_DURATION_MS : 0),
     movieQuality.value,
   ));
+  const playlistMovieEstimatedBytes = computed(() => estimatedMovieBytes(
+    fragPlaylistDurationMs.value + (movieIncludeIntro.value ? MOVIE_INTRO_DURATION_MS : 0),
+    movieQuality.value,
+  ));
+  const activeMovieEstimatedBytes = computed(() => fragReelSource.value === 'playlist-movie'
+    ? playlistMovieEstimatedBytes.value
+    : movieEstimatedBytes.value);
   const movieExportSupported = computed(() => Boolean(preferredMovieContainer()));
   const movieExportRunning = computed(() => [
     'starting', 'recording', 'finalizing',
@@ -1457,6 +1595,13 @@
     canLaunch.value && fragReelDeaths.value.length > 0);
   const canStartMovieExport = computed(() =>
     canLaunch.value && movieFragDeaths.value.length > 0);
+  const canStartPlaylist = computed(() => fragPlaylist.value.items.length > 0
+    && !playlistTransitioning.value
+    && !movieExportRunning.value
+    && Boolean(demoCatalog.value));
+  const canAddSelectedToPlaylist = computed(() => Boolean(loadedDemoPath.value)
+    && movieFragDeaths.value.length > 0
+    && !movieExportRunning.value);
   const loadingLabel = computed(() =>
     loadingProgress.value ? 'Mounting Counter-Strike' : 'Starting Xash3D',
   );
@@ -1533,7 +1678,7 @@
   };
 
   watch(currentReplayRoute, (route, previous) => {
-    if (applyingRoute) return;
+    if (applyingRoute || playlistSuppressRoute) return;
     const next = buildReplayRoute(route);
     if (next === `${window.location.pathname}${window.location.search}`) return;
     // Byte av demo är en ny vy och förtjänar en post i historiken, så
@@ -1584,6 +1729,128 @@
       ...movieSelectableFragIds.value,
     ]);
   };
+  const commitPlaylistItems = (items: FragPlaylistItem[]) => {
+    fragPlaylist.value = {
+      ...fragPlaylist.value,
+      updatedAt: new Date().toISOString(),
+      items,
+    };
+  };
+  const updatePlaylistTitle = () => {
+    const title = fragPlaylist.value.title.trim() || 'My frag playlist';
+    fragPlaylist.value = {
+      ...fragPlaylist.value,
+      title,
+      updatedAt: new Date().toISOString(),
+    };
+  };
+  const addSelectedFragsToPlaylist = () => {
+    playlistError.value = '';
+    playlistNotice.value = '';
+    const demoPath = loadedDemoPath.value;
+    const entry = demoCatalog.value?.demos.find((candidate) => candidate.path === demoPath);
+    if (!demoPath || !entry || !analysisIndex.value || !demoInfo.value) {
+      playlistError.value = 'Only demos from the shared HLTV archive can be added.';
+      return;
+    }
+    const existing = new Set(fragPlaylist.value.items.map(playlistItemKey));
+    const additions: FragPlaylistItem[] = [];
+    for (const death of movieFragDeaths.value) {
+      const identity = playlistItemKey({ demoPath, eventId: death.eventId });
+      if (existing.has(identity)) continue;
+      existing.add(identity);
+      additions.push({
+        id: crypto.randomUUID(),
+        demoPath,
+        demoName: entry.filename,
+        demoSha256: entry.sha256,
+        eventId: death.eventId,
+        demoTimeMs: death.demoTimeMs,
+        clipStartTimeMs: Math.max(0, death.demoTimeMs - FRAG_REEL_PREROLL_MS),
+        clipEndTimeMs: fragReelEndTimeMs(death),
+        mapName: demoInfo.value.mapName,
+        killer: playerLabel(death.killerPlayerId, death.demoTimeMs, death.killerSlot),
+        victim: playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot),
+        weapon: death.weapon,
+        headshot: death.headshot,
+        score: fragRatingById.value.get(death.eventId)?.score ?? null,
+      });
+    }
+    if (!additions.length) {
+      playlistNotice.value = 'Every selected frag is already in the playlist.';
+      return;
+    }
+    commitPlaylistItems([...fragPlaylist.value.items, ...additions]);
+    playlistNotice.value = `${additions.length} ${additions.length === 1 ? 'frag' : 'frags'} added from ${entry.filename}.`;
+  };
+  const removePlaylistItem = (id: string) => {
+    commitPlaylistItems(fragPlaylist.value.items.filter((item) => item.id !== id));
+  };
+  const movePlaylistItem = (index: number, offset: -1 | 1) => {
+    const target = index + offset;
+    if (target < 0 || target >= fragPlaylist.value.items.length) return;
+    const items = [...fragPlaylist.value.items];
+    [items[index], items[target]] = [items[target]!, items[index]!];
+    commitPlaylistItems(items);
+  };
+  const clearFragPlaylist = () => {
+    if (fragPlaylist.value.items.length && !window.confirm('Clear the entire frag playlist?')) return;
+    commitPlaylistItems([]);
+    playlistNotice.value = 'The playlist is empty.';
+    playlistError.value = '';
+  };
+  const exportFragPlaylist = () => {
+    const blob = new Blob([JSON.stringify(fragPlaylist.value, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = safePlaylistFilename(fragPlaylist.value.title);
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    playlistNotice.value = `${anchor.download} exported.`;
+  };
+  const importFragPlaylist = async (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    playlistError.value = '';
+    playlistNotice.value = '';
+    try {
+      const imported = parseFragPlaylist(JSON.parse(await file.text()) as unknown);
+      const catalogByPath = new Map(
+        demoCatalog.value?.demos.map((entry) => [entry.path, entry]) ?? [],
+      );
+      const identities = new Set<string>();
+      for (const item of imported.items) {
+        const entry = catalogByPath.get(item.demoPath);
+        if (!entry || entry.status === 'error') {
+          throw new Error(`The shared database does not contain ${item.demoPath}.`);
+        }
+        if (item.demoSha256 && entry.sha256 && item.demoSha256 !== entry.sha256) {
+          throw new Error(`${item.demoName} does not match this database revision.`);
+        }
+        const identity = playlistItemKey(item);
+        if (identities.has(identity)) throw new Error(`${item.demoName} contains a duplicate frag.`);
+        identities.add(identity);
+      }
+      if (fragPlaylist.value.items.length
+        && !window.confirm(`Replace the current playlist with “${imported.title}”?`)) return;
+      fragPlaylist.value = { ...imported, updatedAt: new Date().toISOString() };
+      playlistNotice.value = `${imported.items.length} frags imported from ${file.name}.`;
+    } catch (error) {
+      playlistError.value = error instanceof Error ? error.message : 'Could not import the playlist.';
+    }
+  };
+  watch(fragPlaylist, (playlist) => {
+    try {
+      window.localStorage.setItem(FRAG_PLAYLIST_STORAGE_KEY, JSON.stringify(playlist));
+    } catch {
+      playlistError.value = 'The browser could not persist the playlist.';
+    }
+  }, { deep: true });
   const weaponLabel = fragWeaponLabel;
 
   const applyEngineHudPreset = () => {
@@ -1672,6 +1939,7 @@
   };
 
   const startMovieAutomaticScoreboard = (): boolean => {
+    if (fragReelSource.value === 'playlist-movie') return false;
     const death = activeFragReelDeaths.value[fragReelIndex.value];
     const event = movieScoreboardEvents.value[fragReelIndex.value];
     if (movieExportState.value !== 'recording'
@@ -1822,7 +2090,11 @@
         output: preparedMovieOutput,
         audio,
         captureMode: movieCaptureMode,
-        intro: movieIncludeIntro.value ? movieIntroCard.value : undefined,
+        intro: movieIncludeIntro.value
+          ? fragReelSource.value === 'playlist-movie'
+            ? playlistMovieIntroCard.value
+            : movieIntroCard.value
+          : undefined,
         hudFrame: currentMovieHudFrame,
         onBytes: (bytes) => { movieExportBytes.value = bytes; },
         onError: (error) => {
@@ -1950,6 +2222,25 @@
       if (backpressure === 'pause') pauseMovieForEncoder(now);
       else if (backpressure === 'resume') resumeMovieAfterEncoderCatchup(now);
     }
+    if (fragReelSource.value === 'playlist-movie') {
+      const targetMs = Math.max(
+        1,
+        fragPlaylistDurationMs.value + (movieIncludeIntro.value ? MOVIE_INTRO_DURATION_MS : 0),
+      );
+      movieExportProgress.value = Math.min(
+        99.5,
+        recorder.capturedFrames / movieQuality.value.fps * 1_000 / targetMs * 100,
+      );
+      const progressBucket = Math.floor(movieExportProgress.value / 10);
+      if (progressBucket > movieLastDiagnosticProgressBucket) {
+        movieLastDiagnosticProgressBucket = progressBucket;
+        recordMovieExportDiagnostic(
+          'progress',
+          `Playlist export reached ${Math.round(movieExportProgress.value)} percent.`,
+        );
+      }
+      return;
+    }
     const death = activeFragReelDeaths.value[fragReelIndex.value];
     const timeline = fragMovieTimeline.value;
     if (!death || timeline.durationMs <= 0) return;
@@ -1980,6 +2271,7 @@
 
   const tickHudClock = (now: number) => {
     hudNow.value = now;
+    completePlaylistTransition();
     void startMovieRecorderIfReady();
     if (!updateMovieAutomaticScoreboard(now)) updateFragReel();
     updateMovieExportProgress();
@@ -2264,6 +2556,57 @@
     }
   };
 
+  const playlistBundleFor = (item: FragPlaylistItem): Promise<PlaylistDemoBundle> => {
+    const cached = playlistDemoBundles.get(item.demoPath);
+    if (cached) return cached;
+    const pending = (async () => {
+      const entry = demoCatalog.value?.demos.find((candidate) => candidate.path === item.demoPath);
+      if (!entry || entry.status === 'error') {
+        throw new Error(`The shared database does not contain ${item.demoPath}.`);
+      }
+      if (item.demoSha256 && entry.sha256 && item.demoSha256 !== entry.sha256) {
+        throw new Error(`${item.demoName} does not match this database revision.`);
+      }
+      const demoUrl = demoCatalogAssetUrl('/demo-files', entry.path);
+      const analysisUrl = demoCatalogAssetUrl('/demo-analysis', `${entry.path}.json`);
+      const [demoResponse, analysisResponse] = await Promise.all([
+        fetch(demoUrl),
+        fetch(analysisUrl),
+      ]);
+      if (!demoResponse.ok) throw new Error(`Could not preload ${entry.filename}.`);
+      if (!analysisResponse.ok) throw new Error(`Could not load the analysis for ${entry.filename}.`);
+      const [buffer, stored] = await Promise.all([
+        demoResponse.arrayBuffer(),
+        analysisResponse.json() as Promise<DemoAnalysisIndex & { error?: string }>,
+      ]);
+      if (stored.error) throw new Error(stored.error);
+      if (item.demoSha256 && stored.demo.sha256 !== item.demoSha256) {
+        throw new Error(`${entry.filename} failed playlist identity verification.`);
+      }
+      const inspected = await inspectDemoFile(new File([buffer], entry.filename));
+      return {
+        entry,
+        inspected,
+        source: { kind: 'url' as const, name: entry.filename, url: demoUrl },
+        buffer,
+        analysis: stored,
+      };
+    })().catch((error) => {
+      playlistDemoBundles.delete(item.demoPath);
+      throw error;
+    });
+    playlistDemoBundles.set(item.demoPath, pending);
+    return pending;
+  };
+
+  const nextPlaylistSegmentCursor = (): number =>
+    playlistRunCursor.value + activePlaylistSegmentItems.value.length;
+
+  const prefetchPlaylistSegment = (cursor: number) => {
+    const item = playlistRunItems.value[cursor];
+    if (item) void playlistBundleFor(item).catch(() => undefined);
+  };
+
   const selectGameFolder = async () => {
     if (!('showDirectoryPicker' in window)) {
       folderInput.value?.click();
@@ -2506,8 +2849,151 @@
     void launchDemo(startAtMs, camera);
   };
 
-  const exportFragMovie = async () => {
-    if (!canStartMovieExport.value || movieExportRunning.value || !demoSource.value) return;
+  const failPlaylistRun = (error: unknown) => {
+    const message = error instanceof Error
+      ? error.message
+      : String(error || 'The playlist could not continue.');
+    playlistError.value = message;
+    playlistTransitioning.value = false;
+    playlistTransitionPromise = undefined;
+    fragReelSeeking.value = false;
+    seeking.value = false;
+    if (movieExportRunning.value) {
+      movieExportError.value = message;
+      void cancelMovieExport(true);
+    } else {
+      closeEngine();
+    }
+  };
+
+  const activatePlaylistSegment = async (cursor: number, generation: number): Promise<void> => {
+    const item = playlistRunItems.value[cursor];
+    if (!item) throw new Error('The playlist segment is empty.');
+    playlistTransitioning.value = true;
+    fragReelSeeking.value = true;
+    seeking.value = true;
+    setMovieAutomaticScoreboard(false);
+    movieRecorder?.pause();
+    if (DemoEngine.running) {
+      try {
+        DemoEngine.execute('sys_timescale 0');
+      } catch {
+        // The previous runtime may already have reached the end of its demo.
+      }
+    }
+
+    const bundle = await playlistBundleFor(item);
+    if (generation !== playlistRunGeneration) return;
+    for (const demoPath of playlistDemoBundles.keys()) {
+      if (demoPath !== item.demoPath) playlistDemoBundles.delete(demoPath);
+    }
+    DemoEngine.stop();
+    engineStarted.value = false;
+    hudPlaybackStartedAt.value = 0;
+    loadingProgress.value = 0;
+    gameFiles.value = [];
+    mapChecksumMatches.value = false;
+    activeScoringMapBuffer = undefined;
+    verifiedWallbangEventIds.value = new Set();
+    playlistRunCursor.value = cursor;
+    fragReelIndex.value = 0;
+    playlistSuppressRoute = true;
+    loadedDemoPath.value = item.demoPath;
+    demoInfo.value = bundle.inspected;
+    demoSource.value = bundle.source;
+    analysisBuffer.value = bundle.buffer;
+    analysisIndex.value = bundle.analysis;
+    analysisCacheHit.value = true;
+    await loadInstalledGameAssets(bundle.inspected);
+    if (generation !== playlistRunGeneration) return;
+    if (!gameReady.value) throw new Error(`The assets for ${item.demoName} could not be mounted.`);
+
+    const segmentItems = activePlaylistSegmentItems.value;
+    const segmentDeaths = playlistSegmentDeaths.value;
+    if (segmentDeaths.length !== segmentItems.length) {
+      throw new Error(`${item.demoName} no longer contains every playlist frag.`);
+    }
+    const perspective = bundle.analysis.demo.perspective.kind;
+    const invalidDeath = segmentDeaths.find((death) => !isFragReelEligible(
+      perspective,
+      fragRatingById.value.get(death.eventId)?.visibility,
+    ));
+    if (invalidDeath) throw new Error(`${item.demoName} contains a frag that cannot be replayed.`);
+
+    const first = segmentDeaths[0];
+    if (!first) throw new Error(`${item.demoName} has no playable playlist frags.`);
+    selectedFragId.value = first.eventId;
+    const startAtMs = Math.max(0, first.demoTimeMs - FRAG_REEL_PREROLL_MS);
+    hudPlaybackStartMs.value = startAtMs;
+    const camera = killerCameraFor(first, startAtMs);
+    if (camera?.nativeHltv) camera.activateAfterMs = 0;
+    await launchDemo(startAtMs, camera);
+    if (!engineStarted.value) throw new Error(`${item.demoName} could not start.`);
+    prefetchPlaylistSegment(nextPlaylistSegmentCursor());
+  };
+
+  const beginPlaylistSegment = (cursor: number) => {
+    if (playlistTransitionPromise) return;
+    const generation = playlistRunGeneration;
+    const transition = activatePlaylistSegment(cursor, generation)
+      .catch((error) => {
+        if (generation === playlistRunGeneration) failPlaylistRun(error);
+      })
+      .finally(() => {
+        if (playlistTransitionPromise === transition) playlistTransitionPromise = undefined;
+      });
+    playlistTransitionPromise = transition;
+  };
+
+  const completePlaylistTransition = () => {
+    if (!playlistTransitioning.value
+      || launching.value
+      || seeking.value
+      || !engineStarted.value) return;
+    if (fragReelSource.value === 'playlist-movie' && movieRecorder) {
+      const audio = DemoEngine.createAudioCapture();
+      if (!audio) return;
+      try {
+        movieRecorder.replaceAudioCapture(audio);
+        movieRecorder.resume();
+      } catch (error) {
+        failPlaylistRun(error);
+        return;
+      }
+    }
+    playlistTransitioning.value = false;
+    fragReelSeeking.value = false;
+    applyEngineHudPreset();
+    engineCanvas.value?.focus();
+  };
+
+  const playFragPlaylist = (source: 'playlist' | 'playlist-movie') => {
+    if (!fragPlaylist.value.items.length || !demoCatalog.value || playlistTransitioning.value) return;
+    if (source === 'playlist' && movieExportRunning.value) return;
+    if (engineStarted.value || engineVisible.value || DemoEngine.running) DemoEngine.stop();
+    engineStarted.value = false;
+    hudPlaybackStartedAt.value = 0;
+    playlistError.value = '';
+    playlistNotice.value = '';
+    playlistDemoBundles.clear();
+    playlistRunGeneration += 1;
+    playlistRunItems.value = fragPlaylist.value.items.map((item) => ({ ...item }));
+    playlistRunCursor.value = 0;
+    fragReelSource.value = source;
+    fragReelActive.value = true;
+    fragReelSeeking.value = true;
+    fragReelIndex.value = 0;
+    engineVisible.value = true;
+    engineStarted.value = false;
+    movieScoreboardsShown.clear();
+    movieScoreboardStartFrame = 0;
+    beginPlaylistSegment(0);
+  };
+
+  const exportPlaylistMovie = async () => {
+    if (!fragPlaylist.value.items.length
+      || !movieExportSupported.value
+      || movieExportRunning.value) return;
     movieExportError.value = '';
     movieExportNotice.value = '';
     movieExportBytes.value = 0;
@@ -2523,33 +3009,27 @@
       : 'composited';
     movieExportState.value = 'starting';
     recordMovieExportDiagnostic(
-      'requested',
-      `Export requested in ${movieQuality.value.label}${movieIncludeIntro.value ? ' with match intro' : ' without intro'}.`,
+      'playlist-requested',
+      `Playlist export requested: ${fragPlaylist.value.items.length} frags across ${fragPlaylistDemoCount.value} demos.`,
     );
     const temporaryName = safeMovieFilename(
-      demoSource.value.name,
-      fragReelTeamShortLabel.value,
+      'playlist.dem',
+      fragPlaylist.value.title,
       'tmp',
     );
     try {
       preparedMovieOutput = await prepareMovieOutput(temporaryName.replace(/\.tmp$/, ''));
       movieExportNotice.value = `Exporting directly to ${preparedMovieOutput.filename}.`;
       recordMovieExportDiagnostic('output-prepared', movieExportNotice.value);
-      playFragReel('movie');
+      playFragPlaylist('playlist-movie');
     } catch (error) {
       movieExportState.value = 'idle';
       if (error instanceof DOMException && error.name === 'AbortError') {
         movieExportNotice.value = 'The export was cancelled before it started.';
         return;
       }
-      movieExportError.value = error instanceof Error
-        ? error.message
-        : 'Could not prepare the video file.';
-      recordMovieExportDiagnostic(
-        'prepare-error',
-        error instanceof Error ? error.stack ?? error.message : String(error),
-        true,
-      );
+      movieExportError.value = error instanceof Error ? error.message : 'Could not prepare the playlist movie.';
+      recordMovieExportDiagnostic('prepare-error', movieExportError.value, true);
     }
   };
 
@@ -2571,7 +3051,7 @@
       if (recorder.bytesWritten <= 0) {
         throw new Error('The video encoder finished without creating any data.');
       }
-      const minimumPlausibleBytes = movieEstimatedBytes.value * 0.005;
+      const minimumPlausibleBytes = activeMovieEstimatedBytes.value * 0.005;
       if (recorder.bytesWritten < minimumPlausibleBytes) {
         throw new Error(
           `The video file was implausibly small (${formatBytes(recorder.bytesWritten)}); `
@@ -2683,8 +3163,18 @@
       void cancelMovieExport();
       return;
     }
+    if (playlistTransitioning.value) {
+      closeEngine();
+      return;
+    }
     fragReelActive.value = false;
     fragReelSeeking.value = false;
+    playlistTransitioning.value = false;
+    playlistRunGeneration += 1;
+    playlistTransitionPromise = undefined;
+    playlistRunItems.value = [];
+    playlistDemoBundles.clear();
+    playlistSuppressRoute = false;
     addLog('Only Frags ended; regular playback continues.', false);
     engineCanvas.value?.focus();
   };
@@ -2705,7 +3195,20 @@
     if (action.type === 'wait') return;
     if (startMovieAutomaticScoreboard()) return;
     if (action.type === 'complete') {
-      addLog(`Only Frags complete: ${activeFragReelDeaths.value.length} frags shown.`, false);
+      if (playlistMode.value) {
+        const nextCursor = nextPlaylistSegmentCursor();
+        if (nextCursor < playlistRunItems.value.length) {
+          addLog(
+            `Playlist: ${playlistRunCursor.value + activePlaylistSegmentItems.value.length}/${playlistRunItems.value.length} frags complete · loading next demo.`,
+            false,
+          );
+          beginPlaylistSegment(nextCursor);
+          return;
+        }
+        addLog(`Playlist complete: ${playlistRunItems.value.length} frags shown.`, false);
+      } else {
+        addLog(`Only Frags complete: ${activeFragReelDeaths.value.length} frags shown.`, false);
+      }
       const completion = movieCompletionAction(movieExportState.value);
       if (completion === 'finish') {
         void finishMovieExport();
@@ -2790,6 +3293,12 @@
     movieScoreboardsShown.clear();
     fragReelActive.value = false;
     fragReelSeeking.value = false;
+    playlistTransitioning.value = false;
+    playlistRunGeneration += 1;
+    playlistTransitionPromise = undefined;
+    playlistRunItems.value = [];
+    playlistDemoBundles.clear();
+    playlistSuppressRoute = false;
     engineVisible.value = false;
     launching.value = false;
     DemoEngine.stop();
@@ -2830,6 +3339,14 @@
   };
 
   onMounted(() => {
+    try {
+      const savedPlaylist = window.localStorage.getItem(FRAG_PLAYLIST_STORAGE_KEY);
+      if (savedPlaylist) fragPlaylist.value = parseFragPlaylist(JSON.parse(savedPlaylist) as unknown);
+    } catch (error) {
+      playlistError.value = error instanceof Error
+        ? `Saved playlist: ${error.message}`
+        : 'The saved playlist could not be restored.';
+    }
     try {
       const savedDiagnostics = JSON.parse(
         window.localStorage.getItem(MOVIE_EXPORT_DIAGNOSTICS_KEY) ?? '[]',
