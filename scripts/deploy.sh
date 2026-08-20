@@ -90,6 +90,9 @@ if [[ $do_app -eq 1 ]]; then
   # server.mjs letar game-assets i appkatalogen. Symlänk i stället för kopia:
   # subvolymen ska kunna snapshottas separat.
   "${SSH[@]}" "$USER_AT" "ln -sfn $REMOTE/game-assets $REMOTE/app/game-assets"
+
+  note "Starta om appservern"
+  "${SSH[@]}" "$USER_AT" 'sudo systemctl restart hltv-app.service && sudo systemctl is-active hltv-app.service'
 fi
 
 if [[ $do_demos -eq 1 ]]; then
