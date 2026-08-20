@@ -228,12 +228,17 @@
 
           <div class="connector" aria-hidden="true"><span>→</span></div>
 
-          <!-- Spelresurserna hämtas numera från servern per demo, så den
-               manuella mappväljaren behövs inte i normalfallet. Kortet är dock
-               enda stället som visar VARFÖR resurserna inte duger — checklistan
-               och gameError — och canLaunch kräver gameReady. Därför döljs det
-               när allt stämmer och dyker upp när motorn inte kan starta. -->
-          <article v-if="!gameReady" :class="['setup-card', { complete: gameReady }]">
+          <!-- Dolt. Spelresurserna hämtas från servern per demo, så den manuella
+               mappväljaren fyller ingen funktion. Att resurserna saknas syns
+               ändå: launchHint intill startknappen säger "Incomplete game
+               folder" med vilka filer som krävs.
+
+               Markupen ligger kvar i stället för att raderas eftersom
+               selectGameFolder, onFolderInput, folderInput, gameFolderName och
+               gameBytes bara används här — en radering hade fällt bygget på
+               noUnusedLocals och krävt att hela den manuella vägen togs bort.
+               Sätt villkoret till !gameReady för att få tillbaka den. -->
+          <article v-if="false" :class="['setup-card', { complete: gameReady }]">
             <div class="card-number">02</div>
             <div class="card-body">
               <div class="card-title-row">
