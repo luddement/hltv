@@ -421,7 +421,7 @@
                   {{ fragReelTeamLabel }} · first person follows the killer · continuous when the next frag is within 10 seconds
                 </small>
                 <small v-else>Continuous when the next frag is within 10 seconds · longer gaps are skipped</small>
-                <small>3-second lead-in before the first frag and tail after the final frag.</small>
+                <small>3-second lead-in and up to 3 seconds of tail · cuts 0.5 seconds before the fragger dies.</small>
                 <small>Playback always follows match time, regardless of list sorting.</small>
               </div>
               <div class="frag-reel-controls">
@@ -862,6 +862,7 @@
     FRAG_REEL_PREROLL_MS,
     isFragReelEligible,
     nextFragReelAction,
+    withFragReelDeathCutoffs,
   } from '/@/demo/frag-reel';
   import {
     MOVIE_QUALITIES,
@@ -891,7 +892,10 @@
     type PreparedMovieOutput,
     type MovieCaptureMode,
   } from '/@/movie/movie-recorder';
-  import type { GameAssetEntry } from '/@/services/local-asset-mount';
+  import {
+    prepareStaticAssetCache,
+    type GameAssetEntry,
+  } from '/@/services/local-asset-mount';
   import DemoEngine, { type DemoEngineOptions } from '/@/services/demo-engine';
   import openDirectory from '/@/utils/directory-open';
 
@@ -1314,12 +1318,13 @@
   const fragReelDeaths = computed(() => {
     const perspective = analysisIndex.value?.demo.perspective.kind;
     if (!perspective) return [];
-    return filteredDeaths.value
+    const eligibleDeaths = filteredDeaths.value
       .filter((death) => isFragReelEligible(
         perspective,
         fragRatingById.value.get(death.eventId)?.visibility,
       ))
       .sort((left, right) => left.demoTimeMs - right.demoTimeMs);
+    return withFragReelDeathCutoffs(eligibleDeaths, deathEvents.value);
   });
   const movieSelectableFragIds = computed(() => new Set(
     fragReelDeaths.value.map((death) => death.eventId),
@@ -2238,6 +2243,7 @@
     if (!selectedDemo) return;
     const request = ++assetRequest;
     try {
+      await prepareStaticAssetCache();
       const response = await fetch(
         `/game-assets-manifest.json?map=${encodeURIComponent(selectedDemo.mapName.toLowerCase())}&checksum=${formatGoldSrcChecksum(selectedDemo.mapChecksum)}`,
       );

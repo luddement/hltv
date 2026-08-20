@@ -42,6 +42,20 @@ describe('frag movie project', () => {
     });
   });
 
+  it('ends a movie clip half a second before the fragger dies', () => {
+    expect(buildFragMovieTimeline([
+      {
+        eventId: 'frag',
+        demoTimeMs: 10_000,
+        killerPlayerId: 'player-a',
+        postrollEndTimeMs: 11_500,
+      },
+    ])).toEqual({
+      clips: [{ startTimeMs: 7_000, endTimeMs: 11_500, eventIds: ['frag'] }],
+      durationMs: 4_500,
+    });
+  });
+
   it('estimates encoded bytes from the selected quality bitrate', () => {
     expect(estimatedMovieBytes(60_000, MOVIE_QUALITIES[0])).toBe(61_440_000);
   });

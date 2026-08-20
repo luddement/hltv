@@ -1,4 +1,6 @@
 const assetPrefix = '/__hltv_assets__/';
+const immutableAssetPrefix = '/game-assets/';
+const immutableAssetCache = 'hltv-immutable-game-assets-v1';
 let mountedAssets = new Map();
 
 const normalize = (value) =>
@@ -8,7 +10,26 @@ const normalize = (value) =>
     .toLowerCase();
 
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('activate', (event) => event.waitUntil((async () => {
+  const cacheNames = await caches.keys();
+  await Promise.all(cacheNames
+    .filter((name) => name.startsWith('hltv-immutable-game-assets-')
+      && name !== immutableAssetCache)
+    .map((name) => caches.delete(name)));
+  await self.clients.claim();
+})()));
+
+const immutableAssetResponse = async (event) => {
+  const cache = await caches.open(immutableAssetCache);
+  const cached = await cache.match(event.request);
+  if (cached) return cached;
+
+  const response = await fetch(event.request);
+  if (response.ok && response.status === 200 && !event.request.headers.has('range')) {
+    event.waitUntil(cache.put(event.request, response.clone()).catch(() => undefined));
+  }
+  return response;
+};
 
 self.addEventListener('message', (event) => {
   if (event.data?.type !== 'mount-assets') return;
@@ -22,6 +43,13 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+  if (event.request.method === 'GET'
+    && url.origin === self.location.origin
+    && url.pathname.startsWith(immutableAssetPrefix)) {
+    event.respondWith(immutableAssetResponse(event));
+    return;
+  }
+
   if (!url.pathname.startsWith(assetPrefix)) return;
 
   const key = normalize(url.pathname.slice(assetPrefix.length));

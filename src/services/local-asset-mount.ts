@@ -64,6 +64,20 @@ const workerController = async (): Promise<ServiceWorker> => {
   });
 };
 
+/** Activates the cache-first worker before immutable HTTP game assets are read. */
+export async function prepareStaticAssetCache(): Promise<boolean> {
+  try {
+    await workerController();
+    // Cache Storage is still browser-managed. Ask the browser not to evict it
+    // under ordinary storage pressure; browsers may decline this request.
+    void navigator.storage?.persist?.().catch(() => false);
+    return true;
+  } catch {
+    // Asset loading must keep working in browsers or contexts without workers.
+    return false;
+  }
+}
+
 const addEntry = (entries: Map<string, MountedEntry>, entry: MountedEntry) => {
   const key = normalize(entry.path);
   const previous = entries.get(key);

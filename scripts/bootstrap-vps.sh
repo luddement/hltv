@@ -213,7 +213,8 @@ server {
     location /game-assets/ {
         alias ${MOUNT}/game-assets/;
         default_type application/octet-stream;
-        expires 30d;
+        expires 1y;
+        add_header Cache-Control "public, immutable" always;
     }
 
     location / {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isFragReelEligible, nextFragReelAction } from '../src/demo/frag-reel';
+import {
+  isFragReelEligible,
+  nextFragReelAction,
+  withFragReelDeathCutoffs,
+} from '../src/demo/frag-reel';
 
 const events = [
   { eventId: 'frag-1', demoTimeMs: 10_000 },
@@ -24,6 +28,28 @@ describe('only frags timeline', () => {
 
   it('finishes after the last frag post-roll', () => {
     expect(nextFragReelAction(events, 2, 43_000)).toEqual({ type: 'complete' });
+  });
+
+  it('cuts half a second before the fragger dies during the post-roll', () => {
+    const [frag] = withFragReelDeathCutoffs([
+      { eventId: 'frag', demoTimeMs: 10_000, killerPlayerId: 'player-a' },
+    ], [
+      { demoTimeMs: 12_000, victimPlayerId: 'player-a' },
+    ]);
+
+    expect(frag.postrollEndTimeMs).toBe(11_500);
+    expect(nextFragReelAction([frag], 0, 11_499)).toEqual({ type: 'wait' });
+    expect(nextFragReelAction([frag], 0, 11_500)).toEqual({ type: 'complete' });
+  });
+
+  it('never cuts away the frag when the fragger is traded within half a second', () => {
+    const [frag] = withFragReelDeathCutoffs([
+      { eventId: 'frag', demoTimeMs: 10_000, killerPlayerId: 'player-a' },
+    ], [
+      { demoTimeMs: 10_200, victimPlayerId: 'player-a' },
+    ]);
+
+    expect(frag.postrollEndTimeMs).toBe(10_000);
   });
 
   it('rewinds for a nearby frag when HLTV must switch first-person target', () => {

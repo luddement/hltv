@@ -2,6 +2,12 @@ export interface FragReelEvent {
   eventId: string;
   demoTimeMs: number;
   killerPlayerId?: string | null;
+  postrollEndTimeMs?: number;
+}
+
+export interface FragReelDeathEvent {
+  demoTimeMs: number;
+  victimPlayerId?: string | null;
 }
 
 export type FragReelPerspective = 'pov' | 'hltv';
@@ -22,6 +28,32 @@ export const isFragReelEligible = (
 export const FRAG_REEL_PREROLL_MS = 3_000;
 export const FRAG_REEL_POSTROLL_MS = 3_000;
 export const FRAG_REEL_CONTINUOUS_GAP_MS = 10_000;
+export const FRAG_REEL_DEATH_CUT_LEAD_MS = 500;
+
+export const fragReelEndTimeMs = (event: FragReelEvent): number => Math.min(
+  event.demoTimeMs + FRAG_REEL_POSTROLL_MS,
+  Math.max(event.demoTimeMs, event.postrollEndTimeMs ?? Number.POSITIVE_INFINITY),
+);
+
+export const withFragReelDeathCutoffs = <T extends FragReelEvent>(
+  events: readonly T[],
+  deaths: readonly FragReelDeathEvent[],
+): Array<T & { postrollEndTimeMs?: number }> => events.map((event) => {
+  if (!event.killerPlayerId) return event;
+  const normalEndTimeMs = event.demoTimeMs + FRAG_REEL_POSTROLL_MS;
+  const killerDeath = deaths.find((death) =>
+    death.victimPlayerId === event.killerPlayerId
+    && death.demoTimeMs > event.demoTimeMs
+    && death.demoTimeMs <= normalEndTimeMs);
+  if (!killerDeath) return event;
+  return {
+    ...event,
+    postrollEndTimeMs: Math.max(
+      event.demoTimeMs,
+      killerDeath.demoTimeMs - FRAG_REEL_DEATH_CUT_LEAD_MS,
+    ),
+  };
+});
 
 export type FragReelAction =
   | { type: 'wait' }
@@ -35,7 +67,7 @@ export const nextFragReelAction = (
   demoTimeMs: number,
 ): FragReelAction => {
   const current = events[index];
-  if (!current || demoTimeMs < current.demoTimeMs + FRAG_REEL_POSTROLL_MS) {
+  if (!current || demoTimeMs < fragReelEndTimeMs(current)) {
     return { type: 'wait' };
   }
 

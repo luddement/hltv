@@ -15,6 +15,8 @@ const demoAssetPaths = new Set(
   JSON.parse(readFileSync(resolve(appDirectory, 'demo-assets.json'), 'utf8')),
 );
 const port = Number(process.env.HLTV_PORT || 4173);
+const NO_CACHE = 'no-cache';
+const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -26,8 +28,15 @@ const mimeTypes = {
   '.wasm': 'application/wasm',
 };
 
-const sendFile = (request, response, filePath, allowRanges = false) => {
+const sendFile = (
+  request,
+  response,
+  filePath,
+  allowRanges = false,
+  cacheControl = NO_CACHE,
+) => {
   const { size } = statSync(filePath);
+  response.setHeader('Cache-Control', cacheControl);
   if (size === 0) {
     response.statusCode = 200;
     response.setHeader('Content-Type', mimeTypes[extname(filePath)] || 'application/octet-stream');
@@ -109,6 +118,7 @@ createServer((request, response) => {
     }
     response.statusCode = 200;
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
+    response.setHeader('Cache-Control', NO_CACHE);
     response.setHeader('Content-Length', Buffer.byteLength(body));
     response.end(body);
     return;
@@ -119,7 +129,7 @@ createServer((request, response) => {
     const candidate = resolve(gameAssetsDirectory, relativePath);
     const safeCandidate = candidate.startsWith(`${gameAssetsDirectory}${sep}`) ? candidate : '';
     if (safeCandidate && existsSync(safeCandidate) && !statSync(safeCandidate).isDirectory()) {
-      sendFile(request, response, safeCandidate, true);
+      sendFile(request, response, safeCandidate, true, IMMUTABLE_CACHE);
       return;
     }
     response.statusCode = 404;
@@ -140,7 +150,13 @@ createServer((request, response) => {
     return;
   }
 
-  sendFile(request, response, filePath);
+  sendFile(
+    request,
+    response,
+    filePath,
+    false,
+    relativePath.startsWith('assets/') ? IMMUTABLE_CACHE : NO_CACHE,
+  );
 }).listen(port, '127.0.0.1', () => {
   console.log(`PRAXXA HLTV Player: http://127.0.0.1:${port}`);
 });

@@ -1,7 +1,7 @@
 import {
   FRAG_REEL_CONTINUOUS_GAP_MS,
-  FRAG_REEL_POSTROLL_MS,
   FRAG_REEL_PREROLL_MS,
+  fragReelEndTimeMs,
   type FragReelEvent,
 } from '/@/demo/frag-reel';
 
@@ -134,7 +134,7 @@ export const buildFragMovieTimeline = (
 
   for (const [index, event] of events.entries()) {
     const startTimeMs = Math.max(0, event.demoTimeMs - FRAG_REEL_PREROLL_MS);
-    const endTimeMs = event.demoTimeMs + FRAG_REEL_POSTROLL_MS;
+    const endTimeMs = fragReelEndTimeMs(event);
     const previousEvent = events[index - 1];
     const activeClip = clips.at(-1);
     const gapFromPreviousMs = previousEvent
@@ -143,9 +143,12 @@ export const buildFragMovieTimeline = (
     const sameFirstPersonTarget = previousEvent
       && previousEvent.killerPlayerId != null
       && previousEvent.killerPlayerId === event.killerPlayerId;
+    const previousEndTimeMs = previousEvent
+      ? fragReelEndTimeMs(previousEvent)
+      : Number.NEGATIVE_INFINITY;
     const alreadyShownByPreviousCamera = sameFirstPersonTarget
-      && gapFromPreviousMs <= FRAG_REEL_POSTROLL_MS;
-    const nextFragIsStillAheadWhenPostrollEnds = gapFromPreviousMs > FRAG_REEL_POSTROLL_MS;
+      && event.demoTimeMs <= previousEndTimeMs;
+    const nextFragIsStillAheadWhenPostrollEnds = event.demoTimeMs > previousEndTimeMs;
     const continuous = previousEvent
       && activeClip
       && gapFromPreviousMs <= FRAG_REEL_CONTINUOUS_GAP_MS
