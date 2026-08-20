@@ -500,11 +500,12 @@
                   <button
                     class="frag-play"
                     type="button"
+                    :data-frag-play-id="death.eventId"
                     :disabled="!canLaunch"
                     :aria-label="`Play frag ${index + 1}`"
                     :title="canLaunch ? 'Play from three seconds before the frag' : 'Open a demo first'"
                     @click.stop="playFrag(death)"
-                  ><span aria-hidden="true">▶</span></button>
+                  ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
                 </div>
                 <div
                   v-if="expandedFragScoreId === death.eventId"
@@ -539,7 +540,7 @@
             </div>
             <p class="analysis-footnote">
               {{ analysisCacheHit ? 'Loaded from the local index.' : 'Analyzed and saved locally.' }}
-              Click a frag to start three seconds before the event.
+              Use the Play button to watch one frag from three seconds before the event.
             </p>
 
             <section class="movie-export-section" aria-labelledby="playlist-add-heading">
@@ -996,6 +997,12 @@
     buffer: ArrayBuffer;
     analysis: DemoAnalysisIndex;
   };
+  type WorkspaceViewSnapshot = {
+    windowX: number;
+    windowY: number;
+    focusEventId: string;
+    scrollAreas: Array<{ selector: string; left: number; top: number }>;
+  };
 
   const MOVIE_EXPORT_DIAGNOSTICS_KEY = 'replay-lab-movie-export-diagnostics-v1';
   const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
@@ -1085,6 +1092,7 @@
   const playlistRunItems = shallowRef<FragPlaylistItem[]>([]);
   const playlistRunCursor = ref(0);
   const playlistTransitioning = ref(false);
+  const standaloneFragEndTimeMs = ref<number>();
   let hudClockFrame = 0;
   let analysisRequest = 0;
   let assetRequest = 0;
@@ -1103,6 +1111,7 @@
   let playlistSuppressRoute = false;
   let playlistRunGeneration = 0;
   let playlistTransitionPromise: Promise<void> | undefined;
+  let workspaceViewSnapshot: WorkspaceViewSnapshot | undefined;
   const playlistDemoBundles = new Map<string, Promise<PlaylistDemoBundle>>();
   const verifiedWallbangEventIds = shallowRef<ReadonlySet<string>>(new Set());
   let activeScoringMapBuffer: ArrayBuffer | undefined;
@@ -2273,6 +2282,7 @@
     hudNow.value = now;
     completePlaylistTransition();
     void startMovieRecorderIfReady();
+    updateStandaloneFragPlayback();
     if (!updateMovieAutomaticScoreboard(now)) updateFragReel();
     updateMovieExportProgress();
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
@@ -2812,13 +2822,53 @@
     if (engineStarted.value || engineVisible.value || DemoEngine.running) closeEngine();
   };
 
+  const captureWorkspaceView = (focusEventId: string): WorkspaceViewSnapshot => ({
+    windowX: window.scrollX,
+    windowY: window.scrollY,
+    focusEventId,
+    scrollAreas: ['.archive-list', '.frag-list', '.playlist-items'].flatMap((selector) => {
+      const element = document.querySelector<HTMLElement>(selector);
+      return element
+        ? [{ selector, left: element.scrollLeft, top: element.scrollTop }]
+        : [];
+    }),
+  });
+
+  const restoreWorkspaceView = async (snapshot: WorkspaceViewSnapshot) => {
+    await nextTick();
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    for (const area of snapshot.scrollAreas) {
+      const element = document.querySelector<HTMLElement>(area.selector);
+      element?.scrollTo({ left: area.left, top: area.top, behavior: 'instant' });
+    }
+    window.scrollTo({ left: snapshot.windowX, top: snapshot.windowY, behavior: 'instant' });
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    window.scrollTo({ left: snapshot.windowX, top: snapshot.windowY, behavior: 'instant' });
+    const playButton = [...document.querySelectorAll<HTMLButtonElement>('[data-frag-play-id]')]
+      .find((button) => button.dataset.fragPlayId === snapshot.focusEventId);
+    playButton?.focus({ preventScroll: true });
+  };
+
   const playFrag = (death: DeathEvent) => {
     stopEngineBeforeLaunch();
+    workspaceViewSnapshot = captureWorkspaceView(death.eventId);
     fragReelActive.value = false;
     selectedFragId.value = death.eventId;
-    const startAtMs = Math.max(0, death.demoTimeMs - 3_000);
+    const playbackDeath = withFragReelDeathCutoffs([death], deathEvents.value)[0] ?? death;
+    standaloneFragEndTimeMs.value = fragReelEndTimeMs(playbackDeath);
+    const startAtMs = Math.max(0, death.demoTimeMs - FRAG_REEL_PREROLL_MS);
     hudPlaybackStartMs.value = startAtMs;
     void launchDemo(startAtMs, killerCameraFor(death, startAtMs));
+  };
+
+  const updateStandaloneFragPlayback = () => {
+    if (standaloneFragEndTimeMs.value === undefined
+      || launching.value
+      || seeking.value
+      || !engineStarted.value
+      || hudDemoTimeMs.value < standaloneFragEndTimeMs.value) return;
+    standaloneFragEndTimeMs.value = undefined;
+    closeEngine();
   };
 
   const playMatch = () => {
@@ -3286,6 +3336,9 @@
   };
 
   function closeEngine() {
+    const returnView = workspaceViewSnapshot;
+    workspaceViewSnapshot = undefined;
+    standaloneFragEndTimeMs.value = undefined;
     if (scoreboardHeld.value && engineStarted.value) DemoEngine.execute('-showscores');
     scoreboardHeld.value = false;
     movieAutomaticScoreboardVisible = false;
@@ -3308,6 +3361,7 @@
     movieEncoderCatchingUp.value = false;
     nativeFov.value = 90;
     nativeWeaponId.value = 0;
+    if (returnView) void restoreWorkspaceView(returnView);
   }
 
   const onUnhandledRejection = (event: PromiseRejectionEvent) => {

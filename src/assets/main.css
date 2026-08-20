@@ -563,7 +563,7 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .frag-header,
 .frag-row {
   display: grid;
-  grid-template-columns: 72px 28px 70px minmax(250px, 1.6fr) minmax(90px, .6fr) 54px 78px 56px;
+  grid-template-columns: 72px 28px 70px minmax(220px, 1.6fr) minmax(82px, .6fr) 54px 78px 96px;
   align-items: center;
   gap: 11px;
   padding: 0 16px;
@@ -573,7 +573,6 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .movie-select-all input { width: 13px; height: 13px; margin: 0; accent-color: var(--acid); cursor: pointer; }
 .movie-select-all:has(input:disabled) { cursor: not-allowed; opacity: .45; }
 .frag-row { width: 100%; min-height: 46px; border: 0; border-bottom: 1px solid #1f231f; color: #a7aea4; background: transparent; text-align: left; cursor: default; font: 9px ui-monospace, monospace; }
-.frag-row:hover { background: rgba(200,245,66,.045); }
 .frag-row.selected { box-shadow: inset 2px 0 var(--acid); background: rgba(200,245,66,.065); }
 .frag-row.disabled { opacity: .68; }
 .movie-frag-checkbox { height: 100%; display: grid; place-items: center; cursor: pointer; }
@@ -596,19 +595,24 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
    i underkant mot riktlinjen om 44px, därför växer den i mobilbrytpunkten. */
 .frag-play {
   width: 100%;
-  height: 34px;
-  display: grid;
-  place-items: center;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   padding: 0;
   color: #11140d;
   border: 0;
-  border-radius: 2px;
   background: var(--acid);
   cursor: pointer;
-  font-size: 12px;
+  font: 850 9px ui-monospace, monospace;
   line-height: 1;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
   transition: background .12s ease, transform .12s ease;
 }
+.frag-play .play-icon { border-top-width: 5px; border-bottom-width: 5px; border-left-width: 8px; }
 .frag-play:hover:not(:disabled) { background: #dbff5c; }
 .frag-play:active:not(:disabled) { transform: scale(.94); }
 .frag-play:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -677,7 +681,7 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .movie-intro-toggle:has(input:disabled) { opacity: .55; cursor: default; }
 .movie-export-section .movie-export-notice { color: var(--acid); }
 .movie-export-section .movie-export-error { color: #ff8a76; }
-.playlist-project { margin: 0 29px 26px; border: 1px solid #30372d; background: #090c09; box-shadow: 0 22px 60px rgba(0,0,0,.32); }
+.playlist-project { margin: 28px 0 26px; border: 1px solid #30372d; background: #090c09; box-shadow: 0 22px 60px rgba(0,0,0,.32); }
 .playlist-project-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; padding: 20px 22px; border-bottom: 1px solid #293027; background: linear-gradient(100deg, rgba(200,245,66,.08), transparent 58%); }
 .playlist-project-heading h2 { margin: 4px 0; color: #e0e5dc; font-size: 19px; }
 .playlist-project-heading span { color: #737b70; font: 8px/1.5 ui-monospace, monospace; }
@@ -823,6 +827,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
 .interface-quakenet .frag-header { color: #536273; background: #e9e7dc; }
 .interface-quakenet .frag-row { color: #354657; background: #fff; }
 .interface-quakenet .frag-row.selected { background: #dceaff; }
+.interface-quakenet .frag-play { border: 1px solid #1248a5; color: #fff; background: linear-gradient(#4388f3, #1657cc); box-shadow: inset 0 0 0 1px #78a8ef; clip-path: none; }
+.interface-quakenet .frag-play:disabled { border-color: #aca899; color: #777; background: #dedbd1; box-shadow: none; }
 .interface-quakenet .frag-row time,
 .interface-quakenet .frag-players b,
 .interface-quakenet .frag-weapon { color: #26384a; }
@@ -980,7 +986,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .highlight-overview { grid-template-columns: 1fr; }
   .highlight-overview > section + section { border-top: 1px solid #262b25; border-left: 0; }
   .frag-header,
-  .frag-row { grid-template-columns: 64px 26px 62px minmax(200px, 1fr) minmax(78px, .6fr) 48px 66px 52px; }
+  .frag-row { grid-template-columns: 64px 26px 62px minmax(180px, 1fr) minmax(72px, .6fr) 48px 66px 88px; }
   .frag-filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .frag-reel-launcher { align-items: stretch; flex-direction: column; }
   .frag-reel-controls { justify-content: flex-start; }
@@ -1011,7 +1017,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .privacy-note { display: none; }
   .compatibility-strip { margin-left: 16px; margin-right: 16px; }
   .analysis-panel { margin-left: 16px; margin-right: 16px; }
-  .playlist-project { margin-left: 16px; margin-right: 16px; }
+  .playlist-project { margin-left: 0; margin-right: 0; }
   .playlist-project-meta { grid-template-columns: 1fr 1fr; }
   .playlist-project-meta > label { grid-column: 1 / -1; }
   .playlist-item { grid-template-columns: 28px minmax(140px, 1fr) 34px; }
@@ -1021,7 +1027,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .analysis-stats { width: 100%; justify-content: space-between; gap: 8px; }
   .frag-filter-fields { grid-template-columns: 1fr; }
   .frag-header,
-  .frag-row { grid-template-columns: 46px 20px 48px minmax(120px, 1fr) 42px 46px; }
+  .frag-row { grid-template-columns: 46px 20px 48px minmax(110px, 1fr) 42px 72px; }
   .frag-row { min-height: 52px; }
   .frag-play { height: 44px; font-size: 14px; }
   .frag-header > :nth-child(5),
