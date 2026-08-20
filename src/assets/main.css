@@ -750,6 +750,8 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .playlist-run-controls { justify-content: flex-end; align-items: end; }
 .playlist-run-controls label { display: grid; gap: 5px; }
 .playlist-run-controls select { height: 34px; padding: 0 9px; color: #d4d9d1; border: 1px solid #394136; background: #0b0f0b; font: 8px ui-monospace, monospace; }
+.playlist-run-controls .movie-quality-help { max-width: 310px; color: #5f675d; font: 7px/1.45 ui-monospace, monospace; letter-spacing: 0; text-transform: none; }
+.playlist-run-controls .movie-quality-help.active { color: var(--acid); }
 .playlist-run-controls .movie-intro-toggle { height: 34px; display: flex; align-items: center; padding: 0 9px; border: 1px solid #394136; }
 .playlist-run-controls .playlist-play-button, .playlist-run-controls .playlist-export-button { min-height: 38px; border-color: var(--acid); color: #0a0d09; background: var(--acid); font-weight: 850; }
 .playlist-run-controls .playlist-play-button { display: flex; align-items: center; gap: 8px; }

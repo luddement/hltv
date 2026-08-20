@@ -487,10 +487,10 @@
                     class="frag-play highlight-play"
                     type="button"
                     :data-preview-play-id="`round:${rating.roundId}-${rating.team}`"
-                    :disabled="!canLaunch"
-                    :aria-label="`Play ${roundLabel(rating.roundId)} for ${roundTeamLabel(rating)}`"
+                    :disabled="!canLaunch || !roundPlaybackDeaths(rating).length"
+                    :aria-label="`Play ${roundPlaybackDeaths(rating).length} winning-team frags from ${roundLabel(rating.roundId)} for ${roundTeamLabel(rating)}`"
                     @click="playRatedRound(rating)"
-                  ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
+                  ><span class="play-icon" aria-hidden="true"></span><span>Play {{ roundPlaybackDeaths(rating).length }}</span></button>
                 </div>
               </section>
             </div>
@@ -788,6 +788,9 @@
               <select v-model="movieQualityId" :disabled="movieExportRunning">
                 <option v-for="quality in MOVIE_QUALITIES" :key="quality.id" :value="quality.id">{{ quality.label }}</option>
               </select>
+              <small :class="['movie-quality-help', { active: movieQuality.fps === 120 }]">
+                120 FPS requires a 120 Hz display and browser rendering at 120 Hz; otherwise frames may be duplicated.
+              </small>
             </label>
             <label class="movie-intro-toggle">
               <input v-model="movieIncludeIntro" type="checkbox" :disabled="movieExportRunning" @change="saveMovieIntroPreference" />
@@ -1215,7 +1218,9 @@
   const interfaceTheme = ref<InterfaceTheme>('replay');
   const scoreboardHeld = ref(false);
   const fragReelActive = ref(false);
-  const fragReelSource = ref<'playback' | 'movie' | 'playlist' | 'playlist-movie'>('playback');
+  const fragReelSource = ref<'playback' | 'movie' | 'round' | 'playlist' | 'playlist-movie'>('playback');
+  const roundFragDeaths = shallowRef<DeathEvent[]>([]);
+  const roundFragTeamLabel = ref('');
   const fragReelSeeking = ref(false);
   const fragReelIndex = ref(0);
   const hudPlaybackStartMs = ref(0);
@@ -1516,6 +1521,19 @@
       || logicalTeamIdForPlayer(moment.killerPlayerId) === highlightTeam.value)
     .sort((left, right) => right.rating.score - left.rating.score)
     .slice(0, 5));
+  const roundPlaybackDeaths = (rating: RoundRating): DeathEvent[] => {
+    const perspective = analysisIndex.value?.demo.perspective.kind;
+    if (!perspective) return [];
+    const eligibleDeaths = deathEvents.value
+      .filter((death) => death.roundId === rating.roundId)
+      .filter((death) => fragRatingById.value.get(death.eventId)?.team === rating.team)
+      .filter((death) => isFragReelEligible(
+        perspective,
+        fragRatingById.value.get(death.eventId)?.visibility,
+      ))
+      .sort((left, right) => left.demoTimeMs - right.demoTimeMs);
+    return withFragReelDeathCutoffs(eligibleDeaths, deathEvents.value);
+  };
   const topRounds = computed(() => [...(analysisIndex.value?.roundRatings ?? [])]
     .filter((rating) => rating.score > 0)
     .filter((rating) => {
@@ -1626,9 +1644,11 @@
   ));
   const activeFragReelDeaths = computed(() => playlistMode.value
     ? playlistSegmentDeaths.value
-    : fragReelSource.value === 'movie'
-      ? movieFragDeaths.value
-      : fragReelDeaths.value);
+    : fragReelSource.value === 'round'
+      ? roundFragDeaths.value
+      : fragReelSource.value === 'movie'
+        ? movieFragDeaths.value
+        : fragReelDeaths.value);
   const fragReelDisplayIndex = computed(() => playlistMode.value
     ? playlistRunCursor.value + fragReelIndex.value + 1
     : fragReelIndex.value + 1);
@@ -1650,11 +1670,13 @@
   });
   const fragReelTeamLabel = computed(() => playlistMode.value
     ? fragPlaylist.value.title
-    : fragPlayer.value !== 'all'
-      ? playerLabel(fragPlayer.value)
-      : highlightTeam.value === 'all'
-        ? logicalMatchupLabel.value
-        : logicalTeamName(highlightTeam.value));
+    : fragReelSource.value === 'round'
+      ? roundFragTeamLabel.value
+      : fragPlayer.value !== 'all'
+        ? playerLabel(fragPlayer.value)
+        : highlightTeam.value === 'all'
+          ? logicalMatchupLabel.value
+          : logicalTeamName(highlightTeam.value));
   const fragReelTeamShortLabel = computed(() => playlistMode.value
     ? 'Playlist'
     : fragPlayer.value !== 'all'
@@ -3669,16 +3691,27 @@
 
   const playRatedRound = (rating: RoundRating) => {
     const round = analysisIndex.value?.rounds.find((entry) => entry.roundId === rating.roundId);
-    if (round) {
-      stopEngineBeforeLaunch();
-      workspaceViewSnapshot = captureWorkspaceView(`round:${rating.roundId}-${rating.team}`);
-      fragReelActive.value = false;
-      standaloneFragEndTimeMs.value = round.endTimeMs
-        ?? analysisIndex.value?.demo.durationMs
-        ?? round.startTimeMs;
-      hudPlaybackStartMs.value = Math.max(0, round.startTimeMs - 1_000);
-      void launchDemo(hudPlaybackStartMs.value);
-    }
+    const winningDeaths = roundPlaybackDeaths(rating);
+    const first = winningDeaths[0];
+    if (!round || !first) return;
+    stopEngineBeforeLaunch();
+    workspaceViewSnapshot = captureWorkspaceView(`round:${rating.roundId}-${rating.team}`);
+    fragReelSource.value = 'round';
+    roundFragDeaths.value = winningDeaths;
+    roundFragTeamLabel.value = `${roundTeamLabel(rating)} · ${roundLabel(rating.roundId)} winner`;
+    fragReelActive.value = true;
+    fragReelSeeking.value = false;
+    fragReelIndex.value = 0;
+    standaloneFragEndTimeMs.value = undefined;
+    movieScoreboardsShown.clear();
+    movieScoreboardStartFrame = 0;
+    setMovieAutomaticScoreboard(false);
+    selectedFragId.value = first.eventId;
+    const startAtMs = Math.max(0, first.demoTimeMs - FRAG_REEL_PREROLL_MS);
+    hudPlaybackStartMs.value = startAtMs;
+    const camera = killerCameraFor(first, startAtMs);
+    if (camera?.nativeHltv) camera.activateAfterMs = 0;
+    void launchDemo(startAtMs, camera);
   };
 
   function closeEngine() {

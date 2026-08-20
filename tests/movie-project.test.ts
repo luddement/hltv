@@ -105,6 +105,8 @@ describe('frag movie project', () => {
   it('offers a high-bitrate max-HQ profile with display-safe frame pacing', () => {
     expect(MOVIE_QUALITIES.find((quality) => quality.id === 'max-hq'))
       .toMatchObject({ width: 2560, height: 1440, fps: 60, videoBitsPerSecond: 36_000_000 });
+    expect(MOVIE_QUALITIES.find((quality) => quality.id === 'max-hq-120'))
+      .toMatchObject({ width: 2560, height: 1440, fps: 120, videoBitsPerSecond: 72_000_000 });
   });
 
   it('offers real 120 FPS motion profiles at 720p and 1080p', () => {
