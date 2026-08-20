@@ -337,13 +337,10 @@
                   <div><span>Highlights</span><strong>Best playable moments</strong></div>
                   <small>{{ analysisPerspectiveLabel }}</small>
                 </div>
-                <button
+                <div
                   v-for="moment in topMoments"
                   :key="moment.momentId"
                   class="highlight-card"
-                  type="button"
-                  :disabled="!canLaunch"
-                  @click="playMoment(moment)"
                 >
                   <span class="score-badge">{{ moment.rating.score }}</span>
                   <span class="highlight-copy">
@@ -351,20 +348,25 @@
                     <small>{{ moment.rating.reasons.slice(0, 2).map(scoreReasonLabel).join(' · ') }}</small>
                   </span>
                   <span class="highlight-meta">{{ logicalTeamNameForPlayer(moment.killerPlayerId) }} · {{ momentVisibilityLabel(moment) }}</span>
-                </button>
+                  <button
+                    class="frag-play highlight-play"
+                    type="button"
+                    :data-preview-play-id="`moment:${moment.momentId}`"
+                    :disabled="!canLaunch"
+                    :aria-label="`Play highlight with ${moment.eventIds.length} ${moment.eventIds.length === 1 ? 'frag' : 'frags'}`"
+                    @click="playMoment(moment)"
+                  ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
+                </div>
               </section>
               <section>
                 <div class="highlight-title">
                   <div><span>Rounds</span><strong>Best team rounds</strong></div>
                   <small>0–100</small>
                 </div>
-                <button
+                <div
                   v-for="rating in topRounds"
                   :key="`${rating.roundId}-${rating.team}`"
                   class="highlight-card"
-                  type="button"
-                  :disabled="!canLaunch"
-                  @click="playRatedRound(rating)"
                 >
                   <span class="score-badge">{{ rating.score }}</span>
                   <span class="highlight-copy">
@@ -372,7 +374,15 @@
                     <small>{{ rating.reasons.slice(0, 2).map(scoreReasonLabel).join(' · ') || 'Limited information' }}</small>
                   </span>
                   <span class="highlight-meta">{{ Math.round(rating.confidence * 100) }}% confidence</span>
-                </button>
+                  <button
+                    class="frag-play highlight-play"
+                    type="button"
+                    :data-preview-play-id="`round:${rating.roundId}-${rating.team}`"
+                    :disabled="!canLaunch"
+                    :aria-label="`Play ${roundLabel(rating.roundId)} for ${roundTeamLabel(rating)}`"
+                    @click="playRatedRound(rating)"
+                  ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
+                </div>
               </section>
             </div>
 
@@ -501,6 +511,7 @@
                     class="frag-play"
                     type="button"
                     :data-frag-play-id="death.eventId"
+                    :data-preview-play-id="death.eventId"
                     :disabled="!canLaunch"
                     :aria-label="`Play frag ${index + 1}`"
                     :title="canLaunch ? 'Play from three seconds before the frag' : 'Open a demo first'"
@@ -1000,7 +1011,7 @@
   type WorkspaceViewSnapshot = {
     windowX: number;
     windowY: number;
-    focusEventId: string;
+    focusTargetId: string;
     scrollAreas: Array<{ selector: string; left: number; top: number }>;
   };
 
@@ -2822,10 +2833,10 @@
     if (engineStarted.value || engineVisible.value || DemoEngine.running) closeEngine();
   };
 
-  const captureWorkspaceView = (focusEventId: string): WorkspaceViewSnapshot => ({
+  const captureWorkspaceView = (focusTargetId: string): WorkspaceViewSnapshot => ({
     windowX: window.scrollX,
     windowY: window.scrollY,
-    focusEventId,
+    focusTargetId,
     scrollAreas: ['.archive-list', '.frag-list', '.playlist-items'].flatMap((selector) => {
       const element = document.querySelector<HTMLElement>(selector);
       return element
@@ -2844,8 +2855,8 @@
     window.scrollTo({ left: snapshot.windowX, top: snapshot.windowY, behavior: 'instant' });
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     window.scrollTo({ left: snapshot.windowX, top: snapshot.windowY, behavior: 'instant' });
-    const playButton = [...document.querySelectorAll<HTMLButtonElement>('[data-frag-play-id]')]
-      .find((button) => button.dataset.fragPlayId === snapshot.focusEventId);
+    const playButton = [...document.querySelectorAll<HTMLButtonElement>('[data-preview-play-id]')]
+      .find((button) => button.dataset.previewPlayId === snapshot.focusTargetId);
     playButton?.focus({ preventScroll: true });
   };
 
@@ -3316,10 +3327,23 @@
   };
 
   const playMoment = (moment: HighlightMoment) => {
+    stopEngineBeforeLaunch();
+    workspaceViewSnapshot = captureWorkspaceView(`moment:${moment.momentId}`);
     fragReelActive.value = false;
     selectedFragId.value = moment.eventIds[0] ?? '';
+    const momentDeaths = withFragReelDeathCutoffs(
+      moment.eventIds.flatMap((eventId) => {
+        const death = deathEvents.value.find((entry) => entry.eventId === eventId);
+        return death ? [death] : [];
+      }),
+      deathEvents.value,
+    );
+    const finalDeath = momentDeaths.at(-1);
+    standaloneFragEndTimeMs.value = finalDeath
+      ? fragReelEndTimeMs(finalDeath)
+      : moment.endTimeMs;
     hudPlaybackStartMs.value = moment.startTimeMs;
-    const death = deathEvents.value.find((entry) => entry.eventId === moment.eventIds[0]);
+    const death = momentDeaths[0];
     void launchDemo(
       moment.startTimeMs,
       death ? killerCameraFor(death, moment.startTimeMs) : undefined,
@@ -3327,9 +3351,14 @@
   };
 
   const playRatedRound = (rating: RoundRating) => {
-    fragReelActive.value = false;
     const round = analysisIndex.value?.rounds.find((entry) => entry.roundId === rating.roundId);
     if (round) {
+      stopEngineBeforeLaunch();
+      workspaceViewSnapshot = captureWorkspaceView(`round:${rating.roundId}-${rating.team}`);
+      fragReelActive.value = false;
+      standaloneFragEndTimeMs.value = round.endTimeMs
+        ?? analysisIndex.value?.demo.durationMs
+        ?? round.startTimeMs;
       hudPlaybackStartMs.value = Math.max(0, round.startTimeMs - 1_000);
       void launchDemo(hudPlaybackStartMs.value);
     }
