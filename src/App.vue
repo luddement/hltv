@@ -2952,6 +2952,7 @@
         // their recorded overview camera can sit outside the BSP world.
         isHltv: analysisIndex.value?.demo.isHltv ?? selectedDemo.isHltv,
         captureFrames: movieExportRunning.value,
+        targetFps: movieExportRunning.value ? movieQuality.value.fps : undefined,
         renderSize: movieExportRunning.value ? {
           width: movieQuality.value.width,
           height: movieQuality.value.height,

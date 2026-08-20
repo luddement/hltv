@@ -72,7 +72,7 @@ export const prepareMovieOutput = async (
 ): Promise<PreparedMovieOutput> => {
   const container = preferredMovieContainer();
   if (!container) {
-    throw new Error('This browser does not provide the WebCodecs support required for stable 60 FPS export.');
+    throw new Error('This browser does not provide the WebCodecs support required for high-frame-rate export.');
   }
   const filename = `${filenameWithoutExtension}.${container.extension}`;
   const picker = (window as SaveFileWindow).showSaveFilePicker;
@@ -289,6 +289,8 @@ export class MovieRecorder {
     const codec = ((width >= 3840 || height >= 2160) && fps >= 60)
       || ((width >= 2560 || height >= 1440) && fps > 60)
       ? 'avc1.640034'
+      : ((width >= 1920 || height >= 1080) && fps > 60)
+        ? 'avc1.640033'
       : width >= 2560 || height >= 1440
         ? 'avc1.640033'
       : width >= 1920 || height >= 1080

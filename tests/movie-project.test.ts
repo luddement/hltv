@@ -106,4 +106,11 @@ describe('frag movie project', () => {
     expect(MOVIE_QUALITIES.find((quality) => quality.id === 'max-hq'))
       .toMatchObject({ width: 2560, height: 1440, fps: 60, videoBitsPerSecond: 36_000_000 });
   });
+
+  it('offers real 120 FPS motion profiles at 720p and 1080p', () => {
+    expect(MOVIE_QUALITIES.find((quality) => quality.id === '720p-120'))
+      .toMatchObject({ width: 1280, height: 720, fps: 120, videoBitsPerSecond: 16_000_000 });
+    expect(MOVIE_QUALITIES.find((quality) => quality.id === '1080p-120'))
+      .toMatchObject({ width: 1920, height: 1080, fps: 120, videoBitsPerSecond: 28_000_000 });
+  });
 });

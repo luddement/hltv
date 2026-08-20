@@ -28,6 +28,7 @@ export type DemoEngineOptions = {
   compatibilityProfile: DemoCompatibilityProfile;
   isHltv: boolean;
   captureFrames?: boolean;
+  targetFps?: number;
   renderSize?: { width: number; height: number };
   startAtMs?: number;
   reconstructionCamera?: {
@@ -153,7 +154,7 @@ class DemoEngine {
       '+fps_override',
       '1',
       '+fps_max',
-      '100',
+      String(Math.max(100, Math.round(options.targetFps ?? 100))),
       '+volume',
       '0.08',
       '+playdemo',
