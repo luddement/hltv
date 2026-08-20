@@ -719,6 +719,7 @@
 
     <section v-show="engineVisible" :class="['engine-stage', `hud-${hudPreset}`]">
       <canvas
+        :key="engineCanvasGeneration"
         ref="engineCanvas"
         id="canvas"
         class="engine-canvas emscripten"
@@ -1053,6 +1054,8 @@
   const folderInput = ref<HTMLInputElement>();
   const playlistImportInput = ref<HTMLInputElement>();
   const engineCanvas = ref<HTMLCanvasElement>();
+  const engineCanvasGeneration = ref(0);
+  let engineCanvasCaptureReady = false;
   const demoInfo = ref<GoldSrcDemo>();
   const demoSource = ref<DemoSource>();
   // Utan startdemo pågår ingen laddning; annars fastnar UI:t i väntläge.
@@ -2741,6 +2744,15 @@
     seeking.value = startAtMs > 0;
     nativeFov.value = 90;
     nativeWeaponId.value = 0;
+    // WebGL context attributes are immutable. A canvas first used for normal
+    // playback cannot later be upgraded to preserveDrawingBuffer for movie
+    // capture. Replace it once when capture is first requested, then retain
+    // that readable surface across playlist demo transitions because the
+    // active recorder intentionally keeps the same canvas as its video source.
+    if (movieExportRunning.value && !engineCanvasCaptureReady) {
+      engineCanvasGeneration.value += 1;
+      engineCanvasCaptureReady = true;
+    }
     await nextTick();
 
     try {
