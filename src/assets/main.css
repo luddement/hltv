@@ -301,7 +301,7 @@
 .archive-heading h2 { margin-top: 5px; color: #d5dad2; font-size: 18px; letter-spacing: -.025em; }
 .archive-heading small { display: block; margin-top: 6px; color: #70776e; font: 8px/1.5 ui-monospace, monospace; }
 .archive-result-count { color: var(--acid); font: 9px ui-monospace, monospace; text-transform: uppercase; white-space: nowrap; }
-.archive-filters { display: grid; grid-template-columns: minmax(240px, 1fr) 140px 210px; gap: 12px; padding: 0 29px 17px; }
+.archive-filters { display: grid; grid-template-columns: minmax(240px, 1fr) 160px; gap: 12px; padding: 0 29px 17px; }
 .archive-filters label { min-width: 0; display: grid; gap: 5px; }
 .archive-filters label > span { color: #70766e; font: 8px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
 .archive-filters input,
@@ -315,6 +315,10 @@ button.archive-row { cursor: pointer; }
 button.archive-row:hover:not(:disabled) { background: rgba(200,245,66,.05); }
 button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .archive-row-header { position: sticky; top: 0; z-index: 2; min-height: 28px; padding-top: 0; padding-bottom: 0; color: #626961; background: #0c0f0c; font-size: 8px; text-transform: uppercase; }
+.archive-sort-heading { display: inline-flex; align-items: center; gap: 5px; width: max-content; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-transform: inherit; cursor: pointer; }
+.archive-sort-heading span { color: #525a50; font-size: 9px; }
+.archive-sort-heading:hover, .archive-sort-heading.active { color: var(--acid); }
+.archive-sort-heading.active span { color: var(--acid); }
 .archive-row time { color: #c4cac1; font-variant-numeric: tabular-nums; }
 .archive-match { min-width: 0; display: grid; gap: 3px; }
 .archive-match strong { overflow: hidden; color: #d1d6ce; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -972,8 +976,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .hero-grid { grid-template-columns: 1fr; gap: 26px; padding-top: 34px; }
   .signal-card { display: none; }
   .setup-columns { grid-template-columns: 1fr; gap: 16px; }
-  .archive-filters { grid-template-columns: 1fr 1fr; }
-  .archive-filters label:first-child { grid-column: 1 / -1; }
+  .archive-filters { grid-template-columns: minmax(0, 1fr) 140px; }
+  .archive-filters label:first-child { grid-column: auto; }
   .archive-row { grid-template-columns: 92px minmax(210px, 1fr) 70px 70px 52px; }
   .archive-row > :nth-child(3) { display: none; }
   .connector { display: none; }

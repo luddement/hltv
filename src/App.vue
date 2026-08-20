@@ -128,15 +128,6 @@
                 <option v-for="year in archiveYears" :key="year" :value="year">{{ year }}</option>
               </select>
             </label>
-            <label>
-              <span>Sort demos</span>
-              <select v-model="archiveSort">
-                <option value="date-desc">Newest first</option>
-                <option value="date-asc">Oldest first</option>
-                <option value="frag-desc">Highest frag score</option>
-                <option value="round-desc">Highest round score</option>
-              </select>
-            </label>
           </div>
 
           <div v-if="catalogLoading" class="archive-state">
@@ -146,7 +137,30 @@
           <template v-else>
             <div class="archive-list" role="table" aria-label="Indexed demos">
               <div class="archive-row archive-row-header" role="row">
-                <span>Date</span><span>Match</span><span>Map</span><span>Top frag</span><span>Top round</span><span></span>
+                <button
+                  :class="['archive-sort-heading', { active: archiveSort === 'date-desc' || archiveSort === 'date-asc' }]"
+                  type="button"
+                  :aria-label="archiveSort === 'date-desc' ? 'Sort oldest first' : 'Sort newest first'"
+                  :aria-pressed="archiveSort === 'date-desc' || archiveSort === 'date-asc'"
+                  @click="archiveSort = archiveSort === 'date-desc' ? 'date-asc' : 'date-desc'"
+                >Date <span aria-hidden="true">{{ archiveSort === 'date-asc' ? '↑' : '↓' }}</span></button>
+                <span>Match</span>
+                <span>Map</span>
+                <button
+                  :class="['archive-sort-heading', { active: archiveSort === 'frag-desc' }]"
+                  type="button"
+                  aria-label="Sort by highest frag score"
+                  :aria-pressed="archiveSort === 'frag-desc'"
+                  @click="archiveSort = 'frag-desc'"
+                >Top frag <span aria-hidden="true">↓</span></button>
+                <button
+                  :class="['archive-sort-heading', { active: archiveSort === 'round-desc' }]"
+                  type="button"
+                  aria-label="Sort by highest round score"
+                  :aria-pressed="archiveSort === 'round-desc'"
+                  @click="archiveSort = 'round-desc'"
+                >Top round <span aria-hidden="true">↓</span></button>
+                <span></span>
               </div>
               <button
                 v-for="entry in visibleArchiveDemos"
