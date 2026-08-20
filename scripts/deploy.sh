@@ -51,10 +51,20 @@ if [[ $do_app -eq 1 ]]; then
     "$APP/goldsrc-map-crc.mjs" "$APP/demo-assets.json" "$USER_AT:$REMOTE/app/"
 
   note "Byggd frontend (dist)"
-  # demo-index.json genereras PÅ SERVERN av index-demos.mjs och finns inte i
-  # det lokala bygget. Utan undantaget raderar --delete demokatalogen vid varje
-  # deploy, och sajten tappar hela arkivlistan tills indexeringen körts om.
-  "${RSYNC[@]}" --delete --exclude=demo-index.json "$APP/dist/" "$USER_AT:$REMOTE/app/dist/"
+  # demo-index.json och crew-index.json genereras PÅ SERVERN och finns inte i
+  # det lokala bygget. Utan undantagen raderar --delete dem vid varje deploy,
+  # och sajten tappar arkivlistan respektive spelarstatistiken tills de körts om.
+  "${RSYNC[@]}" --delete --exclude=demo-index.json --exclude=crew-index.json \
+    "$APP/dist/" "$USER_AT:$REMOTE/app/dist/"
+
+  # Indexeraren och crew-aggregeringen körs på servern och importerar från
+  # src/ via hltv-node.mjs. Utan den här synken kör servern gammal kod, eller
+  # kod som bara råkat kopieras dit för hand.
+  note "Analyskod som servern kör"
+  "${RSYNC[@]}" --delete "$APP/src/" "$USER_AT:$REMOTE/app/src/"
+  "${RSYNC[@]}" "$APP/scripts/hltv-node.mjs" "$APP/scripts/index-demos.mjs" \
+    "$APP/scripts/build-crew-index.mjs" "$APP/scripts/unpack-demo-zips.py" \
+    "$APP/scripts/repair-goldsrc-demos.py" "$USER_AT:$REMOTE/app/scripts/"
 
   note "Basresurser för motorn (game-assets)"
   "${RSYNC[@]}" "$APP/game-assets/" "$USER_AT:$REMOTE/game-assets/"
