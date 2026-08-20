@@ -397,6 +397,29 @@
           </article>
         </div>
 
+        <section class="hud-setup" aria-labelledby="hud-heading">
+          <div class="hud-setup-copy">
+            <p class="step-label">Presentation</p>
+            <h2 id="hud-heading">Choose HUD</h2>
+            <span>Can be changed during playback.</span>
+          </div>
+          <div class="hud-preset-grid" role="radiogroup" aria-label="HUD mode">
+            <button
+              v-for="preset in hudPresets"
+              :key="preset.id"
+              :class="['hud-preset-button', { active: hudPreset === preset.id }]"
+              type="button"
+              role="radio"
+              :aria-checked="hudPreset === preset.id"
+              @click="setHudPreset(preset.id)"
+            >
+              <i>{{ preset.short }}</i>
+              <strong>{{ preset.label }}</strong>
+              <small>{{ preset.detail }}</small>
+            </button>
+          </div>
+        </section>
+
         <div class="compatibility-strip">
           <span class="compat-icon">{{ demoInfo?.networkProtocol ?? '–' }}</span>
           <div>
@@ -684,29 +707,6 @@
               </div>
             </section>
           </template>
-        </section>
-
-        <section class="hud-setup" aria-labelledby="hud-heading">
-          <div class="hud-setup-copy">
-            <p class="step-label">Presentation</p>
-            <h2 id="hud-heading">Choose HUD</h2>
-            <span>Can be changed during playback.</span>
-          </div>
-          <div class="hud-preset-grid" role="radiogroup" aria-label="HUD mode">
-            <button
-              v-for="preset in hudPresets"
-              :key="preset.id"
-              :class="['hud-preset-button', { active: hudPreset === preset.id }]"
-              type="button"
-              role="radio"
-              :aria-checked="hudPreset === preset.id"
-              @click="setHudPreset(preset.id)"
-            >
-              <i>{{ preset.short }}</i>
-              <strong>{{ preset.label }}</strong>
-              <small>{{ preset.detail }}</small>
-            </button>
-          </div>
         </section>
 
         <div class="launch-row">
