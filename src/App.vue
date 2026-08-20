@@ -1519,8 +1519,17 @@
   const topRounds = computed(() => [...(analysisIndex.value?.roundRatings ?? [])]
     .filter((rating) => rating.score > 0)
     .filter((rating) => {
-      if (highlightTeam.value === 'all') return true;
       const round = analysisIndex.value?.rounds.find((entry) => entry.roundId === rating.roundId);
+      if (!round
+        || round.endTimeMs === null
+        || round.endTimeMs <= round.startTimeMs
+        || round.winner.value !== rating.team) return false;
+      const winningTeamFragCount = (analysisIndex.value?.fragRatings ?? []).filter((fragRating) =>
+        fragRating.team === rating.team
+        && deathEvents.value.find((death) => death.eventId === fragRating.eventId)?.roundId
+          === rating.roundId).length;
+      if (winningTeamFragCount > 5) return false;
+      if (highlightTeam.value === 'all') return true;
       return logicalTeamIdForSideAt(rating.team, round?.startTimeMs ?? 0) === highlightTeam.value;
     })
     .sort((left, right) => right.score - left.score)
