@@ -160,6 +160,13 @@
                   :aria-pressed="archiveSort === 'round-desc'"
                   @click="archiveSort = 'round-desc'"
                 >Top round <span aria-hidden="true">↓</span></button>
+                <button
+                  :class="['archive-sort-heading', { active: archiveSort === 'comments-desc' }]"
+                  type="button"
+                  aria-label="Sort by most comments"
+                  :aria-pressed="archiveSort === 'comments-desc'"
+                  @click="archiveSort = 'comments-desc'"
+                >Comments <span aria-hidden="true">↓</span></button>
                 <span></span>
               </div>
               <button
@@ -180,6 +187,35 @@
                 <span>{{ entry.map ?? '–' }}</span>
                 <b>{{ entry.topFragScore ?? '–' }}</b>
                 <b>{{ entry.topRoundScore ?? '–' }}</b>
+                <span
+                  :class="['archive-comment-cell', { populated: archiveCommentsFor(entry.path).count > 0 }]"
+                  :title="archiveCommentTitle(entry.path)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 4.5h14v10H9l-4 4v-14Z" />
+                  </svg>
+                  <b>{{ archiveCommentsFor(entry.path).count }}</b>
+                  <span class="archive-comment-tooltip">
+                    <strong>
+                      {{ archiveCommentsFor(entry.path).count
+                        ? `${archiveCommentsFor(entry.path).count} ${archiveCommentsFor(entry.path).count === 1 ? 'comment' : 'comments'}`
+                        : 'No comments yet' }}
+                    </strong>
+                    <template v-if="archiveCommentsFor(entry.path).count">
+                      <span
+                        v-for="comment in archiveCommentsFor(entry.path).comments.slice(-3).reverse()"
+                        :key="comment.id"
+                      >
+                        <b>{{ comment.nickname }}</b>
+                        <em>{{ comment.body }}</em>
+                      </span>
+                      <small v-if="archiveCommentsFor(entry.path).count > 3">
+                        +{{ archiveCommentsFor(entry.path).count - 3 }} more
+                      </small>
+                    </template>
+                    <small v-else>Open the match to start the conversation.</small>
+                  </span>
+                </span>
                 <span class="archive-open">
                   {{ archiveSelectionPath === entry.path ? 'Loading…' : entry.status === 'error' ? 'Error' : 'Open' }}
                 </span>
@@ -250,7 +286,10 @@
                   <span class="card-kicker">Match comments</span>
                   <h3>Notes from the archive</h3>
                 </div>
-                <span class="comment-count">{{ demoComments.length }}</span>
+                <span class="comment-count">
+                  <b>{{ demoComments.length }}</b>
+                  <span>{{ demoComments.length === 1 ? 'note' : 'notes' }}</span>
+                </span>
               </div>
 
               <form v-if="loadedDemoPath" class="comment-form" @submit.prevent="submitDemoComment">
@@ -273,7 +312,11 @@
                     placeholder="What should other viewers know about this match?"
                   ></textarea>
                 </label>
-                <button class="secondary-button comment-submit" type="submit" :disabled="commentSubmitting">
+                <button
+                  class="comment-submit"
+                  type="submit"
+                  :disabled="commentSubmitting || !commentNickname.trim() || !commentBody.trim()"
+                >
                   {{ commentSubmitting ? 'Saving…' : 'Post comment' }}
                 </button>
               </form>
@@ -426,8 +469,8 @@
               </section>
               <section>
                 <div class="highlight-title">
-                  <div><span>Rounds</span><strong>Best team rounds</strong></div>
-                  <small>0–100</small>
+                  <div><span>Rounds</span><strong>Best rounds by frags</strong></div>
+                  <small>Winning team · full round</small>
                 </div>
                 <div
                   v-for="rating in topRounds"
@@ -439,7 +482,7 @@
                     <strong>{{ roundLabel(rating.roundId) }} · {{ roundTeamLabel(rating) }}</strong>
                     <small>{{ rating.reasons.slice(0, 2).map(scoreReasonLabel).join(' · ') || 'Limited information' }}</small>
                   </span>
-                  <span class="highlight-meta">{{ Math.round(rating.confidence * 100) }}% confidence</span>
+                  <span class="highlight-meta">Winner only</span>
                   <button
                     class="frag-play highlight-play"
                     type="button"
@@ -1089,13 +1132,17 @@
     body: string;
     createdAt: string;
   };
+  type DemoCommentSummary = {
+    count: number;
+    comments: DemoComment[];
+  };
 
   const MOVIE_EXPORT_DIAGNOSTICS_KEY = 'replay-lab-movie-export-diagnostics-v1';
   const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
   const ARCHIVE_FILTERS_STORAGE_KEY = 'replay-lab-demo-archive-filters-v1';
   const COMMENT_NICKNAME_STORAGE_KEY = 'replay-lab-comment-nickname-v1';
   const archiveSortValues: readonly DemoCatalogSort[] = [
-    'date-desc', 'date-asc', 'frag-desc', 'round-desc',
+    'date-desc', 'date-asc', 'frag-desc', 'round-desc', 'comments-desc',
   ];
 
   const hudPresets: Array<{
@@ -1136,6 +1183,7 @@
   const commentsLoading = ref(false);
   const commentSubmitting = ref(false);
   const commentError = ref('');
+  const archiveComments = shallowRef<ReadonlyMap<string, DemoCommentSummary>>(new Map());
   let commentsRequest = 0;
   // archiveSelectionPath nollställs när laddningen är klar och duger därför
   // inte som adress. Den här behåller vilken katalogpost som visas.
@@ -1225,6 +1273,7 @@
     archiveSearch.value,
     archiveYear.value,
     archiveSort.value,
+    new Map([...archiveComments.value].map(([path, summary]) => [path, summary.count])),
   ));
   const visibleArchiveDemos = computed(() =>
     filteredArchiveDemos.value.slice(0, archiveResultLimit.value));
@@ -1753,6 +1802,30 @@
     window.localStorage.setItem(COMMENT_NICKNAME_STORAGE_KEY, commentNickname.value);
   };
 
+  const emptyCommentSummary: DemoCommentSummary = { count: 0, comments: [] };
+  const archiveCommentsFor = (demoPath: string): DemoCommentSummary =>
+    archiveComments.value.get(demoPath) ?? emptyCommentSummary;
+  const archiveCommentTitle = (demoPath: string): string => {
+    const summary = archiveCommentsFor(demoPath);
+    if (!summary.count) return 'No comments yet';
+    return summary.comments.map((comment) => `${comment.nickname}: ${comment.body}`).join('\n');
+  };
+
+  const loadArchiveComments = async () => {
+    try {
+      const response = await fetch('/api/demo-comments?scope=catalog');
+      const result = await response.json() as {
+        demos?: Array<DemoCommentSummary & { demoPath: string }>;
+      };
+      if (!response.ok) throw new Error(`Comments could not be loaded (${response.status}).`);
+      archiveComments.value = new Map(
+        (result.demos ?? []).map(({ demoPath, count, comments }) => [demoPath, { count, comments }]),
+      );
+    } catch {
+      // The archive remains usable if the optional comment service is unavailable.
+    }
+  };
+
   const loadDemoComments = async (demoPath: string) => {
     const request = ++commentsRequest;
     demoComments.value = [];
@@ -1795,6 +1868,11 @@
         throw new Error(result.error || `The comment could not be saved (${response.status}).`);
       }
       demoComments.value.push(result.comment);
+      const previous = archiveCommentsFor(demoPath);
+      archiveComments.value = new Map(archiveComments.value).set(demoPath, {
+        count: previous.count + 1,
+        comments: [...previous.comments, result.comment].slice(-5),
+      });
       commentBody.value = '';
     } catch (error) {
       commentError.value = error instanceof Error ? error.message : 'The comment could not be saved.';
@@ -3701,6 +3779,7 @@
     // Ingen demo laddas vid start om adressen inte pekar ut en. Katalogen
     // måste finnas först, eftersom en delad länk slås upp mot den.
     const initialRoute = parseReplayRoute(window.location.href);
+    void loadArchiveComments();
     void loadDemoCatalog().then(() => {
       if (initialRoute.demoPath) void applyReplayRoute(initialRoute);
     });

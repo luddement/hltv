@@ -128,8 +128,12 @@ describe('highlight scoring', () => {
     expect(clutchMoment?.eventIds).toEqual(['death-1', 'death-2', 'death-3']);
     expect(clutchMoment?.rating.score).toBeGreaterThanOrEqual(85);
     expect(clutchMoment?.rating.reasons.map((entry) => entry.code)).toContain('multi_kill');
-    expect(terroristRound?.score).toBeGreaterThanOrEqual(75);
-    expect(terroristRound?.reasons.map((entry) => entry.code)).toContain('clutch_round');
+    const winningFragTotal = result.fragRatings
+      .filter((rating) => rating.team === 'TERRORIST')
+      .reduce((total, rating) => total + rating.score, 0);
+    expect(terroristRound?.score).toBe(Math.round(winningFragTotal / 5));
+    expect(terroristRound?.reasons.map((entry) => entry.code)).toContain('winning_team_frags');
+    expect(result.roundRatings.map((rating) => rating.team)).toEqual(['TERRORIST']);
   });
 
   it('limits POV highlights to the focus team and marks teammate frags as killfeed-only', () => {

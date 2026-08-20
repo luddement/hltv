@@ -74,5 +74,18 @@ describe('demo comments store', () => {
       }),
     ]);
     expect(JSON.parse(readFileSync(commentsFile, 'utf8')).comments).toHaveLength(1);
+
+    const catalogRequest = new MockRequest();
+    catalogRequest.url = '/api/demo-comments?scope=catalog';
+    const catalogResponse = new MockResponse();
+    handleDemoCommentsRequest(catalogRequest, catalogResponse, { commentsFile, demosDirectory });
+    await catalogResponse.completed;
+    expect(JSON.parse(catalogResponse.body).demos).toEqual([
+      expect.objectContaining({
+        demoPath: '2005/match.dem',
+        count: 1,
+        comments: [expect.objectContaining({ body: 'Great match.' })],
+      }),
+    ]);
   });
 });

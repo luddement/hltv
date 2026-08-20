@@ -64,6 +64,22 @@ export const handleDemoCommentsRequest = (
   if (url.pathname !== '/api/demo-comments') return false;
 
   if (request.method === 'GET') {
+    if (url.searchParams.get('scope') === 'catalog') {
+      const grouped = new Map();
+      for (const comment of readStore(commentsFile).comments) {
+        const comments = grouped.get(comment.demoPath) || [];
+        comments.push(comment);
+        grouped.set(comment.demoPath, comments);
+      }
+      sendJson(response, 200, {
+        demos: [...grouped].map(([demoPath, comments]) => ({
+          demoPath,
+          count: comments.length,
+          comments: comments.slice(-5),
+        })),
+      });
+      return true;
+    }
     const demoPath = url.searchParams.get('demo') || '';
     if (!validDemoPath(demosDirectory, demoPath)) {
       sendJson(response, 400, { error: 'Unknown demo.' });
