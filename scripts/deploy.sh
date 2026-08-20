@@ -64,7 +64,8 @@ if [[ $do_app -eq 1 ]]; then
   note "Analyskod som servern kör"
   "${RSYNC[@]}" --delete "$APP/src/" "$USER_AT:$REMOTE/app/src/"
   "${RSYNC[@]}" "$APP/scripts/hltv-node.mjs" "$APP/scripts/index-demos.mjs" \
-    "$APP/scripts/build-crew-index.mjs" "$APP/scripts/unpack-demo-zips.py" \
+    "$APP/scripts/build-crew-index.mjs" "$APP/scripts/generate-crew-playlist.mjs" \
+    "$APP/scripts/unpack-demo-zips.py" \
     "$APP/scripts/repair-goldsrc-demos.py" "$USER_AT:$REMOTE/app/scripts/"
 
   note "Basresurser för motorn (game-assets)"
