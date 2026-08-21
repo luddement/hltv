@@ -203,14 +203,19 @@ describe('highlight scoring', () => {
     expect(playerScorelines(deaths).get('ct-1')).toEqual({ kills: 1, deaths: 12 });
   });
 
-  it('keeps the 0–12 milestone when the player gets a later frag', () => {
+  it('finds every twelve-death period without a frag', () => {
     const deaths = Array.from({ length: 12 }, (_, index) =>
       death(`death-${index + 20}`, 1_000 + index * 500, 't-pov', 'ct-1', 1, 3, 1, 1));
     deaths.push(death('death-99', 9_000, 'ct-1', 't-pov', 3, 1, 1, 1));
     expect(zeroTwelveMilestones(deaths)).toEqual(new Set(['ct-1']));
 
     deaths.unshift(death('death-98', 500, 'ct-1', 't-pov', 3, 1, 1, 1));
-    expect(zeroTwelveMilestones(deaths)).toEqual(new Set());
+    expect(zeroTwelveMilestones(deaths)).toEqual(new Set(['ct-1']));
+
+    const interrupted = [...deaths.slice(0, 7), death(
+      'death-97', 3_750, 'ct-1', 't-pov', 3, 1, 1, 1,
+    ), ...deaths.slice(7)];
+    expect(zeroTwelveMilestones(interrupted)).toEqual(new Set());
   });
 
   it('does not rank zero-length or implausibly merged rounds', () => {

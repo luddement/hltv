@@ -105,24 +105,17 @@ export const playerScorelines = (
 };
 
 /**
- * Returnerar identiteter som vid någon punkt i demot når 0 kills och 12
- * deaths. En senare kill suddar inte ut bedriften — scoreboarden stod 0–12.
- * resolveIdentity gör att återanslutningar/playerId-byten kan slås ihop till
- * samma person.
+ * Returnerar identiteter som under demot har en 0–12-period: tolv deaths i
+ * rad utan ett giltigt frag. En tidigare eller senare kill suddar inte ut den
+ * perioden. resolveIdentity gör att återanslutningar/playerId-byten kan slås
+ * ihop till samma person.
  */
 export const zeroTwelveMilestones = (
   events: readonly ReplayEvent[],
   resolveIdentity: (playerId: string) => string | undefined = (playerId) => playerId,
 ): Set<string> => {
-  const scorelines = new Map<string, PlayerScoreline>();
+  const deathsSinceFrag = new Map<string, number>();
   const milestones = new Set<string>();
-  const row = (identity: string): PlayerScoreline => {
-    const existing = scorelines.get(identity);
-    if (existing) return existing;
-    const created = { kills: 0, deaths: 0 };
-    scorelines.set(identity, created);
-    return created;
-  };
 
   const deaths = events
     .filter((event): event is DeathEvent => event.type === 'death')
@@ -131,14 +124,14 @@ export const zeroTwelveMilestones = (
   for (const death of deaths) {
     if (death.killerPlayerId && isValidFrag(death)) {
       const killer = resolveIdentity(death.killerPlayerId);
-      if (killer) row(killer).kills += 1;
+      if (killer) deathsSinceFrag.set(killer, 0);
     }
     if (death.victimPlayerId) {
       const victim = resolveIdentity(death.victimPlayerId);
       if (victim) {
-        const scoreline = row(victim);
-        scoreline.deaths += 1;
-        if (scoreline.kills === 0 && scoreline.deaths === 12) milestones.add(victim);
+        const count = (deathsSinceFrag.get(victim) ?? 0) + 1;
+        deathsSinceFrag.set(victim, count);
+        if (count === 12) milestones.add(victim);
       }
     }
   }
