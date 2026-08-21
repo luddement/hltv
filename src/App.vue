@@ -116,25 +116,33 @@
             <span class="archive-result-count">{{ filteredArchiveDemos.length }} matches</span>
           </div>
 
-          <div v-if="demoCatalog" class="archive-stats">
-            <div class="stat-big">
-              <strong>{{ archiveTotals.days }}</strong><span>dygn inspelat</span>
-              <small>{{ archiveTotals.hours }} tim {{ archiveTotals.minutes }} min · {{ archiveTotals.span }}</small>
-            </div>
-            <div class="stat-row">
-              <div><strong>{{ formatNumber(archiveTotals.frags) }}</strong><span>frags</span></div>
-              <div><strong>{{ formatNumber(archiveTotals.rounds) }}</strong><span>ronder</span></div>
-              <div v-if="archiveTotals.headshots">
-                <strong>{{ formatNumber(archiveTotals.headshots) }}</strong><span>headshots</span>
+          <div v-if="demoCatalog" class="archive-stat-sections">
+            <section class="archive-stat-panel archive-total-stats">
+              <header><b>Total</b><span>Hela demoarkivet</span></header>
+              <div class="archive-stat-content">
+                <div class="stat-big">
+                  <strong>{{ archiveTotals.days }}</strong><span>dygn inspelat</span>
+                  <small>{{ archiveTotals.hours }} tim {{ archiveTotals.minutes }} min · {{ archiveTotals.span }}</small>
+                </div>
+                <div class="stat-row">
+                  <div><strong>{{ formatNumber(archiveTotals.frags) }}</strong><span>frags</span></div>
+                  <div><strong>{{ formatNumber(archiveTotals.rounds) }}</strong><span>ronder</span></div>
+                  <div><strong>{{ formatNumber(archiveTotals.demos) }}</strong><span>demos</span></div>
+                  <div><strong>{{ archiveTotals.maps }}</strong><span>kartor</span></div>
+                </div>
               </div>
-              <div><strong>{{ formatNumber(archiveTotals.demos) }}</strong><span>demos</span></div>
-              <div><strong>{{ archiveTotals.maps }}</strong><span>kartor</span></div>
-              <div><strong>{{ archiveTotals.ourClans }}</strong><span>egna klaner</span></div>
-              <div><strong>{{ formatNumber(archiveTotals.metClans) }}</strong><span>lag mötta</span></div>
-              <div v-if="archiveTotals.topMap">
-                <strong>{{ archiveTotals.topMap.name }}</strong><span>mest spelad</span>
+            </section>
+            <section v-if="crewIndex" class="archive-stat-panel archive-crew-stats">
+              <header><b>PRAXXA</b><span>Endast identifierade PRAXXA-medlemmar</span></header>
+              <div class="stat-row">
+                <div><strong>{{ formatNumber(crewTotals.frags) }}</strong><span>frags</span></div>
+                <div><strong>{{ formatNumber(crewTotals.deaths) }}</strong><span>deaths</span></div>
+                <div><strong>{{ formatNumber(crewTotals.headshots) }}</strong><span>headshots</span></div>
+                <div class="achievement-stat"><strong>{{ formatNumber(crewTotals.aces) }}</strong><span>ace</span></div>
+                <div class="achievement-stat"><strong>{{ formatNumber(crewTotals.zeroTwelveGames) }}</strong><span>0–12</span></div>
+                <div><strong>{{ crewIndex.members.length }}</strong><span>medlemmar</span></div>
               </div>
-            </div>
+            </section>
           </div>
 
           <div v-if="latestComments.length" class="latest-comments">
@@ -171,6 +179,7 @@
                   <span class="crew-meta">
                     {{ member.demos }} demos · {{ Math.round(member.seconds / 3600) }} h
                     · {{ member.headshotPercent }} % hs · K/D {{ member.ratio ?? '–' }}
+                    · {{ member.aces ?? 0 }} ace · {{ member.zeroTwelveGames ?? 0 }} st 0–12
                   </span>
                 </button>
               </li>
@@ -240,6 +249,20 @@
                   @click="archiveSort = 'round-desc'"
                 >Top round <span aria-hidden="true">↓</span></button>
                 <button
+                  :class="['archive-sort-heading', { active: archiveSort === 'ace-desc' }]"
+                  type="button"
+                  aria-label="Sort by most PRAXXA aces"
+                  :aria-pressed="archiveSort === 'ace-desc'"
+                  @click="archiveSort = 'ace-desc'"
+                >Ace <span aria-hidden="true">↓</span></button>
+                <button
+                  :class="['archive-sort-heading', { active: archiveSort === 'zero-twelve-desc' }]"
+                  type="button"
+                  aria-label="Sort by most PRAXXA 0–12 scorelines"
+                  :aria-pressed="archiveSort === 'zero-twelve-desc'"
+                  @click="archiveSort = 'zero-twelve-desc'"
+                >0–12 <span aria-hidden="true">↓</span></button>
+                <button
                   :class="['archive-sort-heading', { active: archiveSort === 'comments-desc' }]"
                   type="button"
                   aria-label="Sort by most comments"
@@ -266,6 +289,18 @@
                 <span>{{ entry.map ?? '–' }}</span>
                 <b>{{ entry.topFragScore ?? '–' }}</b>
                 <b>{{ entry.topRoundScore ?? '–' }}</b>
+                <span
+                  :class="['archive-achievement-cell', { populated: (entry.crewAceCount ?? 0) > 0 }]"
+                  :title="entry.crewAceCount
+                    ? `${entry.crewAceCount} PRAXXA-ace: ${entry.crewAceMembers?.join(', ')}`
+                    : 'Inga PRAXXA-ace i matchen'"
+                ><b>{{ entry.crewAceCount || '–' }}</b></span>
+                <span
+                  :class="['archive-achievement-cell zero-twelve', { populated: (entry.crewZeroTwelveCount ?? 0) > 0 }]"
+                  :title="entry.crewZeroTwelveCount
+                    ? `PRAXXA 0–12: ${entry.crewZeroTwelveMembers?.join(', ')}`
+                    : 'Ingen PRAXXA-spelare slutade exakt 0–12'"
+                ><b>{{ entry.crewZeroTwelveCount || '–' }}</b></span>
                 <span
                   :class="['archive-comment-cell', { populated: archiveCommentsFor(entry.path).count > 0 }]"
                   :title="archiveCommentTitle(entry.path)"
@@ -703,6 +738,7 @@
                     <i>→</i>
                     <b :class="teamClass(death.victimPlayerId, death.demoTimeMs)">{{ playerLabel(death.victimPlayerId, death.demoTimeMs, death.victimSlot) }}</b>
                     <em v-if="death.headshot">HS</em>
+                    <em v-if="fragRatingById.get(death.eventId)?.ace" class="ace-badge">ACE</em>
                   </span>
                   <span class="frag-weapon">{{ death.weapon || 'unknown' }}</span>
                   <span>{{ roundLabel(death.roundId) }}</span>
@@ -1336,6 +1372,7 @@
   const COMMENT_NICKNAME_STORAGE_KEY = 'replay-lab-comment-nickname-v1';
   const archiveSortValues: readonly DemoCatalogSort[] = [
     'date-desc', 'date-asc', 'frag-desc', 'round-desc', 'comments-desc',
+    'ace-desc', 'zero-twelve-desc',
   ];
 
   const hudPresets: Array<{
@@ -3169,11 +3206,17 @@
   type CrewIndexMember = {
     id: string; name: string; demos: number; seconds: number;
     frags: number; deaths: number; headshots: number;
+    aces: number; zeroTwelveGames: number;
     headshotPercent: number; ratio: number | null; years: number[];
     topMaps: { value: string; count: number }[];
     topNicks: { value: string; count: number }[];
   };
-  type CrewIndex = { generatedAt: string; members: CrewIndexMember[] };
+  type CrewIndex = {
+    generatedAt: string;
+    totals?: Pick<CrewIndexMember,
+      'frags' | 'deaths' | 'headshots' | 'aces' | 'zeroTwelveGames'>;
+    members: CrewIndexMember[];
+  };
 
   const loadCrewIndex = async () => {
     try {
@@ -3188,40 +3231,35 @@
   /** Summor över hela arkivet, räknade ur katalogen som redan är laddad. */
   const archiveTotals = computed(() => {
     const demos = (demoCatalog.value?.demos ?? []).filter((d) => d.status === 'complete');
-    let seconds = 0; let frags = 0; let rounds = 0; let bytes = 0;
+    let seconds = 0; let frags = 0; let rounds = 0;
     const maps = new Map<string, number>();
-    const teams = new Set<string>();
     const years = new Set<number>();
     for (const demo of demos) {
       seconds += demo.durationSeconds ?? 0;
       frags += demo.fragCount ?? 0;
       rounds += demo.roundCount ?? 0;
-      bytes += demo.sizeBytes ?? 0;
       if (demo.year) years.add(demo.year);
       if (demo.map) maps.set(demo.map, (maps.get(demo.map) ?? 0) + 1);
-      for (const team of demo.teams ?? []) {
-        if (team && !/^Team [12]$/.test(team)) teams.add(team.toLocaleLowerCase('en-GB'));
-      }
     }
-    // Egna klaner räknas som familjer, inte stavningar: 322 taggar är sexton
-    // klaner. Motståndarna räknas som distinkta lagnamn, för där finns ingen
-    // kurerad lista att gruppera mot.
-    const ourClans = CLAN_FAMILIES.filter((clan) => [...teams].some((team) => clan.match.test(team))).length;
-    const headshots = (crewIndex.value?.members ?? []).reduce((n, m) => n + m.headshots, 0);
-    const topMap = [...maps.entries()].sort((a, b) => b[1] - a[1])[0];
     const yearList = [...years].sort();
     return {
-      demos: demos.length, seconds, frags, rounds, bytes, headshots,
+      demos: demos.length, seconds, frags, rounds,
       days: Math.floor(seconds / 86400),
       hours: Math.floor((seconds % 86400) / 3600),
       minutes: Math.floor((seconds % 3600) / 60),
       maps: maps.size,
-      ourClans,
-      metClans: teams.size,
-      topMap: topMap ? { name: topMap[0], count: topMap[1] } : undefined,
       span: yearList.length ? `${yearList[0]}–${yearList.at(-1)}` : '',
     };
   });
+
+  const crewTotals = computed(() => crewIndex.value?.totals
+    ?? (crewIndex.value?.members ?? []).reduce((total, member) => ({
+      frags: total.frags + member.frags,
+      deaths: total.deaths + member.deaths,
+      headshots: total.headshots + member.headshots,
+      aces: total.aces + (member.aces ?? 0),
+      zeroTwelveGames: total.zeroTwelveGames + (member.zeroTwelveGames ?? 0),
+    }), { frags: 0, deaths: 0, headshots: 0, aces: 0, zeroTwelveGames: 0 }));
 
   const loadDemoCatalog = async () => {
     catalogLoading.value = true;

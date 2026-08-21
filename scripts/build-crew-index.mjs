@@ -20,12 +20,13 @@ const { values } = parseArgs({ options: {
 } });
 
 const { CREW, crewMemberForName } = await import('/@/archive/crew');
+const { completeAceGroups, isValidFrag, playerScorelines } = await import('/@/analysis/achievements');
 
 const catalog = JSON.parse(await readFile(resolve(values.catalog), 'utf8'));
 const byPath = new Map(catalog.demos.map((d) => [d.path, d]));
 
 const blank = () => ({
-  demos: 0, seconds: 0, frags: 0, deaths: 0, headshots: 0,
+  demos: 0, seconds: 0, frags: 0, deaths: 0, headshots: 0, aces: 0, zeroTwelveGames: 0,
   years: new Set(), maps: new Map(), nicks: new Map(), mates: new Map(),
 });
 const stats = new Map(CREW.map((m) => [m.id, blank()]));
@@ -91,11 +92,31 @@ for (const year of await readdir(resolve(values.analysis))) {
       for (const other of present) if (other !== id) s.mates.set(other, (s.mates.get(other) ?? 0) + 1);
     }
 
+    for (const ace of completeAceGroups({ rounds: doc.rounds ?? [], events: doc.events ?? [] })) {
+      const memberId = crewById.get(ace.killerPlayerId);
+      if (memberId) stats.get(memberId).aces += 1;
+    }
+
+    const demoScorelines = new Map();
+    for (const [playerId, scoreline] of playerScorelines(doc.events ?? [])) {
+      const memberId = crewById.get(playerId);
+      if (!memberId) continue;
+      const total = demoScorelines.get(memberId) ?? { kills: 0, deaths: 0 };
+      total.kills += scoreline.kills;
+      total.deaths += scoreline.deaths;
+      demoScorelines.set(memberId, total);
+    }
+    for (const [memberId, scoreline] of demoScorelines) {
+      if (scoreline.kills === 0 && scoreline.deaths === 12) {
+        stats.get(memberId).zeroTwelveGames += 1;
+      }
+    }
+
     for (const event of doc.events ?? []) {
       if (event.type !== 'death') continue;
       const killer = crewById.get(event.killerPlayerId);
       const victim = crewById.get(event.victimPlayerId);
-      if (killer) {
+      if (killer && isValidFrag(event)) {
         const s = stats.get(killer);
         s.frags += 1;
         if (event.headshot) s.headshots += 1;
@@ -118,6 +139,8 @@ const members = CREW.map((member) => {
     frags: s.frags,
     deaths: s.deaths,
     headshots: s.headshots,
+    aces: s.aces,
+    zeroTwelveGames: s.zeroTwelveGames,
     headshotPercent: s.frags ? Math.round((s.headshots / s.frags) * 1000) / 10 : 0,
     ratio: s.deaths ? Math.round((s.frags / s.deaths) * 100) / 100 : null,
     years: [...s.years].sort(),
@@ -127,14 +150,24 @@ const members = CREW.map((member) => {
   };
 }).sort((a, b) => b.frags - a.frags);
 
+const totals = members.reduce((sum, member) => ({
+  frags: sum.frags + member.frags,
+  deaths: sum.deaths + member.deaths,
+  headshots: sum.headshots + member.headshots,
+  aces: sum.aces + member.aces,
+  zeroTwelveGames: sum.zeroTwelveGames + member.zeroTwelveGames,
+}), { frags: 0, deaths: 0, headshots: 0, aces: 0, zeroTwelveGames: 0 });
+
 await writeFile(resolve(values.out), JSON.stringify({
   generatedAt: new Date().toISOString(),
   analysisFiles: files,
+  totals,
   members,
 }, null, 2));
 
 console.log(`${files} analysfiler lästa, ${members.length} personer`);
 for (const m of members) {
   console.log(`  ${m.name.padEnd(8)} ${String(m.demos).padStart(4)} demos ${(m.seconds/3600).toFixed(0).padStart(4)} h `
-    + `${String(m.frags).padStart(6)} frags ${String(m.headshots).padStart(5)} hs (${m.headshotPercent}%) K/D ${m.ratio ?? '-'}`);
+    + `${String(m.frags).padStart(6)} frags ${String(m.headshots).padStart(5)} hs (${m.headshotPercent}%) `
+    + `${String(m.aces).padStart(3)} ace ${String(m.zeroTwelveGames).padStart(3)} st 0-12 K/D ${m.ratio ?? '-'}`);
 }

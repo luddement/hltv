@@ -147,6 +147,8 @@ export type FragVisibility =
 export type FragRating = ScoreRating & {
   eventId: string;
   team: 'TERRORIST' | 'CT';
+  /** True när fragget ingår i ett komplett fem-kills-ace i samma rond. */
+  ace: boolean;
   visibility: FragVisibility;
   reconstruction: EntityObservation;
 };

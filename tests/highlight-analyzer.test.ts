@@ -3,6 +3,7 @@ import {
   buildHighlightAnalysis,
   withVerifiedWallbangBonus,
 } from '/@/analysis/highlight-analyzer';
+import { completeAceGroups, playerScorelines } from '/@/analysis/achievements';
 import type {
   AnalysisPerspective,
   DeathEvent,
@@ -158,6 +159,44 @@ describe('highlight scoring', () => {
       .toBe('killfeed_only');
     expect(result.fragRatings.some((rating) => rating.eventId === 'death-5')).toBe(false);
     expect(result.roundRatings.map((rating) => rating.team)).toEqual(['TERRORIST']);
+  });
+
+  it('marks every frag in an exact five-kill round as part of an ace', () => {
+    const fixture = input({
+      kind: 'hltv',
+      focusPlayerIds: [],
+      focusTeamHistory: [],
+      evidence: 'unknown',
+    });
+    fixture.players.push(player('ct-4', 6, 'CT'), player('ct-5', 7, 'CT'));
+    fixture.events.push(
+      death('death-6', 8_000, 't-pov', 'ct-4', 1, 6, 1, 2),
+      death('death-7', 9_000, 't-pov', 'ct-5', 1, 7, 1, 1),
+    );
+    fixture.rounds[0].deathEventIds.push('death-6', 'death-7');
+
+    const aces = completeAceGroups(fixture);
+    const ratings = buildHighlightAnalysis(fixture).fragRatings
+      .filter((rating) => rating.eventId !== 'death-4' && rating.team === 'TERRORIST');
+
+    expect(aces).toEqual([{
+      roundId: 'round-1',
+      killerPlayerId: 't-pov',
+      eventIds: ['death-1', 'death-2', 'death-3', 'death-6', 'death-7'],
+    }]);
+    expect(ratings).toHaveLength(5);
+    expect(ratings.every((rating) => rating.ace)).toBe(true);
+    expect(ratings.every((rating) => rating.reasons.some((entry) => entry.code === 'ace'))).toBe(true);
+  });
+
+  it('detects an exact 0–12 scoreline but not a 1–12 scoreline', () => {
+    const deaths = Array.from({ length: 12 }, (_, index) =>
+      death(`death-${index + 20}`, 1_000 + index * 500, 't-pov', 'ct-1', 1, 3, 1, 1));
+    const zeroTwelve = playerScorelines(deaths).get('ct-1');
+    expect(zeroTwelve).toEqual({ kills: 0, deaths: 12 });
+
+    deaths.push(death('death-99', 9_000, 'ct-1', 't-pov', 3, 1, 1, 1));
+    expect(playerScorelines(deaths).get('ct-1')).toEqual({ kills: 1, deaths: 12 });
   });
 
   it('does not rank zero-length or implausibly merged rounds', () => {

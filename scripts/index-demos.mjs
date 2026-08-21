@@ -117,7 +117,7 @@ const writeJson = async (path, value) => {
 };
 
 /** Plockar ut det katalogen visar. Allt tungt stannar i analysfilen. */
-const catalogEntry = (record, teamsOf) => {
+const catalogEntry = (record, teamsOf, achievementsOf) => {
   const { index } = record;
   if (!index) {
     return {
@@ -140,6 +140,7 @@ const catalogEntry = (record, teamsOf) => {
   const scores = index.fragRatings.map((rating) => rating.score);
   const roundScores = index.roundRatings.map((rating) => rating.score);
   const momentScores = index.moments.map((moment) => moment.rating.score);
+  const achievements = achievementsOf(index);
   return {
     path: record.relativePath,
     filename: record.filename,
@@ -162,6 +163,7 @@ const catalogEntry = (record, teamsOf) => {
     momentCount: index.moments.length,
     teams: teamsOf(index.players),
     players: [...names].sort(),
+    ...achievements,
     analyzerVersion: index.analyzerVersion,
   };
 };
@@ -173,6 +175,7 @@ const formatDuration = (seconds) => {
 
 const main = async () => {
   const { buildLogicalTeamIndex } = await import('/@/analysis/team-identity');
+  const { summarizeCrewDemoAchievements } = await import('/@/archive/crew-achievements');
   const teamsOf = (players) => buildLogicalTeamIndex(players).teams
     .map((team) => team.name)
     .filter((name) => typeof name === 'string' && name.length > 0);
@@ -263,7 +266,7 @@ const main = async () => {
       }
     }
 
-    catalog.push(catalogEntry(record, teamsOf));
+    catalog.push(catalogEntry(record, teamsOf, summarizeCrewDemoAchievements));
 
     const elapsed = (Date.now() - startedAt) / 1000;
     const remaining = (elapsed / (position + 1)) * (demos.length - position - 1);

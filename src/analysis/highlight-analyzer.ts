@@ -12,6 +12,7 @@ import type {
   ScoreReason,
   ScoreRating,
 } from '/@/analysis/schema';
+import { completeAceGroups } from '/@/analysis/achievements';
 
 type Team = 'TERRORIST' | 'CT';
 type HighlightInput = Pick<DemoAnalysisIndex, 'players' | 'rounds' | 'events' | 'demo'>;
@@ -235,6 +236,9 @@ export const buildHighlightAnalysis = (
     killerPlayerId: string;
     team: Team;
   }> = [];
+  const aceEventIds = new Set(
+    completeAceGroups(input).flatMap((ace) => ace.eventIds),
+  );
 
   for (const death of deaths) {
     if (!death.killerPlayerId || death.worldKill || death.suicide || death.teamKill.value === true) {
@@ -258,6 +262,9 @@ export const buildHighlightAnalysis = (
   for (const { death, killerPlayerId, team } of eligibleDeaths) {
     const reasons: ScoreReason[] = [reason('frag', 'Frag', 25, 'observed')];
     if (death.headshot) reasons.push(reason('headshot', 'Headshot', 10, 'observed'));
+    if (aceEventIds.has(death.eventId)) {
+      reasons.push(reason('ace', 'ACE · 5 kills i ronden', 0, 'observed'));
+    }
     if (death.roundId && firstDeathByRound.get(death.roundId) === death.eventId) {
       reasons.push(reason('opening_kill', 'Opening kill', 10));
     }
@@ -331,6 +338,7 @@ export const buildHighlightAnalysis = (
     fragRatings.push({
       eventId: death.eventId,
       team,
+      ace: aceEventIds.has(death.eventId),
       visibility: visibleFor(perspective, killerPlayerId, death),
       reconstruction: death.entityObservation.killer,
       ...score(reasons, confidence),

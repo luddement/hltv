@@ -20,6 +20,10 @@ const demos: DemoCatalogEntry[] = [
     topRoundScore: 70,
     teams: ['crap', 'alpha'],
     players: ['crap ldmnt'],
+    crewAceCount: 1,
+    crewAceMembers: ['luddement'],
+    crewZeroTwelveCount: 0,
+    crewZeroTwelveMembers: [],
   },
   {
     path: '2005/praxxa_-_beta-0502011200-de_train.dem',
@@ -34,6 +38,10 @@ const demos: DemoCatalogEntry[] = [
     topRoundScore: 98,
     teams: ['Präxxa', 'beta'],
     players: ['luddi'],
+    crewAceCount: 3,
+    crewAceMembers: ['luddement'],
+    crewZeroTwelveCount: 1,
+    crewZeroTwelveMembers: ['luddement'],
   },
 ];
 
@@ -49,6 +57,8 @@ describe('demo catalog', () => {
     expect(filterDemoCatalog(demos, '', 2004, 'date-desc')).toEqual([demos[0]]);
     expect(filterDemoCatalog(demos, '', 'all', 'frag-desc')).toEqual([demos[0], demos[1]]);
     expect(filterDemoCatalog(demos, '', 'all', 'round-desc')).toEqual([demos[1], demos[0]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'ace-desc')).toEqual([demos[1], demos[0]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'zero-twelve-desc')).toEqual([demos[1], demos[0]]);
     expect(filterDemoCatalog(demos, '', 'all', 'comments-desc', new Map([
       [demos[0].path, 1],
       [demos[1].path, 3],

@@ -21,6 +21,14 @@ export type DemoCatalogEntry = {
   momentCount?: number;
   teams?: string[];
   players?: string[];
+  /** Matchflagga: minst en identifierad PRAXXA-medlem gjorde ett komplett ace. */
+  ace?: boolean;
+  crewAceCount?: number;
+  crewAceMembers?: string[];
+  /** Matchflagga: minst en identifierad PRAXXA-medlem slutade exakt 0–12. */
+  zeroTwelve?: boolean;
+  crewZeroTwelveCount?: number;
+  crewZeroTwelveMembers?: string[];
   analyzerVersion?: string;
 };
 
@@ -31,7 +39,14 @@ export type DemoCatalog = {
   demos: DemoCatalogEntry[];
 };
 
-export type DemoCatalogSort = 'date-desc' | 'date-asc' | 'frag-desc' | 'round-desc' | 'comments-desc';
+export type DemoCatalogSort =
+  | 'date-desc'
+  | 'date-asc'
+  | 'frag-desc'
+  | 'round-desc'
+  | 'comments-desc'
+  | 'ace-desc'
+  | 'zero-twelve-desc';
 
 const searchableText = (entry: DemoCatalogEntry): string => [
   entry.filename,
@@ -41,6 +56,8 @@ const searchableText = (entry: DemoCatalogEntry): string => [
   entry.year,
   ...(entry.teams ?? []),
   ...(entry.players ?? []),
+  ...(entry.crewAceMembers ?? []),
+  ...(entry.crewZeroTwelveMembers ?? []),
 ].filter((value) => value !== undefined && value !== null).join(' ')
   .normalize('NFKD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -83,6 +100,14 @@ export const filterDemoCatalog = (
     }
     if (sort === 'comments-desc') {
       return (commentCounts.get(right.path) ?? 0) - (commentCounts.get(left.path) ?? 0)
+        || descendingDate(left, right);
+    }
+    if (sort === 'ace-desc') {
+      return descendingScore(left.crewAceCount, right.crewAceCount)
+        || descendingDate(left, right);
+    }
+    if (sort === 'zero-twelve-desc') {
+      return descendingScore(left.crewZeroTwelveCount, right.crewZeroTwelveCount)
         || descendingDate(left, right);
     }
     if (sort === 'date-asc') {

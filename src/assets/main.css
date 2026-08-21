@@ -309,7 +309,15 @@
 
 /* Arkivets nyckeltal och gängets topplista. Siffrorna är stora med flit —
    207 dygn och en miljon frags är hela poängen med arkivet, inte en fotnot. */
-.archive-stats { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; padding: 0 29px 16px; }
+.archive-stat-sections { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 8px; padding: 0 29px 16px; }
+.archive-stat-panel { min-width: 0; padding: 13px 15px; border: 1px solid #272d26; background: #0c0f0c; }
+.archive-stat-panel > header { display: flex; align-items: baseline; gap: 9px; margin-bottom: 11px; }
+.archive-stat-panel > header b { color: var(--acid); font: 800 9px ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; }
+.archive-stat-panel > header span { color: #60675e; font: 8px ui-monospace, monospace; }
+.archive-stat-content { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 18px; }
+.archive-crew-stats { border-color: #39432d; background: linear-gradient(110deg, rgba(200,245,66,.045), transparent 60%), #0c0f0c; }
+.archive-crew-stats .stat-row { align-items: center; min-height: 43px; }
+.archive-crew-stats .achievement-stat strong { color: var(--acid); }
 .stat-big strong { display: block; color: var(--acid); font: 700 42px/1 ui-monospace, monospace; }
 .stat-big span { display: block; margin-top: 2px; color: #8e968a; font: 9px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .1em; }
 .stat-big small { display: block; margin-top: 4px; color: #626961; font: 8px ui-monospace, monospace; }
@@ -350,7 +358,7 @@
 .archive-filters select:focus { border-color: #64743c; }
 .archive-state { min-height: 100px; display: flex; align-items: center; justify-content: center; gap: 10px; color: #858c82; font: 9px ui-monospace, monospace; }
 .archive-list { max-height: 420px; overflow-y: auto; border-top: 1px solid #242a23; scrollbar-color: #40483a #111411; }
-.archive-row { position: relative; width: 100%; min-height: 51px; display: grid; grid-template-columns: 105px minmax(260px, 1.7fr) minmax(90px, .7fr) 72px 78px 76px 58px; align-items: center; gap: 12px; padding: 7px 29px; color: #9fa69c; border: 0; border-bottom: 1px solid #20251f; border-radius: 0; background: transparent; font: 9px ui-monospace, monospace; text-align: left; text-transform: none; }
+.archive-row { position: relative; width: 100%; min-height: 51px; display: grid; grid-template-columns: 105px minmax(240px, 1.7fr) minmax(80px, .7fr) 68px 74px 44px 44px 70px 54px; align-items: center; gap: 10px; padding: 7px 29px; color: #9fa69c; border: 0; border-bottom: 1px solid #20251f; border-radius: 0; background: transparent; font: 9px ui-monospace, monospace; text-align: left; text-transform: none; }
 button.archive-row { cursor: pointer; }
 button.archive-row:hover:not(:disabled) { background: rgba(200,245,66,.05); }
 button.archive-row:hover { z-index: 3; }
@@ -365,6 +373,10 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .archive-match strong { overflow: hidden; color: #d1d6ce; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .archive-match small { overflow: hidden; color: #656d63; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
 .archive-row > b { color: var(--acid); font-size: 12px; font-variant-numeric: tabular-nums; }
+.archive-achievement-cell { width: 30px; height: 24px; display: inline-grid; place-items: center; color: #555d53; border: 1px solid #293027; font-variant-numeric: tabular-nums; }
+.archive-achievement-cell b { font-size: 10px; font-weight: 600; }
+.archive-achievement-cell.populated { color: #0a0d09; border-color: var(--acid); background: var(--acid); }
+.archive-achievement-cell.zero-twelve.populated { color: #ffc46b; border-color: #8d6635; background: rgba(211,136,45,.08); }
 .archive-comment-cell { position: relative; width: max-content; display: inline-flex; align-items: center; gap: 5px; color: #555e52; }
 .archive-comment-cell > svg { width: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 .archive-comment-cell > b { color: inherit; font-size: 10px; font-weight: 500; }
@@ -663,6 +675,7 @@ button.archive-row:disabled { cursor: not-allowed; opacity: .5; }
 .frag-players b.team-ct { color: #7ea5e8; }
 .frag-players i { color: #545b52; font-style: normal; }
 .frag-players em { flex: 0 0 auto; padding: 2px 4px; color: #11140d; background: var(--acid); font-size: 7px; font-style: normal; font-weight: 900; }
+.frag-players em.ace-badge { color: var(--acid); border: 1px solid var(--acid); background: transparent; letter-spacing: .08em; }
 .frag-weapon { color: #c0c7b9; text-transform: uppercase; }
 .frag-score { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .frag-score b { color: var(--acid); font-size: 10px; }
@@ -1082,14 +1095,16 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .hero-grid { grid-template-columns: 1fr; gap: 26px; padding-top: 34px; }
   .signal-card { display: none; }
   .setup-columns { grid-template-columns: 1fr; gap: 16px; }
-  .archive-stats { padding-left: 16px; padding-right: 16px; }
+  .archive-stat-sections { grid-template-columns: 1fr; padding-left: 16px; padding-right: 16px; }
   .latest-comments { padding-left: 16px; padding-right: 16px; }
   .crew-board { padding-left: 16px; padding-right: 16px; }
   .archive-filters { grid-template-columns: 1fr 1fr; }
   /* Sökrutan är tredje barnet: person, klan, sök, år. */
   .archive-filters label:nth-child(3) { grid-column: 1 / -1; }
-  .archive-row { grid-template-columns: 92px minmax(210px, 1fr) 70px 70px 68px 52px; }
-  .archive-row > :nth-child(3) { display: none; }
+  .archive-row { grid-template-columns: 92px minmax(210px, 1fr) 66px 42px 42px 52px; }
+  .archive-row > :nth-child(3),
+  .archive-row > :nth-child(5),
+  .archive-row > :nth-child(8) { display: none; }
   .connector { display: none; }
   .setup-heading, .launch-row { align-items: flex-start; flex-direction: column; }
   .launch-button { width: 100%; }
@@ -1126,7 +1141,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .hero-copy h1 { font-size: 48px; }
   .setup-heading, .setup-columns, .launch-row { padding-left: 16px; padding-right: 16px; }
   .archive-heading { align-items: flex-start; flex-direction: column; padding-left: 16px; padding-right: 16px; }
-  .archive-stats { grid-template-columns: 1fr; gap: 12px; padding-left: 16px; padding-right: 16px; }
+  .archive-stat-sections { padding-left: 16px; padding-right: 16px; }
+  .archive-stat-content { grid-template-columns: 1fr; gap: 10px; }
   .stat-big strong { font-size: 34px; }
   .stat-row { gap: 8px 18px; }
   .latest-comments { padding-left: 16px; padding-right: 16px; }
@@ -1138,10 +1154,11 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
   .crew-board ol { grid-template-columns: 1fr 1fr; }
   .archive-filters { grid-template-columns: 1fr; padding-left: 16px; padding-right: 16px; }
   .archive-filters label:nth-child(3) { grid-column: auto; }
-  .archive-row { grid-template-columns: 82px minmax(150px, 1fr) 54px 46px; padding-left: 16px; padding-right: 16px; }
+  .archive-row { grid-template-columns: 76px minmax(130px, 1fr) 38px 38px 42px; padding-left: 16px; padding-right: 16px; }
   .archive-row > :nth-child(3),
+  .archive-row > :nth-child(4),
   .archive-row > :nth-child(5),
-  .archive-row > :nth-child(7) { display: none; }
+  .archive-row > :nth-child(8) { display: none; }
   .archive-more { padding-left: 16px; padding-right: 16px; }
   .privacy-note { display: none; }
   .comment-form { grid-template-columns: 1fr; }
