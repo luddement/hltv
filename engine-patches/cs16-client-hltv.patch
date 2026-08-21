@@ -254,28 +254,36 @@ index b75b3c9..2b6a27c 100644
  	CHudMsgFunc(ShadowIdx);
  	CHudMsgFunc(ServerName);
 diff --git a/cl_dll/hud/scoreboard.cpp b/cl_dll/hud/scoreboard.cpp
-index faed4a2..f64d0dc 100644
+index faed4a2..f29765a 100644
 --- a/cl_dll/hud/scoreboard.cpp
 +++ b/cl_dll/hud/scoreboard.cpp
-@@ -39,6 +39,8 @@ int g_iUser1;
+@@ -39,6 +39,15 @@ int g_iUser1;
  int g_iUser2;
  int g_iUser3;
  int g_iTeamNumber;
 +static cvar_t *hltv_legacy_scoreboard;
++static cvar_t *hltv_compact_scoreboard;
 +static cvar_t *hltv_force_scoreboard;
++
++static bool UseCompactScoreboardLayout()
++{
++	return ( hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f )
++		|| ( hltv_compact_scoreboard && hltv_compact_scoreboard->value != 0.0f );
++}
  
  
  // X positions
-@@ -107,6 +109,8 @@ int CHudScoreboard :: Init( void )
+@@ -107,6 +116,9 @@ int CHudScoreboard :: Init( void )
  
  	cl_showpacketloss = CVAR_CREATE( "cl_showpacketloss", "0", FCVAR_ARCHIVE );
  	cl_showplayerversion = CVAR_CREATE( "cl_showplayerversion", "0", 0 );
 +	hltv_legacy_scoreboard = CVAR_CREATE( "hltv_legacy_scoreboard", "0", 0 );
++	hltv_compact_scoreboard = CVAR_CREATE( "hltv_compact_scoreboard", "0", 0 );
 +	hltv_force_scoreboard = CVAR_CREATE( "hltv_force_scoreboard", "0", 0 );
  
  	return 1;
  }
-@@ -131,6 +135,7 @@ void CHudScoreboard :: InitHUDData( void )
+@@ -131,6 +143,7 @@ void CHudScoreboard :: InitHUDData( void )
  	m_fLastKillTime = 0;
  	m_iPlayerNum = 0;
  	m_iNumTeams = 0;
@@ -283,7 +291,7 @@ index faed4a2..f64d0dc 100644
  	memset( g_TeamInfo, 0, sizeof g_TeamInfo );
  
  	for ( int i = 1; i <= MAX_PLAYERS; i++ )
-@@ -139,16 +144,29 @@ void CHudScoreboard :: InitHUDData( void )
+@@ -139,16 +152,29 @@ void CHudScoreboard :: InitHUDData( void )
  		g_PlayerExtraInfo[i].sb_account = -1;
  	}
  
@@ -314,7 +322,7 @@ index faed4a2..f64d0dc 100644
  	if( m_bShowscoresHeld || gHUD.m_Health.m_iHealth <= 0 || gHUD.m_iIntermission )
  		return true;
  
-@@ -165,10 +183,29 @@ int CHudScoreboard :: Draw( float flTime )
+@@ -165,10 +191,29 @@ int CHudScoreboard :: Draw( float flTime )
  
  	if( !m_bForceDraw )
  	{
@@ -322,8 +330,8 @@ index faed4a2..f64d0dc 100644
 -		xend       = ScreenWidth - xstart;
 -		ystart     = 90;
 -		yend       = ScreenHeight - ystart;
-+		const bool legacyLayout = hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f;
-+		if( legacyLayout )
++		const bool compactLayout = UseCompactScoreboardLayout();
++		if( compactLayout )
 +		{
 +			// The original CS scoreboard was authored for an 800x600 viewport.
 +			// Scale from the limiting axis and centre it, preserving its period
@@ -348,7 +356,7 @@ index faed4a2..f64d0dc 100644
  		m_colors.r = 0;
  		m_colors.g = 0;
  		m_colors.b = 0;
-@@ -182,6 +219,8 @@ int CHudScoreboard :: Draw( float flTime )
+@@ -182,6 +227,8 @@ int CHudScoreboard :: Draw( float flTime )
  int CHudScoreboard :: DrawScoreboard( float fTime )
  {
  	GetAllPlayersInfo();
@@ -357,11 +365,11 @@ index faed4a2..f64d0dc 100644
  	char ServerName[90];
  
  //	Packetloss removed on Kelly 'shipping nazi' Bailey's orders
-@@ -193,16 +232,28 @@ int CHudScoreboard :: DrawScoreboard( float fTime )
+@@ -193,16 +240,28 @@ int CHudScoreboard :: DrawScoreboard( float fTime )
  	// just sort the list on the fly
  	// list is sorted first by frags, then by deaths
  	float list_slot = 0;
-+	const bool legacyLayout = hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f;
++	const bool compactLayout = UseCompactScoreboardLayout();
  
  	// calculate columns sizes
  	g_Columns[COL_PING] = Column( xend - 15, Localize( "#PlayerPing" ) );
@@ -372,7 +380,7 @@ index faed4a2..f64d0dc 100644
 -	g_Columns[COL_HP] = Column( g_Columns[COL_MONEY].end - 10, Localize( "#Cstrike_HEALTH" ) );
 -	g_Columns[COL_HP].end = g_Columns[COL_HP].start - DrawUtils::HudStringLen( "100" );
 -	g_Columns[COL_ATTRIB] = Column( g_Columns[COL_HP].end - 10 );
-+	if( legacyLayout )
++	if( compactLayout )
 +	{
 +		// Protocol 46 HLTV recordings do not carry CS 1.6's spectator
 +		// health/account messages. Use the period-correct three-column layout.
@@ -391,13 +399,13 @@ index faed4a2..f64d0dc 100644
  	g_Columns[COL_ATTRIB].end = g_Columns[COL_ATTRIB].start - DrawUtils::HudStringLen( "#Cstrike_DEFUSE_KIT" );
  	g_Columns[COL_NAME] = Column( xstart + 15, nullptr, false );
  	g_Columns[COL_NAME].end = g_Columns[COL_ATTRIB].end - 10;
-@@ -221,8 +272,11 @@ int CHudScoreboard :: DrawScoreboard( float fTime )
+@@ -221,8 +280,11 @@ int CHudScoreboard :: DrawScoreboard( float fTime )
  		strncpy( ServerName, gHUD.m_Teamplay ? "TEAMS" : "PLAYERS", 80 );
  
  	DrawUtils::DrawHudString( g_Columns[COL_NAME].start, ypos, g_Columns[COL_NAME].end, ServerName, 255, 140, 0 );
 -	DrawUtils::DrawHudStringReverse( g_Columns[COL_HP].start, ypos, g_Columns[COL_HP].end, g_Columns[COL_HP].name, 255, 140, 0 );
 -	DrawUtils::DrawHudStringReverse( g_Columns[COL_MONEY].start, ypos, g_Columns[COL_MONEY].end, g_Columns[COL_MONEY].name, 255, 140, 0 );
-+	if( !legacyLayout )
++	if( !compactLayout )
 +	{
 +		DrawUtils::DrawHudStringReverse( g_Columns[COL_HP].start, ypos, g_Columns[COL_HP].end, g_Columns[COL_HP].name, 255, 140, 0 );
 +		DrawUtils::DrawHudStringReverse( g_Columns[COL_MONEY].start, ypos, g_Columns[COL_MONEY].end, g_Columns[COL_MONEY].name, 255, 140, 0 );
@@ -405,12 +413,12 @@ index faed4a2..f64d0dc 100644
  	DrawUtils::DrawHudStringReverse( g_Columns[COL_KILLS].start, ypos, g_Columns[COL_KILLS].end, g_Columns[COL_KILLS].name, 255, 140, 0 );
  	DrawUtils::DrawHudStringReverse( g_Columns[COL_DEATHS].start, ypos, g_Columns[COL_DEATHS].end, g_Columns[COL_DEATHS].name, 255, 140, 0 );
  	DrawUtils::DrawHudStringReverse( g_Columns[COL_PING].start, ypos, g_Columns[COL_PING].end, g_Columns[COL_PING].name, 255, 140, 0 );
-@@ -472,23 +526,26 @@ int CHudScoreboard :: DrawPlayers( float list_slot, int nameoffset, const char *
+@@ -472,23 +534,26 @@ int CHudScoreboard :: DrawPlayers( float list_slot, int nameoffset, const char *
  			DrawUtils::DrawHudStringReverse( g_Columns[COL_ATTRIB].start, ypos, g_Columns[COL_ATTRIB].end, gEngfuncs.PlayerInfo_ValueForKey( best_player, "cscl_ver" ),  r, g, b );
  		}
  
 -		if ( g_PlayerExtraInfo[best_player].sb_health >= 0 && !g_PlayerExtraInfo[best_player].dead )
-+		if( !hltv_legacy_scoreboard || hltv_legacy_scoreboard->value == 0.0f )
++		if( !UseCompactScoreboardLayout() )
  		{
 -			if ( gHUD.m_pShowHealth->value )
 +			if ( g_PlayerExtraInfo[best_player].sb_health >= 0 && !g_PlayerExtraInfo[best_player].dead )
@@ -444,7 +452,7 @@ index faed4a2..f64d0dc 100644
  			}
  		}
  
-@@ -532,6 +589,34 @@ void CHudScoreboard :: GetAllPlayersInfo( void )
+@@ -532,6 +597,34 @@ void CHudScoreboard :: GetAllPlayersInfo( void )
  	{
  		GetPlayerInfo( i, &g_PlayerInfoList[i] );
  
@@ -479,7 +487,7 @@ index faed4a2..f64d0dc 100644
  		if ( g_PlayerInfoList[i].thisplayer )
  			m_iPlayerNum = i;  // !!!HACK: this should be initialized elsewhere... maybe gotten from the engine
  	}
-@@ -540,6 +625,7 @@ void CHudScoreboard :: GetAllPlayersInfo( void )
+@@ -540,6 +633,7 @@ void CHudScoreboard :: GetAllPlayersInfo( void )
  int CHudScoreboard :: MsgFunc_ScoreInfo( const char *pszName, int iSize, void *pbuf )
  {
  	m_iFlags |= HUD_DRAW;
@@ -487,7 +495,7 @@ index faed4a2..f64d0dc 100644
  
  	BufferReader reader( pszName, pbuf, iSize );
  	short cl = reader.ReadByte();
-@@ -590,23 +676,34 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
+@@ -590,23 +684,34 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
  		// just in case
  		else teamNumber = TEAM_UNASSIGNED;
  
@@ -531,7 +539,7 @@ index faed4a2..f64d0dc 100644
  	{
  		int j;
  		//if ( g_PlayerInfoList[i].name == NULL )
-@@ -640,6 +737,17 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
+@@ -640,6 +745,17 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
  			strncpy( g_TeamInfo[j].name, g_PlayerExtraInfo[i].teamname, MAX_TEAM_NAME );
  			g_TeamInfo[j].teamnumber = g_PlayerExtraInfo[i].teamnumber;
  			g_TeamInfo[j].players = 0;
@@ -549,7 +557,7 @@ index faed4a2..f64d0dc 100644
  		}
  
  		g_TeamInfo[j].players++;
-@@ -652,7 +760,6 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
+@@ -652,7 +768,6 @@ int CHudScoreboard :: MsgFunc_TeamInfo( const char *pszName, int iSize, void *pb
  			memset( &g_TeamInfo[i], 0, sizeof(team_info_t) );
  	}
  
@@ -557,7 +565,7 @@ index faed4a2..f64d0dc 100644
  }
  
  // Message handler for TeamScore message
-@@ -665,30 +772,60 @@ int CHudScoreboard :: MsgFunc_TeamScore( const char *pszName, int iSize, void *p
+@@ -665,30 +780,60 @@ int CHudScoreboard :: MsgFunc_TeamScore( const char *pszName, int iSize, void *p
  {
  	BufferReader reader( pszName, pbuf, iSize );
  	char *TeamName = reader.ReadString();

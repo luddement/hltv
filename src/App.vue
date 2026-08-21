@@ -3621,6 +3621,7 @@
         // their recorded overview camera can sit outside the BSP world.
         isHltv: analysisIndex.value?.demo.isHltv ?? selectedDemo.isHltv,
         captureFrames,
+        compactScoreboard: automatedScoreboardCapture.value,
         targetFps: movieExportRunning.value ? movieQuality.value.fps : undefined,
         renderSize: movieExportRunning.value
           ? { width: movieQuality.value.width, height: movieQuality.value.height }
@@ -4374,6 +4375,10 @@
   const settleScoreboardCapture = async (): Promise<void> => {
     DemoEngine.execute('sys_timescale 0');
     DemoEngine.execute('hud_draw 1');
+    // Archive frames should show the competitive result, not spectator-only
+    // economy data. Reuse the native compact Score/Deaths/Latency layout for
+    // every protocol while keeping ordinary playback unchanged.
+    DemoEngine.execute('hltv_compact_scoreboard 1');
     DemoEngine.execute('+showscores');
     const startedAt = performance.now();
     let frames = 0;

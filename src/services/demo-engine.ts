@@ -28,6 +28,7 @@ export type DemoEngineOptions = {
   compatibilityProfile: DemoCompatibilityProfile;
   isHltv: boolean;
   captureFrames?: boolean;
+  compactScoreboard?: boolean;
   targetFps?: number;
   renderSize?: { width: number; height: number };
   startAtMs?: number;
@@ -117,6 +118,7 @@ class DemoEngine {
     }
 
     const compatibility = DEMO_COMPATIBILITY_PROFILES[options.compatibilityProfile];
+    const compactScoreboard = options.compactScoreboard ?? false;
     let rendererStarted = false;
     let completeSeek: (() => void) | undefined;
     const handleEngineLog = (message: string, isError: boolean) => {
@@ -229,6 +231,7 @@ class DemoEngine {
       xash.Cmd_ExecuteString(
         `hltv_legacy_scoreboard ${compatibility.legacyScoreboard ? 1 : 0}`,
       );
+      xash.Cmd_ExecuteString(`hltv_compact_scoreboard ${compactScoreboard ? 1 : 0}`);
       xash.Cmd_ExecuteString('cl_crosshair_size small');
       xash.Cmd_ExecuteString('cl_dynamiccrosshair 0');
       const startAtMs = Math.max(0, options.startAtMs ?? 0);
@@ -382,6 +385,7 @@ class DemoEngine {
         xash.Cmd_ExecuteString(
           `hltv_legacy_scoreboard ${compatibility.legacyScoreboard ? 1 : 0}`,
         );
+        xash.Cmd_ExecuteString(`hltv_compact_scoreboard ${compactScoreboard ? 1 : 0}`);
         // Sign-on can recreate the CS client after the initial command. Set
         // first person once as soon as that client is available, then leave
         // later manual spectator-mode changes alone.

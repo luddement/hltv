@@ -29,10 +29,10 @@ import HLClientURL from 'hlsdk-portable/cl_dlls/client_emscripten_wasm32.wasm?ur
 import HLServerURL from 'hlsdk-portable/dlls/hl_emscripten_wasm32.wasm?url';
 // @ts-ignore -- vite url imports
 import CSMenuURL from 'cs16-client/cl_dll/menu_emscripten_wasm32.wasm?url';
-// Locally rebuilt from CS16Client with a runtime-selectable legacy scoreboard;
-// modern protocol profiles keep the upstream HP/Money columns.
+// Locally rebuilt from CS16Client with independent legacy-compatibility and
+// compact scoreboard presentation flags.
 // @ts-ignore -- vite url imports
-import CSClientURL from '../../engine-patches/cs16-client-hltv-v15.wasm?url';
+import CSClientURL from '../../engine-patches/cs16-client-hltv-v16.wasm?url';
 // @ts-ignore -- vite url imports
 import CSServerURL from 'cs16-client/dlls/cs_emscripten_wasm32.wasm?url';
 
