@@ -70,6 +70,8 @@ if [[ $do_app -eq 1 ]]; then
     "$APP/scripts/build-crew-index.mjs" "$APP/scripts/generate-crew-playlist.mjs" \
     "$APP/scripts/generate-crew-ace-playlist.mjs" \
     "$APP/scripts/generate-crew-fast-aces-playlist.mjs" \
+    "$APP/scripts/build-side-end-manifest.mjs" \
+    "$APP/scripts/capture-side-end-scoreboards.mjs" \
     "$APP/scripts/unpack-demo-zips.py" \
     "$APP/scripts/repair-goldsrc-demos.py" "$USER_AT:$REMOTE/app/scripts/"
 

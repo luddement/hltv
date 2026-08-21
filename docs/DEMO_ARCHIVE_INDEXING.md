@@ -59,5 +59,33 @@ node --import ./scripts/hltv-node.mjs scripts/index-demos.mjs parse \
   --year 2004 --year 2005 --force
 ```
 
+## Side-end scoreboard archive
+
+The scoreboard pipeline saves at most two native 1920×1080 CS frames per
+match: the final live round before the side swap, and the match-winning or
+final played round after it. Pure knife rounds, pre-live rounds and warmup are
+excluded. An observed `Game_will_restart_in` plus an exact MR12/MR15 side swap
+is required for `high` confidence; uncertain demos stay in the manifest as
+`review` instead of being captured silently.
+
+```bash
+# Analyzer 2.5.16+ is required because it retains match restart boundaries.
+pnpm archive:index
+
+# Read-only audit. Creates ../side-end-capture-manifest.json.
+pnpm archive:scoreboards:audit
+
+# Keep the app running in another terminal, then capture only high confidence.
+pnpm dev --host 127.0.0.1 --port 43175
+pnpm archive:scoreboards:capture
+
+# Explicitly include the review queue after inspecting the manifest.
+pnpm archive:scoreboards:capture --include-review
+```
+
+The capture job is sequential and resumable. Existing images are skipped and
+progress/errors are checkpointed in `capture-results.json`. JPEG quality 95 is
+the storage-friendly default; pass `--format png` for lossless frames.
+
 The catalog can be searched by filename, map, clan/team or nickname and sorted
 by recording date, highest frag score or highest round score.

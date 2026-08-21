@@ -1366,6 +1366,9 @@
     count: number;
     comments: DemoComment[];
   };
+  type ScoreboardCaptureController = {
+    next: (demoTimeMs: number) => Promise<void>;
+  };
 
   const MOVIE_EXPORT_DIAGNOSTICS_KEY = 'replay-lab-movie-export-diagnostics-v1';
   const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
@@ -1464,6 +1467,7 @@
   const movieIncludeIntro = ref(true);
   const movieExcludedFragIds = ref<Set<string>>(new Set());
   const movieExportState = ref<MovieExportState>('idle');
+  const automatedScoreboardCapture = ref(false);
   const movieExportError = ref('');
   const movieExportNotice = ref('');
   const movieExportBytes = ref(0);
@@ -3596,7 +3600,8 @@
     // capture. Replace it once when capture is first requested, then retain
     // that readable surface across playlist demo transitions because the
     // active recorder intentionally keeps the same canvas as its video source.
-    if (movieExportRunning.value && !engineCanvasCaptureReady) {
+    const captureFrames = movieExportRunning.value || automatedScoreboardCapture.value;
+    if (captureFrames && !engineCanvasCaptureReady) {
       engineCanvasGeneration.value += 1;
       engineCanvasCaptureReady = true;
     }
@@ -3615,12 +3620,13 @@
         // result when launching; otherwise HLTV demos are started as POV and
         // their recorded overview camera can sit outside the BSP world.
         isHltv: analysisIndex.value?.demo.isHltv ?? selectedDemo.isHltv,
-        captureFrames: movieExportRunning.value,
+        captureFrames,
         targetFps: movieExportRunning.value ? movieQuality.value.fps : undefined,
-        renderSize: movieExportRunning.value ? {
-          width: movieQuality.value.width,
-          height: movieQuality.value.height,
-        } : undefined,
+        renderSize: movieExportRunning.value
+          ? { width: movieQuality.value.width, height: movieQuality.value.height }
+          : automatedScoreboardCapture.value
+            ? { width: 1_920, height: 1_080 }
+            : undefined,
         startAtMs,
         reconstructionCamera,
         onSeekStateChange: (value) => {
@@ -4352,6 +4358,65 @@
     }
   };
 
+  const waitForScoreboardCaptureState = async (
+    predicate: () => boolean,
+    timeoutMs = 120_000,
+  ): Promise<void> => {
+    const startedAt = performance.now();
+    while (!predicate()) {
+      if (performance.now() - startedAt >= timeoutMs) {
+        throw new Error('Timed out while preparing the scoreboard frame.');
+      }
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+    }
+  };
+
+  const settleScoreboardCapture = async (): Promise<void> => {
+    DemoEngine.execute('sys_timescale 0');
+    DemoEngine.execute('hud_draw 1');
+    DemoEngine.execute('+showscores');
+    const startedAt = performance.now();
+    let frames = 0;
+    await new Promise<void>((resolve) => {
+      const sample = (now: number) => {
+        frames += 1;
+        if (frames >= 30 && now - startedAt >= 1_000) resolve();
+        else window.requestAnimationFrame(sample);
+      };
+      window.requestAnimationFrame(sample);
+    });
+    document.documentElement.dataset.scoreboardCaptureReady = 'true';
+  };
+
+  /** Endast för den lokala Playwright-körningen som arkiverar native-scoreboards. */
+  const prepareAutomatedScoreboardCapture = async (
+    demoTimeMs: number,
+    initial: boolean,
+  ): Promise<void> => {
+    delete document.documentElement.dataset.scoreboardCaptureReady;
+    delete document.documentElement.dataset.scoreboardCaptureError;
+    try {
+      if (!Number.isFinite(demoTimeMs) || demoTimeMs <= 0) {
+        throw new Error('Invalid scoreboard capture time.');
+      }
+      document.documentElement.dataset.scoreboardCaptureActive = 'true';
+      automatedScoreboardCapture.value = true;
+      if (initial) {
+        await launchDemo(demoTimeMs);
+        await waitForScoreboardCaptureState(() => engineStarted.value && !seeking.value);
+      } else {
+        DemoEngine.execute('-showscores');
+        DemoEngine.execute('sys_timescale 1');
+        await DemoEngine.seekTo(demoTimeMs);
+      }
+      await settleScoreboardCapture();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The scoreboard frame failed.';
+      document.documentElement.dataset.scoreboardCaptureError = message;
+      throw error;
+    }
+  };
+
   onMounted(() => {
     commentNickname.value = window.localStorage.getItem(COMMENT_NICKNAME_STORAGE_KEY) ?? '';
     try {
@@ -4414,8 +4479,16 @@
     const initialRoute = parseReplayRoute(window.location.href);
     void loadArchiveComments();
     void loadCrewIndex();
-    void loadDemoCatalog().then(() => {
-      if (initialRoute.demoPath) void applyReplayRoute(initialRoute);
+    void loadDemoCatalog().then(async () => {
+      if (initialRoute.demoPath) await applyReplayRoute(initialRoute);
+      const captureTime = Number(new URL(window.location.href).searchParams.get('scoreboardCaptureMs'));
+      if (initialRoute.demoPath && Number.isFinite(captureTime) && captureTime > 0) {
+        const controller: ScoreboardCaptureController = {
+          next: (demoTimeMs) => prepareAutomatedScoreboardCapture(demoTimeMs, false),
+        };
+        Object.assign(window, { __hltvScoreboardCapture: controller });
+        await prepareAutomatedScoreboardCapture(captureTime, true);
+      }
     });
     window.addEventListener('popstate', onPopState);
     window.addEventListener('keydown', showScoreboard, true);
@@ -4437,6 +4510,9 @@
       void preparedMovieOutput.writer.abort('The page was closed during export.').catch(() => undefined);
     }
     DemoEngine.stop();
+    delete (window as Window & { __hltvScoreboardCapture?: ScoreboardCaptureController })
+      .__hltvScoreboardCapture;
+    delete document.documentElement.dataset.scoreboardCaptureActive;
     window.removeEventListener('keydown', showScoreboard, true);
     window.removeEventListener('keyup', hideScoreboard, true);
     window.removeEventListener('blur', hideScoreboardOnBlur);

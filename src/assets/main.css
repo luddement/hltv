@@ -982,6 +982,15 @@ footer { display: flex; justify-content: space-between; padding: 20px 3px 0; col
 
 .engine-stage { position: fixed; inset: 0; background: #000; z-index: 20; }
 .engine-canvas { width: 100%; height: 100%; display: block; border: 0; outline: 0; image-rendering: auto; }
+
+/* Native scoreboard archive capture: DOM controls must not leak into the
+   canvas screenshot even though they normally float above the game. */
+html[data-scoreboard-capture-active="true"] .engine-toolbar,
+html[data-scoreboard-capture-active="true"] .console-panel,
+html[data-scoreboard-capture-active="true"] .replay-crosshair,
+html[data-scoreboard-capture-active="true"] .movie-hud {
+  display: none !important;
+}
 .engine-loader { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; background: #090b0a; z-index: 4; }
 .engine-loader strong { margin-top: 8px; font-size: 13px; }
 .engine-loader span { color: var(--muted); font: 10px ui-monospace, monospace; }

@@ -233,6 +233,8 @@ describe('legacy round timers', () => {
       { startTimeMs: 50_000, winner: 'CT' },
       { startTimeMs: 80_000, winner: 'TERRORIST' },
     ]);
+    expect(index.events.filter((event) => event.type === 'match_restart')
+      .map((event) => event.demoTimeMs)).toEqual([10_000, 30_000]);
   });
 
   it('recovers full 105-second rounds when an HLTV recording starts mid-match', async () => {

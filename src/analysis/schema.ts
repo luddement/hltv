@@ -98,12 +98,21 @@ export type BombEvent = ReplayEventBase & {
   playerId: null;
 };
 
+/**
+ * Observerad server-restart. Den här gränsen behövs för att skilja
+ * warmup/knivrunda från den riktiga matchen i äldre HLTV-inspelningar.
+ */
+export type MatchRestartEvent = ReplayEventBase & {
+  type: 'match_restart';
+};
+
 export type ReplayEvent =
   | DeathEvent
   | RoundStartEvent
   | RoundEndEvent
   | TeamChangeEvent
-  | BombEvent;
+  | BombEvent
+  | MatchRestartEvent;
 
 export type RoundSummary = {
   roundId: string;

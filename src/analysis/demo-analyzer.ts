@@ -9,6 +9,7 @@ import type {
   DemoAnalysisIndex,
   EvidenceValue,
   HistoryEntry,
+  MatchRestartEvent,
   PlayerIdentity,
   PlayerSession,
   ReplayEvent,
@@ -19,7 +20,7 @@ import type {
   TeamChangeEvent,
 } from '/@/analysis/schema';
 
-export const ANALYZER_VERSION = '2.5.15';
+export const ANALYZER_VERSION = '2.5.16';
 
 const PARSER_VERSION = 'hlviewer-0.8.5-hltv-analysis-7';
 const ENGINE_WASM_VERSION = '7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4';
@@ -206,6 +207,7 @@ export const normalizeParsedAnalysis = (
   const legacyTimerRoundIds = new Set<string>();
   let previousRoundTimeSeconds: number | null = null;
   let sawMatchRestart = false;
+  let lastMatchRestartAtMs = -1;
 
   const nextEventId = (): string => `event-${++eventSequence}`;
   const playerForSlot = (slot: number): MutablePlayerState | undefined =>
@@ -352,6 +354,14 @@ export const normalizeParsedAnalysis = (
             ? [roundState.discardCurrentRound()].filter((round): round is RoundSummary => Boolean(round))
             : [];
           forgetRounds(removedRounds);
+          if (atMs !== lastMatchRestartAtMs) {
+            const restartEvent: MatchRestartEvent = {
+              ...eventBase(nextEventId(), frame, message, messageOrdinal, null),
+              type: 'match_restart',
+            };
+            events.push(restartEvent);
+            lastMatchRestartAtMs = atMs;
+          }
           sawMatchRestart = true;
         }
         return;
