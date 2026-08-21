@@ -238,7 +238,7 @@ const playlist = {
     ? values['fast-only']
       ? `${member.name} — alla kompletta snabba ace`
       : `${member.name} — alla kompletta ace`
-    : `${member.name} — ${selectedAceRounds.length} kompletta ace`,
+    : `${member.name} — ${selectedAceRounds.length} bästa kompletta ace`,
   createdAt: now,
   updatedAt: now,
   items,
@@ -260,6 +260,9 @@ const report = {
   candidateAceRounds: aceRounds.length,
   eligibleAceRounds: eligibleAceRounds.length,
   fastOnly: values['fast-only'],
+  ranking: values['fast-only']
+    ? 'Shortest complete single-scene aces first, then frag score and headshots.'
+    : 'Fewest scenes first, then frag score and headshots.',
   selectedAceRounds: selectedAceRounds.length,
   aceDemos: acesByDemo.size,
   frags: items.length,
