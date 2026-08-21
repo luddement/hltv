@@ -20,7 +20,7 @@ const { values } = parseArgs({ options: {
 } });
 
 const { CREW, crewMemberForName } = await import('/@/archive/crew');
-const { completeAceGroups, isValidFrag, zeroTwelveMilestones } = await import('/@/analysis/achievements');
+const { completeAceGroups, isValidFrag, playerSideAt, zeroTwelveSideMilestones } = await import('/@/analysis/achievements');
 
 const catalog = JSON.parse(await readFile(resolve(values.catalog), 'utf8'));
 const byPath = new Map(catalog.demos.map((d) => [d.path, d]));
@@ -97,11 +97,12 @@ for (const year of await readdir(resolve(values.analysis))) {
       if (memberId) stats.get(memberId).aces += 1;
     }
 
-    for (const memberId of zeroTwelveMilestones(
+    for (const milestone of zeroTwelveSideMilestones(
       doc.events ?? [],
       (playerId) => crewById.get(playerId),
+      (playerId, atMs) => playerSideAt(doc.players ?? [], playerId, atMs),
     )) {
-      stats.get(memberId).zeroTwelveGames += 1;
+      stats.get(milestone.identity).zeroTwelveGames += 1;
     }
 
     for (const event of doc.events ?? []) {

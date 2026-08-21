@@ -6,6 +6,7 @@ import {
 import {
   completeAceGroups,
   playerScorelines,
+  zeroTwelveSideMilestones,
   zeroTwelveMilestones,
 } from '/@/analysis/achievements';
 import type {
@@ -216,6 +217,38 @@ describe('highlight scoring', () => {
       'death-97', 3_750, 'ct-1', 't-pov', 3, 1, 1, 1,
     ), ...deaths.slice(7)];
     expect(zeroTwelveMilestones(interrupted)).toEqual(new Set());
+  });
+
+  it('counts 0–12 separately for the T and CT sides', () => {
+    const sixCtDeaths = Array.from({ length: 6 }, (_, index) =>
+      death(`death-${index + 30}`, 1_000 + index * 500, 't-pov', 'ct-1', 1, 3, 1, 1));
+    const sixTDeaths = Array.from({ length: 6 }, (_, index) =>
+      death(`death-${index + 40}`, 4_000 + index * 500, 't-pov', 'ct-1', 1, 3, 1, 1));
+    const sideAt = (_playerId: string, atMs: number) => atMs < 4_000 || atMs >= 10_000
+      ? 'CT' as const
+      : 'TERRORIST' as const;
+
+    expect(zeroTwelveMilestones([...sixCtDeaths, ...sixTDeaths], undefined, sideAt))
+      .toEqual(new Set());
+
+    const anotherSixTDeaths = Array.from({ length: 6 }, (_, index) =>
+      death(`death-${index + 50}`, 7_000 + index * 500, 't-pov', 'ct-1', 1, 3, 1, 1));
+    expect(zeroTwelveMilestones(
+      [...sixCtDeaths, ...sixTDeaths, ...anotherSixTDeaths],
+      undefined,
+      sideAt,
+    )).toEqual(new Set(['ct-1']));
+
+    const anotherSixCtDeaths = Array.from({ length: 6 }, (_, index) =>
+      death(`death-${index + 60}`, 10_000 + index * 500, 't-pov', 'ct-1', 1, 3, 1, 1));
+    expect(zeroTwelveSideMilestones(
+      [...sixCtDeaths, ...sixTDeaths, ...anotherSixTDeaths, ...anotherSixCtDeaths],
+      (playerId) => playerId,
+      sideAt,
+    ).map(({ identity, side }) => ({ identity, side }))).toEqual([
+      { identity: 'ct-1', side: 'TERRORIST' },
+      { identity: 'ct-1', side: 'CT' },
+    ]);
   });
 
   it('does not rank zero-length or implausibly merged rounds', () => {

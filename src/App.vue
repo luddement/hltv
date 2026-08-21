@@ -298,8 +298,9 @@
                 <span
                   :class="['archive-achievement-cell zero-twelve', { populated: (entry.crewZeroTwelveCount ?? 0) > 0 }]"
                   :title="entry.crewZeroTwelveCount
-                    ? `PRAXXA 0–12: ${entry.crewZeroTwelveMembers?.join(', ')}`
-                    : 'Ingen PRAXXA-spelare nådde 0–12'"
+                    ? `PRAXXA 0–12: ${entry.crewZeroTwelveSides
+                      ?.map((run) => `${run.member} (${run.side})`).join(', ')}`
+                    : 'Ingen PRAXXA-spelare hade 12 deaths utan frag på samma sida'"
                 ><b>{{ entry.crewZeroTwelveCount || '–' }}</b></span>
                 <span
                   :class="['archive-comment-cell', { populated: archiveCommentsFor(entry.path).count > 0 }]"

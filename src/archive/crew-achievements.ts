@@ -1,4 +1,8 @@
-import { completeAceGroups, zeroTwelveMilestones } from '/@/analysis/achievements';
+import {
+  completeAceGroups,
+  playerSideAt,
+  zeroTwelveSideMilestones,
+} from '/@/analysis/achievements';
 import type { DemoAnalysisIndex } from '/@/analysis/schema';
 import { crewMemberForName } from '/@/archive/crew';
 
@@ -9,6 +13,7 @@ export type CrewDemoAchievements = {
   zeroTwelve: boolean;
   crewZeroTwelveCount: number;
   crewZeroTwelveMembers: string[];
+  crewZeroTwelveSides: { member: string; side: 'T' | 'CT' }[];
 };
 
 export const crewIdsByPlayerId = (
@@ -51,10 +56,12 @@ export const summarizeCrewDemoAchievements = (
     if (memberId) aceMemberIds.push(memberId);
   }
 
-  const zeroTwelveMemberIds = [...zeroTwelveMilestones(
+  const zeroTwelveRuns = zeroTwelveSideMilestones(
     index.events,
     (playerId) => crewIdByPlayerId.get(playerId),
-  )];
+    (playerId, atMs) => playerSideAt(index.players, playerId, atMs),
+  );
+  const zeroTwelveMemberIds = zeroTwelveRuns.map((run) => run.identity);
   const names = (memberIds: readonly string[]): string[] => [...new Set(memberIds)]
     .map((memberId) => memberNames.get(memberId) ?? memberId)
     .sort((left, right) => left.localeCompare(right, 'sv'));
@@ -66,5 +73,9 @@ export const summarizeCrewDemoAchievements = (
     zeroTwelve: zeroTwelveMemberIds.length > 0,
     crewZeroTwelveCount: zeroTwelveMemberIds.length,
     crewZeroTwelveMembers: names(zeroTwelveMemberIds),
+    crewZeroTwelveSides: zeroTwelveRuns.map((run) => ({
+      member: memberNames.get(run.identity) ?? run.identity,
+      side: run.side === 'TERRORIST' ? 'T' : 'CT',
+    })),
   };
 };

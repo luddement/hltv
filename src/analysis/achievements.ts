@@ -16,6 +16,15 @@ export type PlayerScoreline = {
   deaths: number;
 };
 
+export type PlayerSide = 'TERRORIST' | 'CT';
+
+export type ZeroTwelveSideMilestone = {
+  identity: string;
+  side: PlayerSide;
+  eventId: string;
+  demoTimeMs: number;
+};
+
 const MAX_CLOSED_ROUND_MS = 5 * 60_000;
 const MAX_OPEN_ROUND_KILL_SPAN_MS = 3 * 60_000;
 
@@ -107,15 +116,22 @@ export const playerScorelines = (
 /**
  * Returnerar identiteter som under demot har en 0–12-period: tolv deaths i
  * rad utan ett giltigt frag. En tidigare eller senare kill suddar inte ut den
- * perioden. resolveIdentity gör att återanslutningar/playerId-byten kan slås
- * ihop till samma person.
+ * perioden. När resolveSide anges hålls T- och CT-halvorna helt separata.
+ * resolveIdentity gör att återanslutningar/playerId-byten kan slås ihop till
+ * samma person.
  */
 export const zeroTwelveMilestones = (
   events: readonly ReplayEvent[],
   resolveIdentity: (playerId: string) => string | undefined = (playerId) => playerId,
+  resolveSide?: (playerId: string, atMs: number) => PlayerSide | undefined,
 ): Set<string> => {
+  if (resolveSide) {
+    return new Set(zeroTwelveSideMilestones(events, resolveIdentity, resolveSide)
+      .map((milestone) => milestone.identity));
+  }
   const deathsSinceFrag = new Map<string, number>();
   const milestones = new Set<string>();
+  const bucket = (identity: string): string => `${identity}\nALL`;
 
   const deaths = events
     .filter((event): event is DeathEvent => event.type === 'death')
@@ -124,16 +140,70 @@ export const zeroTwelveMilestones = (
   for (const death of deaths) {
     if (death.killerPlayerId && isValidFrag(death)) {
       const killer = resolveIdentity(death.killerPlayerId);
-      if (killer) deathsSinceFrag.set(killer, 0);
+      if (killer) deathsSinceFrag.set(bucket(killer), 0);
     }
     if (death.victimPlayerId) {
       const victim = resolveIdentity(death.victimPlayerId);
       if (victim) {
-        const count = (deathsSinceFrag.get(victim) ?? 0) + 1;
-        deathsSinceFrag.set(victim, count);
+        const key = bucket(victim);
+        const count = (deathsSinceFrag.get(key) ?? 0) + 1;
+        deathsSinceFrag.set(key, count);
         if (count === 12) milestones.add(victim);
       }
     }
   }
   return milestones;
+};
+
+/** Alla separata 0–12-perioder, med T/CT bevarat för statistik och UI. */
+export const zeroTwelveSideMilestones = (
+  events: readonly ReplayEvent[],
+  resolveIdentity: (playerId: string) => string | undefined,
+  resolveSide: (playerId: string, atMs: number) => PlayerSide | undefined,
+): ZeroTwelveSideMilestone[] => {
+  const deathsSinceFrag = new Map<string, number>();
+  const milestones: ZeroTwelveSideMilestone[] = [];
+  const keyOf = (identity: string, side: PlayerSide): string => `${identity}\n${side}`;
+  const deaths = events
+    .filter((event): event is DeathEvent => event.type === 'death')
+    .sort((left, right) => left.demoTimeMs - right.demoTimeMs
+      || left.packetOrdinal - right.packetOrdinal);
+
+  for (const death of deaths) {
+    if (death.killerPlayerId && isValidFrag(death)) {
+      const identity = resolveIdentity(death.killerPlayerId);
+      const side = resolveSide(death.killerPlayerId, death.demoTimeMs);
+      if (identity && side) deathsSinceFrag.set(keyOf(identity, side), 0);
+    }
+    if (!death.victimPlayerId) continue;
+    const identity = resolveIdentity(death.victimPlayerId);
+    const side = resolveSide(death.victimPlayerId, death.demoTimeMs);
+    if (!identity || !side) continue;
+    const key = keyOf(identity, side);
+    const count = (deathsSinceFrag.get(key) ?? 0) + 1;
+    deathsSinceFrag.set(key, count);
+    if (count === 12) {
+      milestones.push({
+        identity,
+        side,
+        eventId: death.eventId,
+        demoTimeMs: death.demoTimeMs,
+      });
+    }
+  }
+  return milestones;
+};
+
+export const playerSideAt = (
+  players: DemoAnalysisIndex['players'],
+  playerId: string,
+  atMs: number,
+): PlayerSide | undefined => {
+  const player = players.find((candidate) => candidate.playerId === playerId);
+  const session = player?.sessions.find((candidate) =>
+    candidate.joinedAtMs <= atMs
+    && (candidate.leftAtMs === null || atMs <= candidate.leftAtMs));
+  const team = session?.teams.find((entry) =>
+    entry.fromMs <= atMs && (entry.toMs === null || atMs < entry.toMs))?.value;
+  return team === 'TERRORIST' || team === 'CT' ? team : undefined;
 };

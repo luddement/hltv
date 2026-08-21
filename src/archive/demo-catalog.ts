@@ -25,10 +25,11 @@ export type DemoCatalogEntry = {
   ace?: boolean;
   crewAceCount?: number;
   crewAceMembers?: string[];
-  /** Matchflagga: minst en identifierad PRAXXA-medlem nådde 0–12. */
+  /** Matchflagga: en PRAXXA-medlem hade 12 deaths utan frag som T eller CT. */
   zeroTwelve?: boolean;
   crewZeroTwelveCount?: number;
   crewZeroTwelveMembers?: string[];
+  crewZeroTwelveSides?: { member: string; side: 'T' | 'CT' }[];
   analyzerVersion?: string;
 };
 
