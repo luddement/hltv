@@ -106,13 +106,20 @@ export type MatchRestartEvent = ReplayEventBase & {
   type: 'match_restart';
 };
 
+export type TeamScoreEvent = ReplayEventBase & {
+  type: 'team_score';
+  team: 'TERRORIST' | 'CT';
+  score: number;
+};
+
 export type ReplayEvent =
   | DeathEvent
   | RoundStartEvent
   | RoundEndEvent
   | TeamChangeEvent
   | BombEvent
-  | MatchRestartEvent;
+  | MatchRestartEvent
+  | TeamScoreEvent;
 
 export type RoundSummary = {
   roundId: string;

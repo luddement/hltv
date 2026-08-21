@@ -139,16 +139,29 @@ export const selectMatchSideEnds = (
 
       const score = new Map<LogicalTeamId, number>([['team-1', 0], ['team-2', 0]]);
       for (const entry of firstHalf) score.set(entry.winnerTeam, (score.get(entry.winnerTeam) ?? 0) + 1);
+      const halftimeScore = new Map(score);
 
       const secondHalf: CandidateRound[] = [];
       for (let index = boundary + 1; index < candidates.length && secondHalf.length < mr; index += 1) {
         const entry = candidates[index];
         if (entry.terroristTeam !== firstSecondHalf.terroristTeam) break;
-        const previous = secondHalf.at(-1) ?? candidates[boundary];
+        let previous = secondHalf.at(-1) ?? candidates[boundary];
         const previousEnd = previous.round.endTimeMs;
-        if (previousEnd === null
-          || entry.round.startTimeMs < previousEnd
-          || entry.round.startTimeMs - previousEnd > MAX_BETWEEN_ROUNDS_MS) break;
+        const restartedBetweenRounds = previousEnd !== null && restartTimes.some((time) =>
+          time > previousEnd && time <= entry.round.startTimeMs);
+        // Old match configs sometimes play one aborted pistol round after the
+        // side swap and then issue another live restart. The scoreboard goes
+        // back to 0–0, so that round must not count toward the second half.
+        if (restartedBetweenRounds && secondHalf.length) {
+          secondHalf.splice(0);
+          score.clear();
+          for (const [team, wins] of halftimeScore) score.set(team, wins);
+          previous = candidates[boundary];
+        }
+        const contiguousPreviousEnd = previous.round.endTimeMs;
+        if (contiguousPreviousEnd === null
+          || entry.round.startTimeMs < contiguousPreviousEnd
+          || entry.round.startTimeMs - contiguousPreviousEnd > MAX_BETWEEN_ROUNDS_MS) break;
         secondHalf.push(entry);
         score.set(entry.winnerTeam, (score.get(entry.winnerTeam) ?? 0) + 1);
         if ((score.get(entry.winnerTeam) ?? 0) >= mr + 1) break;

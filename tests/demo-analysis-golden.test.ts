@@ -206,6 +206,12 @@ describe('legacy round timers', () => {
     ...new TextEncoder().encode(token),
     0,
   ];
+  const teamScorePayload = (team: 'TERRORIST' | 'CT', score: number): number[] => [
+    ...new TextEncoder().encode(team),
+    0,
+    score & 0xff,
+    score >>> 8,
+  ];
 
   it('accepts a reset 105-second timer after match restart and drops interrupted starts', async () => {
     const parsed = parsedAnalysis(protocol47);
@@ -261,5 +267,34 @@ describe('legacy round timers', () => {
       { startTimeMs: 20_000, winner: 'TERRORIST' },
       { startTimeMs: 68_000, winner: 'CT' },
     ]);
+  });
+
+  it('closes an old round from a TeamScore increment when SendAudio is missing', async () => {
+    const parsed = parsedAnalysis(protocol47);
+    parsed.frames = [
+      messageFrame(0, 'TeamScore', teamScorePayload('CT', 0), 0),
+      messageFrame(0, 'TeamScore', teamScorePayload('TERRORIST', 0), 1),
+      messageFrame(10, 'RoundTime', [120, 0], 2),
+      messageFrame(50, 'TeamScore', teamScorePayload('CT', 1), 3),
+      messageFrame(50, 'TeamScore', teamScorePayload('TERRORIST', 0), 4),
+    ];
+    const demo = demoMetadata(protocol47);
+    demo.duration = 60;
+    const { normalizeParsedAnalysis } = await import('/@/analysis/demo-analyzer');
+    const index = normalizeParsedAnalysis(parsed, demo, fixtureIdentity);
+
+    expect(index.rounds.map((round) => ({
+      startTimeMs: round.startTimeMs,
+      endTimeMs: round.endTimeMs,
+      winner: round.winner.value,
+    }))).toEqual([{
+      startTimeMs: 10_000,
+      endTimeMs: 50_000,
+      winner: 'CT',
+    }]);
+    expect(index.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'team_score', team: 'CT', score: 1 }),
+      expect.objectContaining({ type: 'round_end', evidence: 'observed' }),
+    ]));
   });
 });

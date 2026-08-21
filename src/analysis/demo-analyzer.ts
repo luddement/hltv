@@ -18,9 +18,10 @@ import type {
   RoundSummary,
   RoundStartEvent,
   TeamChangeEvent,
+  TeamScoreEvent,
 } from '/@/analysis/schema';
 
-export const ANALYZER_VERSION = '2.5.16';
+export const ANALYZER_VERSION = '2.5.17';
 
 const PARSER_VERSION = 'hlviewer-0.8.5-hltv-analysis-7';
 const ENGINE_WASM_VERSION = '7a00694ccae22b8cbb3254033a602a6ac750f7c27e6909ba1e23e6a13ac8f2c4';
@@ -208,6 +209,7 @@ export const normalizeParsedAnalysis = (
   let previousRoundTimeSeconds: number | null = null;
   let sawMatchRestart = false;
   let lastMatchRestartAtMs = -1;
+  const teamScores = new Map<'TERRORIST' | 'CT', number>();
 
   const nextEventId = (): string => `event-${++eventSequence}`;
   const playerForSlot = (slot: number): MutablePlayerState | undefined =>
@@ -222,6 +224,35 @@ export const normalizeParsedAnalysis = (
       if (event.type === 'round_start' || event.type === 'round_end') events.splice(index, 1);
       else event.roundId = null;
     }
+  };
+
+  const closeRound = (
+    frame: AnalysisFrame,
+    message: AnalysisMessage,
+    messageOrdinal: number,
+    atMs: number,
+    winner: 'TERRORIST' | 'CT',
+    evidence: 'observed' | 'derived',
+  ): boolean => {
+    const currentRound = roundState.currentRound;
+    // HLTV signon snapshots can contain a stale timer and result at exactly
+    // 0 ms. Do not turn that snapshot into a zero-length playable round.
+    if (currentRound && atMs <= currentRound.startTimeMs) {
+      const discarded = roundState.discardCurrentRound();
+      if (discarded) forgetRounds([discarded]);
+      return false;
+    }
+    const activeRound = roundState.endRound(atMs, winner);
+    if (!activeRound) return false;
+    const roundEnd: RoundEndEvent = {
+      ...eventBase(nextEventId(), frame, message, messageOrdinal, activeRound.roundId),
+      evidence,
+      type: 'round_end',
+      roundId: activeRound.roundId,
+      winner: activeRound.winner,
+    };
+    events.push(roundEnd);
+    return true;
   };
 
   const closeSession = (slot: number, atMs: number): void => {
@@ -367,6 +398,40 @@ export const normalizeParsedAnalysis = (
         return;
       }
 
+      if (name === 'TeamScore' && payload.length >= 4) {
+        const terminator = payload.indexOf(0);
+        const rawTeam = terminator > 0 ? readCString(payload) : '';
+        const team = rawTeam === 'TERRORIST' || rawTeam === 'CT'
+          ? rawTeam
+          : undefined;
+        const scoreOffset = terminator + 1;
+        if (!team || scoreOffset + 1 >= payload.length) return;
+        const score = readUint16(payload, scoreOffset);
+        const previousScore = teamScores.get(team);
+        const scoreEvent: TeamScoreEvent = {
+          ...eventBase(
+            nextEventId(),
+            frame,
+            message,
+            messageOrdinal,
+            roundState.currentRound?.roundId ?? null,
+          ),
+          type: 'team_score',
+          team,
+          score,
+        };
+        events.push(scoreEvent);
+        teamScores.set(team, score);
+        // Some old HLTV servers omit the normal SendAudio win token on the
+        // final round. An exact one-point scoreboard increment is then the
+        // authoritative observed end signal. Initial snapshots and resets do
+        // not satisfy this condition.
+        if (previousScore !== undefined && score === previousScore + 1) {
+          closeRound(frame, message, messageOrdinal, atMs, team, 'observed');
+        }
+        return;
+      }
+
       if (name === 'TeamInfo' && payload.length >= 2) {
         const slot = payload[0];
         const team = readCString(payload, 1);
@@ -501,26 +566,7 @@ export const normalizeParsedAnalysis = (
           ? 'CT' as const
           : null;
       if (winner) {
-        const currentRound = roundState.currentRound;
-        // HLTV signon snapshots can contain a stale timer and win sound at
-        // exactly 0 ms, followed by historic DeathMsg entries. Treating that
-        // snapshot as a round creates a zero-length R1 that cannot be played
-        // and may appear to contain kills from several old rounds.
-        if (currentRound && atMs <= currentRound.startTimeMs) {
-          const discarded = roundState.discardCurrentRound();
-          if (discarded) forgetRounds([discarded]);
-          return;
-        }
-        const activeRound = roundState.endRound(atMs, winner);
-        if (!activeRound) return;
-        const roundEnd: RoundEndEvent = {
-          ...eventBase(nextEventId(), frame, message, messageOrdinal, activeRound.roundId),
-          evidence: 'derived',
-          type: 'round_end',
-          roundId: activeRound.roundId,
-          winner: activeRound.winner,
-        };
-        events.push(roundEnd);
+        closeRound(frame, message, messageOrdinal, atMs, winner, 'derived');
         return;
       }
 

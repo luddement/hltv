@@ -69,7 +69,8 @@ is required for `high` confidence; uncertain demos stay in the manifest as
 `review` instead of being captured silently.
 
 ```bash
-# Analyzer 2.5.16+ is required because it retains match restart boundaries.
+# Analyzer 2.5.17+ retains match restart boundaries and recovers old-demo
+# round endings from observed TeamScore increments when the win sound is absent.
 pnpm archive:index
 
 # Read-only audit. Creates ../side-end-capture-manifest.json.

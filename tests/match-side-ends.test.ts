@@ -186,4 +186,20 @@ describe('competitive side-end selection', () => {
       ],
     });
   });
+
+  it('drops an aborted second-half round when the server restarts back to 0–0', () => {
+    const input = fixture(15, Array.from({ length: 7 }, () => 'team-1' as const));
+    input.events.push(restart(535_000));
+
+    const selected = selectMatchSideEnds(input);
+
+    expect(selected).toMatchObject({
+      confidence: 'high',
+      captures: [
+        { roundId: 'live-15', reason: 'halftime' },
+        { roundId: 'live-22', competitiveRoundNumber: 21, reason: 'match-won' },
+      ],
+    });
+    expect(selected?.excludedRoundIds).toContain('live-16');
+  });
 });
