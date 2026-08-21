@@ -25,7 +25,7 @@ export type DemoCatalogEntry = {
   ace?: boolean;
   crewAceCount?: number;
   crewAceMembers?: string[];
-  /** Matchflagga: minst en identifierad PRAXXA-medlem slutade exakt 0–12. */
+  /** Matchflagga: minst en identifierad PRAXXA-medlem nådde 0–12. */
   zeroTwelve?: boolean;
   crewZeroTwelveCount?: number;
   crewZeroTwelveMembers?: string[];

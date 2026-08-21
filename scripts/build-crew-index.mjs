@@ -20,7 +20,7 @@ const { values } = parseArgs({ options: {
 } });
 
 const { CREW, crewMemberForName } = await import('/@/archive/crew');
-const { completeAceGroups, isValidFrag, playerScorelines } = await import('/@/analysis/achievements');
+const { completeAceGroups, isValidFrag, zeroTwelveMilestones } = await import('/@/analysis/achievements');
 
 const catalog = JSON.parse(await readFile(resolve(values.catalog), 'utf8'));
 const byPath = new Map(catalog.demos.map((d) => [d.path, d]));
@@ -97,19 +97,11 @@ for (const year of await readdir(resolve(values.analysis))) {
       if (memberId) stats.get(memberId).aces += 1;
     }
 
-    const demoScorelines = new Map();
-    for (const [playerId, scoreline] of playerScorelines(doc.events ?? [])) {
-      const memberId = crewById.get(playerId);
-      if (!memberId) continue;
-      const total = demoScorelines.get(memberId) ?? { kills: 0, deaths: 0 };
-      total.kills += scoreline.kills;
-      total.deaths += scoreline.deaths;
-      demoScorelines.set(memberId, total);
-    }
-    for (const [memberId, scoreline] of demoScorelines) {
-      if (scoreline.kills === 0 && scoreline.deaths === 12) {
-        stats.get(memberId).zeroTwelveGames += 1;
-      }
+    for (const memberId of zeroTwelveMilestones(
+      doc.events ?? [],
+      (playerId) => crewById.get(playerId),
+    )) {
+      stats.get(memberId).zeroTwelveGames += 1;
     }
 
     for (const event of doc.events ?? []) {

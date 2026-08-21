@@ -3,7 +3,11 @@ import {
   buildHighlightAnalysis,
   withVerifiedWallbangBonus,
 } from '/@/analysis/highlight-analyzer';
-import { completeAceGroups, playerScorelines } from '/@/analysis/achievements';
+import {
+  completeAceGroups,
+  playerScorelines,
+  zeroTwelveMilestones,
+} from '/@/analysis/achievements';
 import type {
   AnalysisPerspective,
   DeathEvent,
@@ -197,6 +201,16 @@ describe('highlight scoring', () => {
 
     deaths.push(death('death-99', 9_000, 'ct-1', 't-pov', 3, 1, 1, 1));
     expect(playerScorelines(deaths).get('ct-1')).toEqual({ kills: 1, deaths: 12 });
+  });
+
+  it('keeps the 0–12 milestone when the player gets a later frag', () => {
+    const deaths = Array.from({ length: 12 }, (_, index) =>
+      death(`death-${index + 20}`, 1_000 + index * 500, 't-pov', 'ct-1', 1, 3, 1, 1));
+    deaths.push(death('death-99', 9_000, 'ct-1', 't-pov', 3, 1, 1, 1));
+    expect(zeroTwelveMilestones(deaths)).toEqual(new Set(['ct-1']));
+
+    deaths.unshift(death('death-98', 500, 'ct-1', 't-pov', 3, 1, 1, 1));
+    expect(zeroTwelveMilestones(deaths)).toEqual(new Set());
   });
 
   it('does not rank zero-length or implausibly merged rounds', () => {

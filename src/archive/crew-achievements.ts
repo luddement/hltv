@@ -1,4 +1,4 @@
-import { completeAceGroups, playerScorelines } from '/@/analysis/achievements';
+import { completeAceGroups, zeroTwelveMilestones } from '/@/analysis/achievements';
 import type { DemoAnalysisIndex } from '/@/analysis/schema';
 import { crewMemberForName } from '/@/archive/crew';
 
@@ -51,18 +51,10 @@ export const summarizeCrewDemoAchievements = (
     if (memberId) aceMemberIds.push(memberId);
   }
 
-  const totalsByMember = new Map<string, { kills: number; deaths: number }>();
-  for (const [playerId, scoreline] of playerScorelines(index.events)) {
-    const memberId = crewIdByPlayerId.get(playerId);
-    if (!memberId) continue;
-    const total = totalsByMember.get(memberId) ?? { kills: 0, deaths: 0 };
-    total.kills += scoreline.kills;
-    total.deaths += scoreline.deaths;
-    totalsByMember.set(memberId, total);
-  }
-  const zeroTwelveMemberIds = [...totalsByMember]
-    .filter(([, scoreline]) => scoreline.kills === 0 && scoreline.deaths === 12)
-    .map(([memberId]) => memberId);
+  const zeroTwelveMemberIds = [...zeroTwelveMilestones(
+    index.events,
+    (playerId) => crewIdByPlayerId.get(playerId),
+  )];
   const names = (memberIds: readonly string[]): string[] => [...new Set(memberIds)]
     .map((memberId) => memberNames.get(memberId) ?? memberId)
     .sort((left, right) => left.localeCompare(right, 'sv'));

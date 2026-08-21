@@ -103,3 +103,44 @@ export const playerScorelines = (
   }
   return scorelines;
 };
+
+/**
+ * Returnerar identiteter som vid någon punkt i demot når 0 kills och 12
+ * deaths. En senare kill suddar inte ut bedriften — scoreboarden stod 0–12.
+ * resolveIdentity gör att återanslutningar/playerId-byten kan slås ihop till
+ * samma person.
+ */
+export const zeroTwelveMilestones = (
+  events: readonly ReplayEvent[],
+  resolveIdentity: (playerId: string) => string | undefined = (playerId) => playerId,
+): Set<string> => {
+  const scorelines = new Map<string, PlayerScoreline>();
+  const milestones = new Set<string>();
+  const row = (identity: string): PlayerScoreline => {
+    const existing = scorelines.get(identity);
+    if (existing) return existing;
+    const created = { kills: 0, deaths: 0 };
+    scorelines.set(identity, created);
+    return created;
+  };
+
+  const deaths = events
+    .filter((event): event is DeathEvent => event.type === 'death')
+    .sort((left, right) => left.demoTimeMs - right.demoTimeMs
+      || left.packetOrdinal - right.packetOrdinal);
+  for (const death of deaths) {
+    if (death.killerPlayerId && isValidFrag(death)) {
+      const killer = resolveIdentity(death.killerPlayerId);
+      if (killer) row(killer).kills += 1;
+    }
+    if (death.victimPlayerId) {
+      const victim = resolveIdentity(death.victimPlayerId);
+      if (victim) {
+        const scoreline = row(victim);
+        scoreline.deaths += 1;
+        if (scoreline.kills === 0 && scoreline.deaths === 12) milestones.add(victim);
+      }
+    }
+  }
+  return milestones;
+};
