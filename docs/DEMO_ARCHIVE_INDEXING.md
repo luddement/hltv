@@ -94,5 +94,7 @@ changed. A versioned `capture.json` beside every pair means images made by an
 older renderer are recaptured automatically instead of being mistaken for
 current output.
 
-The catalog can be searched by filename, map, clan/team or nickname and sorted
-by recording date, highest frag score or highest round score.
+The catalog can be searched by filename, map, clan/team or nickname. Each of
+the eight table headings toggles ascending/descending sorting: recording date,
+match, map, highest frag score, highest round score, ace count, 0–12 count and
+comment count. Missing values remain last in either direction.

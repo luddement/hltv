@@ -54,6 +54,25 @@ pnpm serve
 medföljande demot och `game-assets/` automatiskt. Sätt exempelvis
 `HLTV_PORT=43173 pnpm serve` om du vill använda en annan port.
 
+## Arkivets aktuella funktioner
+
+- Arkivtabellens åtta rubriker — datum, match, karta, toppfrag, topprunda, ace,
+  0–12 och kommentarer — är klickbara och växlar mellan stigande och fallande
+  sortering. Saknade värden placeras sist i båda riktningarna.
+- En demosida visar två klickbara native-scoreboardbilder när de finns:
+  slutet av första sidan och slutet av andra sidan/matchen. Originalbilden
+  öppnas i en ny flik. MR12 och MR15 stöds; warmup och knivrundor ignoreras.
+- Automatiska cinematic-kameror för HLTV-highlights, rundor och enskilda frags
+  är ett utvecklarverktyg. Knapparna visas endast när URL:en innehåller exakt
+  `debug=true`. Vanlig demo- och fraguppspelning använder inte kameradirektören
+  och exporterar i detta skede ingen MP4.
+
+Drift, urval, review-markering och återupptagbar masskörning för
+scoreboardbilderna beskrivs i
+[docs/DEMO_ARCHIVE_INDEXING.md](docs/DEMO_ARCHIVE_INDEXING.md). Den
+reproducerbara CS-klientpatchen och cinematic-kommandot beskrivs i
+[engine-patches/README.md](engine-patches/README.md).
+
 ### Reparera ofullständigt avslutade GoldSrc-demos
 
 Om ett demo har en intakt frame-ström men saknar slutkatalog kan den katalogen
