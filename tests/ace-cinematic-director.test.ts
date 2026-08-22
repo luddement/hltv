@@ -84,4 +84,13 @@ describe('ace cinematic director', () => {
   it('rejects an incomplete fake ace', () => {
     expect(buildAceCinematicPlan(moment, deaths.slice(0, 4))).toBeUndefined();
   });
+
+  it('builds a shorter isolated director sequence for one positioned frag', () => {
+    const singleMoment = { ...moment, eventIds: ['a'] };
+    const plan = buildAceCinematicPlan(singleMoment, deaths);
+    expect(plan?.passes.map((pass) => pass.id)).toEqual([
+      'original-pov', 'hero-chase', 'gods-eye', 'ground-rush', 'impact-push', 'final-pov',
+    ]);
+    expect(plan?.visibleDurationMs).toBe(33_000);
+  });
 });

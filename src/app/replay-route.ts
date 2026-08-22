@@ -22,6 +22,8 @@ export type ReplayRoute = {
   search: string;
   sort: ReplaySort;
   headshotsOnly: boolean;
+  /** Enables experimental controls without changing the normal player. */
+  debug: boolean;
   /** Element att rulla till, utan '#'. */
   anchor: string;
 };
@@ -33,6 +35,7 @@ export const EMPTY_REPLAY_ROUTE: ReplayRoute = {
   search: '',
   sort: 'time',
   headshotsOnly: false,
+  debug: false,
   anchor: '',
 };
 
@@ -59,6 +62,7 @@ export const parseReplayRoute = (href: string): ReplayRoute => {
     search: query.get('q') ?? '',
     sort: query.get('sort') === 'score' ? 'score' : 'time',
     headshotsOnly: query.get('hs') === '1',
+    debug: query.get('debug') === 'true',
     anchor: url.hash.replace(/^#/, ''),
   };
 };
@@ -76,6 +80,7 @@ export const buildReplayRoute = (route: ReplayRoute): string => {
   if (route.search) query.set('q', route.search);
   if (route.sort !== 'time') query.set('sort', route.sort);
   if (route.headshotsOnly) query.set('hs', '1');
+  if (route.debug) query.set('debug', 'true');
 
   const suffix = query.toString();
   return `${path}${suffix ? `?${suffix}` : ''}${route.anchor ? `#${route.anchor}` : ''}`;
@@ -88,4 +93,5 @@ export const sameReplayRoute = (a: ReplayRoute, b: ReplayRoute): boolean =>
   && a.player === b.player
   && a.search === b.search
   && a.sort === b.sort
-  && a.headshotsOnly === b.headshotsOnly;
+  && a.headshotsOnly === b.headshotsOnly
+  && a.debug === b.debug;

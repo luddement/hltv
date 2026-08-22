@@ -643,13 +643,13 @@
                       @click="playMoment(moment)"
                     ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
                     <button
-                      v-if="canPlayAceCinematicTest(moment)"
+                      v-if="canPlayCinematicTest(moment)"
                       class="ace-cinematic-test"
                       type="button"
                       :disabled="!canLaunch"
                       aria-label="Play the automatic cinematic ACE camera test"
-                      @click="playAceCinematicTest(moment)"
-                    ><span>Test</span><strong>Ace cinematic</strong></button>
+                      @click="playCinematicTest(moment)"
+                    ><span>Debug test</span><strong>{{ moment.eventIds.length === 5 ? 'Ace cinematic' : 'Cinematic' }}</strong></button>
                   </span>
                 </div>
               </section>
@@ -669,14 +669,24 @@
                     <small>{{ rating.reasons.slice(0, 2).map(scoreReasonLabel).join(' · ') || 'Limited information' }}</small>
                   </span>
                   <span class="highlight-meta">Winner only</span>
-                  <button
-                    class="frag-play highlight-play"
-                    type="button"
-                    :data-preview-play-id="`round:${rating.roundId}-${rating.team}`"
-                    :disabled="!canLaunch || !roundPlaybackDeaths(rating).length"
-                    :aria-label="`Play ${roundPlaybackDeaths(rating).length} winning-team frags from ${roundLabel(rating.roundId)} for ${roundTeamLabel(rating)}`"
-                    @click="playRatedRound(rating)"
-                  ><span class="play-icon" aria-hidden="true"></span><span>Play {{ roundPlaybackDeaths(rating).length }}</span></button>
+                  <span class="highlight-actions">
+                    <button
+                      class="frag-play highlight-play"
+                      type="button"
+                      :data-preview-play-id="`round:${rating.roundId}-${rating.team}`"
+                      :disabled="!canLaunch || !roundPlaybackDeaths(rating).length"
+                      :aria-label="`Play ${roundPlaybackDeaths(rating).length} winning-team frags from ${roundLabel(rating.roundId)} for ${roundTeamLabel(rating)}`"
+                      @click="playRatedRound(rating)"
+                    ><span class="play-icon" aria-hidden="true"></span><span>Play {{ roundPlaybackDeaths(rating).length }}</span></button>
+                    <button
+                      v-if="canPlayRoundCinematicTest(rating)"
+                      class="ace-cinematic-test"
+                      type="button"
+                      :disabled="!canLaunch"
+                      aria-label="Play an automatic cinematic test for the round's best frag sequence"
+                      @click="playRoundCinematicTest(rating)"
+                    ><span>Debug test</span><strong>Round cinematic</strong></button>
+                  </span>
                 </div>
               </section>
             </div>
@@ -743,7 +753,7 @@
               </div>
             </div>
 
-            <div class="frag-list" role="table" aria-label="Frag list">
+            <div :class="['frag-list', { 'cinematic-debug': cinematicDebugEnabled }]" role="table" aria-label="Frag list">
               <div class="frag-header" role="row">
                 <label class="movie-select-all" title="Select or deselect every visible playlist frag">
                   <input
@@ -803,16 +813,27 @@
                       @click.stop="toggleFragScoreDetails(death.eventId)"
                     >i</button>
                   </span>
-                  <button
-                    class="frag-play"
-                    type="button"
-                    :data-frag-play-id="death.eventId"
-                    :data-preview-play-id="death.eventId"
-                    :disabled="!canLaunch"
-                    :aria-label="`Play frag ${index + 1}`"
-                    :title="canLaunch ? 'Play from three seconds before the frag' : 'Open a demo first'"
-                    @click.stop="playFrag(death)"
-                  ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
+                  <span class="frag-actions">
+                    <button
+                      class="frag-play"
+                      type="button"
+                      :data-frag-play-id="death.eventId"
+                      :data-preview-play-id="death.eventId"
+                      :disabled="!canLaunch"
+                      :aria-label="`Play frag ${index + 1}`"
+                      :title="canLaunch ? 'Play from three seconds before the frag' : 'Open a demo first'"
+                      @click.stop="playFrag(death)"
+                    ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
+                    <button
+                      v-if="canPlayFragCinematicTest(death)"
+                      class="frag-cinematic-test"
+                      type="button"
+                      :disabled="!canLaunch"
+                      :aria-label="`Play cinematic camera test for frag ${index + 1}`"
+                      title="Debug · automatic cinematic cameras"
+                      @click.stop="playFragCinematicTest(death)"
+                    >Cam</button>
+                  </span>
                 </div>
                 <div
                   v-if="expandedFragScoreId === death.eventId"
@@ -1228,7 +1249,7 @@
           {{ engineStarted ? 'Engine running' : 'Starting…' }}
         </div>
         <div v-if="fragReelActive" class="frag-reel-status">
-          <span>{{ aceCinematicActive ? 'ACE CINEMATIC' : 'ONLY FRAGS' }} · {{ fragReelTeamLabel }} <strong>{{ fragReelDisplayIndex }}/{{ fragReelDisplayCount }}</strong></span>
+          <span>{{ aceCinematicActive ? cinematicSequenceLabel : 'ONLY FRAGS' }} · {{ fragReelTeamLabel }} <strong>{{ fragReelDisplayIndex }}/{{ fragReelDisplayCount }}</strong></span>
           <i aria-hidden="true"></i>
           <span v-if="aceCinematicActive">{{ activeAceCinematicPass?.label }}</span>
           <span v-else>SCORE <strong>{{ activeFragReelScore }}/100</strong></span>
@@ -1526,7 +1547,9 @@
   const interfaceTheme = ref<InterfaceTheme>('replay');
   const scoreboardHeld = ref(false);
   const fragReelActive = ref(false);
-  const ACE_CINEMATIC_TEST_DEMO_SHA = 'cb6d68e58ad2d6d7c3a8de96dab1d03caec1c9bf91544a745e15bfa04cb5712e';
+  const cinematicDebugEnabled = ref(
+    new URL(window.location.href).searchParams.get('debug') === 'true',
+  );
   const fragReelSource = ref<'playback' | 'movie' | 'round' | 'playlist' | 'playlist-movie' | 'cinematic'>('playback');
   const roundFragDeaths = shallowRef<DeathEvent[]>([]);
   const roundFragTeamLabel = ref('');
@@ -1536,6 +1559,8 @@
     && Boolean(aceCinematicPlan.value));
   const activeAceCinematicPass = computed(() =>
     aceCinematicPlan.value?.passes[aceCinematicPassIndex.value]);
+  const cinematicSequenceLabel = computed(() =>
+    aceCinematicPlan.value?.deaths.length === 5 ? 'ACE CINEMATIC' : 'CINEMATIC');
   const fragReelSeeking = ref(false);
   const fragReelIndex = ref(0);
   const hudPlaybackStartMs = ref(0);
@@ -1927,10 +1952,9 @@
       const death = deathEvents.value.find((entry) => entry.eventId === eventId);
       return death ? [death] : [];
     });
-  const canPlayAceCinematicTest = (moment: HighlightMoment): boolean => {
-    if (analysisIndex.value?.demo.sha256 !== ACE_CINEMATIC_TEST_DEMO_SHA
-      || analysisIndex.value.demo.perspective.kind !== 'hltv'
-      || moment.eventIds.length !== 5) return false;
+  const canPlayCinematicTest = (moment: HighlightMoment): boolean => {
+    if (!cinematicDebugEnabled.value
+      || analysisIndex.value?.demo.perspective.kind !== 'hltv') return false;
     return Boolean(buildAceCinematicPlan(moment, aceCinematicDeaths(moment)));
   };
   const roundPlaybackDeaths = (rating: RoundRating): DeathEvent[] => {
@@ -1945,6 +1969,55 @@
       ))
       .sort((left, right) => left.demoTimeMs - right.demoTimeMs);
     return withFragReelDeathCutoffs(eligibleDeaths, deathEvents.value);
+  };
+  const cinematicMomentForDeath = (death: DeathEvent): HighlightMoment | undefined => {
+    if (!death.killerPlayerId) return undefined;
+    const rating = fragRatingById.value.get(death.eventId);
+    return {
+      momentId: `frag-cinematic-${death.eventId}`,
+      startTimeMs: Math.max(0, death.demoTimeMs - FRAG_REEL_PREROLL_MS),
+      endTimeMs: death.demoTimeMs + 2_500,
+      eventIds: [death.eventId],
+      killerPlayerId: death.killerPlayerId,
+      team: rating?.team ?? 'CT',
+      rating: rating ?? { score: 0, confidence: 0, reasons: [] },
+    };
+  };
+  const canPlayFragCinematicTest = (death: DeathEvent): boolean => {
+    const moment = cinematicMomentForDeath(death);
+    return Boolean(moment && canPlayCinematicTest(moment));
+  };
+  const roundCinematicMoment = (rating: RoundRating): HighlightMoment | undefined => {
+    const groups = new Map<string, DeathEvent[]>();
+    for (const death of roundPlaybackDeaths(rating)) {
+      if (!death.killerPlayerId) continue;
+      const group = groups.get(death.killerPlayerId) ?? [];
+      group.push(death);
+      groups.set(death.killerPlayerId, group);
+    }
+    const best = [...groups.entries()].sort((left, right) => {
+      if (right[1].length !== left[1].length) return right[1].length - left[1].length;
+      const score = (deaths: DeathEvent[]) => deaths.reduce(
+        (total, death) => total + (fragRatingById.value.get(death.eventId)?.score ?? 0),
+        0,
+      );
+      return score(right[1]) - score(left[1]);
+    })[0];
+    if (!best?.[1].length) return undefined;
+    const deaths = [...best[1]].sort((left, right) => left.demoTimeMs - right.demoTimeMs);
+    return {
+      momentId: `round-cinematic-${rating.roundId}-${best[0]}`,
+      startTimeMs: Math.max(0, deaths[0].demoTimeMs - FRAG_REEL_PREROLL_MS),
+      endTimeMs: deaths.at(-1)!.demoTimeMs + 2_500,
+      eventIds: deaths.map((death) => death.eventId),
+      killerPlayerId: best[0],
+      team: fragRatingById.value.get(deaths[0].eventId)?.team ?? rating.team,
+      rating,
+    };
+  };
+  const canPlayRoundCinematicTest = (rating: RoundRating): boolean => {
+    const moment = roundCinematicMoment(rating);
+    return Boolean(moment && canPlayCinematicTest(moment));
   };
   const topRounds = computed(() => [...(analysisIndex.value?.roundRatings ?? [])]
     .filter((rating) => rating.score > 0)
@@ -2431,6 +2504,7 @@
     search: fragSearch.value,
     sort: fragSort.value,
     headshotsOnly: headshotsOnly.value,
+    debug: cinematicDebugEnabled.value,
     anchor: '',
   }));
 
@@ -2456,6 +2530,7 @@
       fragSearch.value = route.search;
       fragSort.value = route.sort;
       headshotsOnly.value = route.headshotsOnly;
+      cinematicDebugEnabled.value = route.debug;
     } finally {
       applyingRoute = false;
     }
@@ -3275,7 +3350,7 @@
       DemoEngine.execute('hltv_reconstruction_camera 1');
     }
     addLog(
-      `ACE director ${aceCinematicPassIndex.value + 1}/${aceCinematicPlan.value?.passes.length ?? 0}: ${pass.label}.`,
+      `Cinematic director ${aceCinematicPassIndex.value + 1}/${aceCinematicPlan.value?.passes.length ?? 0}: ${pass.label}.`,
       false,
     );
   };
@@ -3293,7 +3368,7 @@
     DemoEngine.execute(`hltv_reconstruction_roll ${cinematicCommandNumber(frame.angles[2])}`);
   };
 
-  const completeAceCinematic = (message = 'ACE cinematic complete · normal HLTV playback continues.') => {
+  const completeAceCinematic = (message = 'Cinematic complete · normal HLTV playback continues.') => {
     const targetSlot = aceCinematicPlan.value?.killerSlot;
     aceCinematicGeneration += 1;
     aceCinematicPlan.value = undefined;
@@ -4377,7 +4452,7 @@
 
   const stopFragReel = () => {
     if (aceCinematicActive.value) {
-      completeAceCinematic('ACE cinematic ended · normal HLTV playback continues.');
+      completeAceCinematic('Cinematic ended · normal HLTV playback continues.');
       return;
     }
     if (movieExportRunning.value) {
@@ -4510,11 +4585,11 @@
     );
   };
 
-  const playAceCinematicTest = (moment: HighlightMoment) => {
+  const playCinematicTest = (moment: HighlightMoment, focusTargetId = `moment:${moment.momentId}`) => {
     const plan = buildAceCinematicPlan(moment, aceCinematicDeaths(moment));
-    if (!canPlayAceCinematicTest(moment) || !plan) return;
+    if (!canPlayCinematicTest(moment) || !plan) return;
     stopEngineBeforeLaunch();
-    workspaceViewSnapshot = captureWorkspaceView(`moment:${moment.momentId}`);
+    workspaceViewSnapshot = captureWorkspaceView(focusTargetId);
     aceCinematicGeneration += 1;
     aceCinematicPlan.value = plan;
     aceCinematicPassIndex.value = 0;
@@ -4532,10 +4607,20 @@
     const camera = killerCameraFor(plan.deaths[0], firstPass.startTimeMs);
     if (camera?.nativeHltv) camera.activateAfterMs = 0;
     addLog(
-      `ACE cinematic queued: ${plan.passes.length} angles · ${formatDuration(plan.visibleDurationMs / 1_000)} visible runtime.`,
+      `Cinematic queued: ${plan.passes.length} angles · ${formatDuration(plan.visibleDurationMs / 1_000)} visible runtime.`,
       false,
     );
     void launchDemo(firstPass.startTimeMs, camera);
+  };
+
+  const playFragCinematicTest = (death: DeathEvent) => {
+    const moment = cinematicMomentForDeath(death);
+    if (moment) playCinematicTest(moment, death.eventId);
+  };
+
+  const playRoundCinematicTest = (rating: RoundRating) => {
+    const moment = roundCinematicMoment(rating);
+    if (moment) playCinematicTest(moment, `round:${rating.roundId}-${rating.team}`);
   };
 
   const playRatedRound = (rating: RoundRating) => {

@@ -30,6 +30,13 @@ describe('delbara länkar', () => {
     expect(built).toBe('/demo/2005/x.dem?player=p7&q=awp&sort=score&hs=1');
   });
 
+  it('bevarar den explicita debug-flaggan men utelämnar den i normalläget', () => {
+    const built = buildReplayRoute(route({ demoPath: '2005/x.dem', debug: true }));
+    expect(built).toBe('/demo/2005/x.dem?debug=true');
+    expect(parseReplayRoute(`https://praxxa.pro${built}`).debug).toBe(true);
+    expect(parseReplayRoute('https://praxxa.pro/demo/2005/x.dem?debug=1').debug).toBe(false);
+  });
+
   it('rundgång: allt som byggs går att läsa tillbaka', () => {
     const original = route({
       demoPath: '2007/dik_seconds-0711122044-de_clan1_mill.dem',

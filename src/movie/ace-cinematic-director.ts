@@ -64,7 +64,7 @@ const normalizedFightAxes = (
 
 /**
  * Builds a repeatable in-player director pass from the entity positions that
- * were actually observed during an HLTV ace. Hidden rewinds are intentionally
+ * were actually observed during an HLTV highlight. Hidden rewinds are intentionally
  * excluded from visibleDurationMs.
  */
 export const buildAceCinematicPlan = (
@@ -75,7 +75,8 @@ export const buildAceCinematicPlan = (
     .map((eventId) => sourceDeaths.find((death) => death.eventId === eventId))
     .filter((death): death is DeathEvent => Boolean(death))
     .sort((left, right) => left.demoTimeMs - right.demoTimeMs);
-  if (deaths.length !== 5
+  if (!deaths.length
+    || deaths.length !== moment.eventIds.length
     || deaths.some((death) => death.killerPlayerId !== moment.killerPlayerId)
     || !deaths[0]?.killerSlot) return undefined;
 
@@ -85,7 +86,10 @@ export const buildAceCinematicPlan = (
   const victimPositions = deaths
     .map((death) => death.entityObservation.victim.positionValue)
     .filter(finitePosition);
-  if (!killerPositions.length || victimPositions.length < 3) return undefined;
+  // A partial packet observation must never produce a guessed camera. The
+  // debug button is hidden instead, while ordinary playback remains available.
+  if (killerPositions.length !== deaths.length
+    || victimPositions.length !== deaths.length) return undefined;
 
   const killer = average(killerPositions);
   const victims = average(victimPositions);
@@ -112,7 +116,7 @@ export const buildAceCinematicPlan = (
   });
 
   const passes: AceCinematicPass[] = [
-    { id: 'original-pov', label: 'Original secK POV', mode: 'pov', startTimeMs, endTimeMs, targetSlot },
+    { id: 'original-pov', label: 'Original POV', mode: 'pov', startTimeMs, endTimeMs, targetSlot },
     { id: 'hero-chase', label: 'Hero chase', mode: 'chase', startTimeMs, endTimeMs, targetSlot },
     { id: 'tactical-overview', label: 'Tactical bird\'s-eye', mode: 'overview', startTimeMs, endTimeMs, targetSlot },
     cameraPass(
@@ -183,15 +187,27 @@ export const buildAceCinematicPlan = (
       65,
       -2.5,
     ),
-    { id: 'final-pov', label: 'Final secK POV', mode: 'pov', startTimeMs, endTimeMs, targetSlot },
+    { id: 'final-pov', label: 'Final POV', mode: 'pov', startTimeMs, endTimeMs, targetSlot },
   ];
+
+  const selectedPassIds = deaths.length === 1
+    ? new Set(['original-pov', 'hero-chase', 'gods-eye', 'ground-rush', 'impact-push', 'final-pov'])
+    : deaths.length === 2
+      ? new Set([
+          'original-pov', 'hero-chase', 'tactical-overview', 'gods-eye',
+          'crane-descent', 'ground-rush', 'impact-push', 'final-pov',
+        ])
+      : undefined;
+  const selectedPasses = selectedPassIds
+    ? passes.filter((pass) => selectedPassIds.has(pass.id))
+    : passes;
 
   return {
     killerPlayerId: moment.killerPlayerId,
     killerSlot: targetSlot,
     deaths,
-    passes,
-    visibleDurationMs: passes.reduce(
+    passes: selectedPasses,
+    visibleDurationMs: selectedPasses.reduce(
       (total, pass) => total + pass.endTimeMs - pass.startTimeMs,
       0,
     ),
