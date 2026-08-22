@@ -11,6 +11,9 @@ const distDirectory = resolve(appDirectory, 'dist');
 const demoPath = resolve(appDirectory, '../r60_sthlm.dem');
 const demosDirectory = resolve(appDirectory, '../demos');
 const demoAnalysisDirectory = resolve(appDirectory, '../demo-analysis');
+const scoreboardImagesDirectory = resolve(
+  process.env.HLTV_SCOREBOARD_IMAGES || resolve(appDirectory, '../scoreboard-screenshots'),
+);
 const commentsFile = resolve(process.env.HLTV_COMMENTS_FILE || resolve(appDirectory, '../demo-comments.json'));
 const gameAssetsDirectory = resolve(appDirectory, 'game-assets');
 const demoAssetPaths = new Set(
@@ -23,9 +26,12 @@ const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.pk3': 'application/octet-stream',
+  '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.wasm': 'application/wasm',
 };
@@ -99,6 +105,20 @@ createServer((request, response) => {
     }
     response.statusCode = 404;
     response.end('Demo analysis not found.');
+    return;
+  }
+
+  if (requestPath.startsWith('/scoreboard-images/')) {
+    const filePath = archiveFile(
+      scoreboardImagesDirectory,
+      requestPath.slice('/scoreboard-images/'.length),
+    );
+    if (filePath && /\/half-[12]\.(?:jpe?g|png)$/i.test(filePath)) {
+      sendFile(request, response, filePath);
+      return;
+    }
+    response.statusCode = 404;
+    response.end('Scoreboard image not found.');
     return;
   }
 

@@ -512,6 +512,44 @@
           </article>
         </div>
 
+        <section v-if="loadedDemoPath" class="scoreboard-gallery" aria-labelledby="scoreboard-gallery-heading">
+          <div class="scoreboard-gallery-heading">
+            <div>
+              <p class="step-label">Match scoreboards</p>
+              <h2 id="scoreboard-gallery-heading">Side-end results</h2>
+            </div>
+            <span>Click an image to open full size ↗</span>
+          </div>
+          <div class="scoreboard-gallery-grid">
+            <a
+              v-for="image in archivedScoreboardImages"
+              :key="image.half"
+              :class="['scoreboard-gallery-card', { ready: scoreboardImageStatus[image.half] === 'ready' }]"
+              :href="scoreboardImageStatus[image.half] === 'ready' ? image.url : undefined"
+              :target="scoreboardImageStatus[image.half] === 'ready' ? '_blank' : undefined"
+              :rel="scoreboardImageStatus[image.half] === 'ready' ? 'noopener noreferrer' : undefined"
+              :aria-disabled="scoreboardImageStatus[image.half] !== 'ready'"
+              @click="scoreboardImageStatus[image.half] !== 'ready' && $event.preventDefault()"
+            >
+              <span class="scoreboard-gallery-frame">
+                <img
+                  :src="image.url"
+                  :alt="`${image.title} scoreboard for ${demoInfo?.name ?? 'the selected match'}`"
+                  @load="setScoreboardImageStatus(image.half, 'ready')"
+                  @error="setScoreboardImageStatus(image.half, 'missing')"
+                />
+                <span v-if="scoreboardImageStatus[image.half] === 'loading'" class="scoreboard-gallery-state">Checking archive…</span>
+                <span v-else-if="scoreboardImageStatus[image.half] === 'missing'" class="scoreboard-gallery-state">Not captured yet</span>
+              </span>
+              <span class="scoreboard-gallery-copy">
+                <span><b>0{{ image.half }}</b> {{ image.kicker }}</span>
+                <strong>{{ image.title }}</strong>
+                <small>{{ scoreboardImageStatus[image.half] === 'ready' ? 'Open original image ↗' : 'The capture queue is still processing this match' }}</small>
+              </span>
+            </a>
+          </div>
+        </section>
+
         <section class="hud-setup" aria-labelledby="hud-heading">
           <div class="hud-setup-copy">
             <p class="step-label">Presentation</p>
@@ -1369,6 +1407,7 @@
   type ScoreboardCaptureController = {
     next: (demoTimeMs: number) => Promise<void>;
   };
+  type ScoreboardImageStatus = 'loading' | 'ready' | 'missing';
 
   const MOVIE_EXPORT_DIAGNOSTICS_KEY = 'replay-lab-movie-export-diagnostics-v1';
   const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
@@ -1426,6 +1465,23 @@
   // archiveSelectionPath nollställs när laddningen är klar och duger därför
   // inte som adress. Den här behåller vilken katalogpost som visas.
   const loadedDemoPath = ref('');
+  const scoreboardImageStatus = ref<Record<1 | 2, ScoreboardImageStatus>>({
+    1: 'loading',
+    2: 'loading',
+  });
+  const archivedScoreboardImages = computed(() => {
+    const stem = loadedDemoPath.value.replace(/\.dem$/i, '');
+    return ([
+      { half: 1 as const, kicker: 'First side', title: 'Halftime scoreboard' },
+      { half: 2 as const, kicker: 'Second side', title: 'Match-end scoreboard' },
+    ]).map((image) => ({
+      ...image,
+      url: demoCatalogAssetUrl('/scoreboard-images', `${stem}/half-${image.half}.jpg`),
+    }));
+  });
+  const setScoreboardImageStatus = (half: 1 | 2, status: ScoreboardImageStatus): void => {
+    scoreboardImageStatus.value = { ...scoreboardImageStatus.value, [half]: status };
+  };
   const gameFiles = ref<GameAssetEntry[]>([]);
   const gameError = ref('');
   const mapChecksumMatches = ref(false);
@@ -2307,7 +2363,10 @@
     }
   };
 
-  watch(loadedDemoPath, (demoPath) => { void loadDemoComments(demoPath); });
+  watch(loadedDemoPath, (demoPath) => {
+    scoreboardImageStatus.value = { 1: 'loading', 2: 'loading' };
+    void loadDemoComments(demoPath);
+  });
   const mircClock = computed(() => new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date()));
@@ -4385,8 +4444,9 @@
     DemoEngine.execute('hud_centerid 0');
     DemoEngine.execute('hltv_clear_transient_hud');
     // Archive frames should show the competitive result, not spectator-only
-    // economy data. Reuse the native compact Score/Deaths/Latency layout for
-    // every protocol while keeping ordinary playback unchanged.
+    // economy data. Reuse the compact capture presentation for every protocol;
+    // ordinary playback uses the same three trustworthy result columns without
+    // the capture-only black background.
     DemoEngine.execute('hltv_compact_scoreboard 1');
     DemoEngine.execute('+showscores');
     const startedAt = performance.now();

@@ -10,6 +10,9 @@ const projectDirectory = dirname(fileURLToPath(import.meta.url));
 const bundledDemoPath = resolve(projectDirectory, '../r60_sthlm.dem');
 const demosDirectory = resolve(projectDirectory, '../demos');
 const demoAnalysisDirectory = resolve(projectDirectory, '../demo-analysis');
+const scoreboardImagesDirectory = resolve(
+  process.env.HLTV_SCOREBOARD_IMAGES || resolve(projectDirectory, '../scoreboard-screenshots'),
+);
 const commentsFile = resolve(process.env.HLTV_COMMENTS_FILE || resolve(projectDirectory, '../demo-comments.json'));
 const gameAssetsDirectory = resolve(projectDirectory, 'game-assets');
 const protocol46RuntimePath = resolve(projectDirectory, 'src/vendor/xash-protocol46.js');
@@ -52,20 +55,30 @@ const localArchivePlugin = (): Plugin => ({
     server.middlewares.use((request, response, next) => {
       const requestPath = decodeURIComponent((request.url || '/').split('?')[0]);
       const route = requestPath.startsWith('/demo-files/')
-        ? {
-            root: demosDirectory,
-            relativePath: requestPath.slice('/demo-files/'.length),
-            extension: '.dem',
-            ranges: true,
-          }
-        : requestPath.startsWith('/demo-analysis/')
           ? {
-              root: demoAnalysisDirectory,
-              relativePath: requestPath.slice('/demo-analysis/'.length),
-              extension: '.dem.json',
-              ranges: false,
+              root: demosDirectory,
+              relativePath: requestPath.slice('/demo-files/'.length),
+              allowed: (path: string) => path.toLowerCase().endsWith('.dem'),
+              contentType: 'application/octet-stream',
+              ranges: true,
             }
-          : undefined;
+          : requestPath.startsWith('/demo-analysis/')
+            ? {
+                root: demoAnalysisDirectory,
+                relativePath: requestPath.slice('/demo-analysis/'.length),
+                allowed: (path: string) => path.toLowerCase().endsWith('.dem.json'),
+                contentType: 'application/json; charset=utf-8',
+                ranges: false,
+              }
+            : requestPath.startsWith('/scoreboard-images/')
+              ? {
+                  root: scoreboardImagesDirectory,
+                  relativePath: requestPath.slice('/scoreboard-images/'.length),
+                  allowed: (path: string) => /\/half-[12]\.(?:jpe?g|png)$/i.test(path),
+                  contentType: 'image/jpeg',
+                  ranges: false,
+                }
+            : undefined;
       if (!route) {
         next();
         return;
@@ -74,7 +87,7 @@ const localArchivePlugin = (): Plugin => ({
       const candidate = resolve(route.root, route.relativePath);
       const safeCandidate = candidate.startsWith(`${route.root}${sep}`) ? candidate : '';
       if (!safeCandidate
-        || !safeCandidate.toLowerCase().endsWith(route.extension)
+        || !route.allowed(safeCandidate)
         || !existsSync(safeCandidate)
         || statSync(safeCandidate).isDirectory()) {
         response.statusCode = 404;
@@ -89,7 +102,7 @@ const localArchivePlugin = (): Plugin => ({
       response.statusCode = partial ? 206 : 200;
       response.setHeader(
         'Content-Type',
-        route.extension === '.dem.json' ? 'application/json; charset=utf-8' : 'application/octet-stream',
+        route.contentType,
       );
       if (route.ranges) response.setHeader('Accept-Ranges', 'bytes');
       response.setHeader('Content-Length', end - start + 1);
