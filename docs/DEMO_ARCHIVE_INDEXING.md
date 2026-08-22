@@ -87,6 +87,9 @@ pnpm archive:scoreboards:capture --high-confidence-only
 
 The capture job is sequential and resumable. Existing images are skipped and
 progress/errors/review counts are checkpointed in `capture-results.json`.
+Each match is retried once in a fresh Chromium session after a timeout or
+browser failure, so one bad demo cannot turn the remainder of the queue into
+cascading errors.
 JPEG quality 95 is the storage-friendly default; pass `--format png` for
 lossless frames. Capture mode clears chat, join/leave, killfeed and centre-text
 buffers immediately before each frame; ordinary interactive playback is not
