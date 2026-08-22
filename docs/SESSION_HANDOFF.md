@@ -122,16 +122,15 @@ The indexer completed all 6,226 entries despite these five malformed/unsupported
 files. Its old transient systemd failure markers were cleared after confirming
 that the catalog and analyses were written successfully.
 
-At the time of this audit one scoreboard target had timed out under the old
-single-browser worker:
+One scoreboard target timed out on both attempts under the hardened worker:
 
 ```text
 2004/home/infe/hlds/cstrike/caterchryinfe_3on3-0407281433-de_dust2.dem
 ```
 
-Restarting the hardened worker retries it automatically while preserving all
-existing captures. If it fails twice, leave it in `capture-results.json` for
-manual review instead of blocking the remaining queue.
+It remains in `capture-results.json` for manual review. The worker immediately
+continued through the existing image pairs and captured the next uncaptured
+match, confirming that this data-specific failure does not block the queue.
 
 ## Operations and important files
 
