@@ -48,9 +48,10 @@ const moment: HighlightMoment = {
 describe('ace cinematic director', () => {
   it('turns a verified five-kill moment into a feature-length in-player sequence', () => {
     const plan = buildAceCinematicPlan(moment, deaths);
-    expect(plan?.passes).toHaveLength(9);
+    expect(plan?.passes).toHaveLength(11);
     expect(plan?.passes.map((pass) => pass.mode)).toEqual([
-      'pov', 'chase', 'overview', 'camera', 'camera', 'camera', 'camera', 'camera', 'pov',
+      'pov', 'chase', 'overview', 'camera', 'camera', 'camera',
+      'camera', 'camera', 'camera', 'camera', 'pov',
     ]);
     expect(plan?.visibleDurationMs).toBeGreaterThanOrEqual(80_000);
     expect(plan?.visibleDurationMs).toBeLessThanOrEqual(120_000);
@@ -67,6 +68,17 @@ describe('ace cinematic director', () => {
     );
     expect(start?.origin).not.toEqual(middle?.origin);
     expect([...middle!.origin, ...middle!.angles].every(Number.isFinite)).toBe(true);
+  });
+
+  it('keeps the dedicated god-eye camera vertically above the tracked fight', () => {
+    const pass = buildAceCinematicPlan(moment, deaths)?.passes.find((entry) =>
+      entry.id === 'gods-eye');
+    const frame = cinematicCameraFrameAt(
+      pass!,
+      (pass!.startTimeMs + pass!.endTimeMs) / 2,
+    );
+    expect(frame?.angles[0]).toBeCloseTo(90, 5);
+    expect(frame?.angles[1]).toBeCloseTo(0, 5);
   });
 
   it('rejects an incomplete fake ace', () => {

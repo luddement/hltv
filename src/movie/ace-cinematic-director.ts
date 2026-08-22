@@ -116,6 +116,14 @@ export const buildAceCinematicPlan = (
     { id: 'hero-chase', label: 'Hero chase', mode: 'chase', startTimeMs, endTimeMs, targetSlot },
     { id: 'tactical-overview', label: 'Tactical bird\'s-eye', mode: 'overview', startTimeMs, endTimeMs, targetSlot },
     cameraPass(
+      'gods-eye',
+      'God\'s-eye · straight down',
+      elevated(fight, 315),
+      elevated(victims, 275),
+      elevated(fight, 18),
+      elevated(victims, 18),
+    ),
+    cameraPass(
       'crane-descent',
       'Crane descent',
       add(add(fight, scale(forward, -150)), [0, 0, 280]),
@@ -154,6 +162,16 @@ export const buildAceCinematicPlan = (
       targetLow,
       18,
       2,
+    ),
+    cameraPass(
+      'impact-push',
+      'Impact push-in',
+      add(add(victims, scale(forward, 60)), add(scale(right, 85), [0, 0, 74])),
+      add(add(victims, scale(forward, 35)), add(scale(right, 65), [0, 0, 54])),
+      elevated(killer, 34),
+      targetHigh,
+      12,
+      -1,
     ),
     cameraPass(
       'orbit-finale',
