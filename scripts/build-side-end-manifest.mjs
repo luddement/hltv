@@ -55,7 +55,7 @@ for (const [index, path] of files.entries()) {
 }
 
 const manifest = {
-  version: 1,
+  version: 2,
   generatedAt: new Date().toISOString(),
   analysisRoot,
   totals: {
@@ -63,6 +63,10 @@ const manifest = {
     selected: demos.length,
     highConfidence: demos.filter((demo) => demo.confidence === 'high').length,
     review: demos.filter((demo) => demo.confidence === 'review').length,
+    reviewCaptures: demos.flatMap((demo) => demo.captures)
+      .filter((capture) => capture.review).length,
+    missingPlayerCaptures: demos.flatMap((demo) => demo.captures)
+      .filter((capture) => capture.missingPlayerIds.length > 0).length,
     skipped: skipped.length,
     screenshots: demos.length * 2,
   },

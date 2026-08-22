@@ -76,17 +76,23 @@ pnpm archive:index
 # Read-only audit. Creates ../side-end-capture-manifest.json.
 pnpm archive:scoreboards:audit
 
-# Keep the app running in another terminal, then capture only high confidence.
+# Keep the app running in another terminal, then capture every selected match.
+# Review-marked captures receive a review.json sidecar next to the image.
 pnpm dev --host 127.0.0.1 --port 43175
 pnpm archive:scoreboards:capture
 
-# Explicitly include the review queue after inspecting the manifest.
-pnpm archive:scoreboards:capture --include-review
+# Optional conservative run which excludes the review queue.
+pnpm archive:scoreboards:capture --high-confidence-only
 ```
 
 The capture job is sequential and resumable. Existing images are skipped and
-progress/errors are checkpointed in `capture-results.json`. JPEG quality 95 is
-the storage-friendly default; pass `--format png` for lossless frames.
+progress/errors/review counts are checkpointed in `capture-results.json`.
+JPEG quality 95 is the storage-friendly default; pass `--format png` for
+lossless frames. Capture mode clears chat, join/leave, killfeed and centre-text
+buffers immediately before each frame; ordinary interactive playback is not
+changed. A versioned `capture.json` beside every pair means images made by an
+older renderer are recaptured automatically instead of being mistaken for
+current output.
 
 The catalog can be searched by filename, map, clan/team or nickname and sorted
 by recording date, highest frag score or highest round score.

@@ -32,10 +32,14 @@ WASM and glue together: the numeric EM_ASM addresses are build-specific.
 The Vite compatibility transform calculates the relocation against the pinned
 upstream runtime and aliases its side-module addresses dynamically.
 
-`cs16-client-hltv-v16.wasm` is rebuilt from CS16Client `15278ca`. It adds the
+`cs16-client-hltv-v18.wasm` is rebuilt from CS16Client `15278ca`. It adds the
 `hltv_legacy_scoreboard` compatibility cvar and the independent
 `hltv_compact_scoreboard` presentation cvar. The latter removes spectator-only
-HP/Money columns without activating legacy player/team inference. It also keeps
+HP/Money columns without activating legacy player/team inference. During that
+capture-only layout it paints an opaque neutral background before the table,
+so a dead or rolled recorded camera cannot rotate the archived result. Transient
+TextMsg notifications are discarded before they enter the console-notify queue
+in that same capture-only mode. It also keeps
 scoreboard visibility in the HUD traversal
 before the first legacy ScoreInfo message, restores team mode from authoritative
 TeamInfo messages, and falls back to recorded player models and death events when
@@ -79,4 +83,4 @@ the regular sight, while firearms retain their period-specific base gap.
 The app keeps all native spectator cvars disabled for POV demos, which
 retain the original CS/Xash view, animation and weapon pipeline.
 Its SHA-256 is
-`1978070449258c185ba88a5d0c2ec1b5c39b1550f2b5d68385806163f061627c`.
+`f765576b5693167840d93714ebdee4d91ea7c73ac921131d3fad2e95613d0b6d`.

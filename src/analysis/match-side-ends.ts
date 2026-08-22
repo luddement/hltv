@@ -7,6 +7,7 @@ import {
 import type {
   DeathEvent,
   DemoAnalysisIndex,
+  PlayerIdentity,
   RoundSummary,
 } from '/@/analysis/schema';
 
@@ -18,12 +19,15 @@ export type SideEndCapture = {
   competitiveRoundNumber: number;
   demoTimeMs: number;
   reason: 'halftime' | 'match-won' | 'regulation-complete' | 'demo-ended';
+  missingPlayerIds: string[];
+  review: boolean;
 };
 
 export type MatchSideEndSelection = {
   mr: RegulationLength;
   liveStartTimeMs: number;
   confidence: 'high' | 'review';
+  reviewReasons: string[];
   captures: [SideEndCapture, SideEndCapture];
   excludedRoundIds: string[];
 };
@@ -43,6 +47,26 @@ const SCOREBOARD_SETTLE_MS = 1_250;
 
 const isKnifeWeapon = (weapon: string): boolean =>
   weapon.toLocaleLowerCase('en-US').startsWith('knife');
+
+const competitiveSessionAt = (player: PlayerIdentity, atMs: number): boolean =>
+  player.sessions.some((session) => {
+    if (session.joinedAtMs > atMs || (session.leftAtMs !== null && session.leftAtMs < atMs)) {
+      return false;
+    }
+    return session.teams.some((team) => team.fromMs <= atMs
+      && (team.toMs === null || atMs < team.toMs)
+      && (team.value === 'TERRORIST' || team.value === 'CT'));
+  });
+
+const missingPlayersAt = (
+  players: readonly PlayerIdentity[],
+  rosterAtMs: number,
+  captureAtMs: number,
+): string[] => players
+  .filter((player) => competitiveSessionAt(player, rosterAtMs)
+    && !competitiveSessionAt(player, captureAtMs))
+  .map((player) => player.playerId)
+  .sort();
 
 const captureTime = (
   round: RoundSummary,
@@ -98,7 +122,7 @@ export const selectMatchSideEnds = (
     if (deaths.length > 10) return [];
     // En riktig pistol-/eco-rond kan i teorin sluta med bara kniv, men för en
     // arkivkörning är ett falskt knivresultat värre än en review-markerad demo.
-    if (deaths.length >= 2 && deaths.every((death) => isKnifeWeapon(death.weapon))) return [];
+    if (deaths.length > 0 && deaths.every((death) => isKnifeWeapon(death.weapon))) return [];
     const sampleTime = round.startTimeMs + Math.min(1_000, (end - round.startTimeMs) / 2);
     return [{
       round,
@@ -179,22 +203,47 @@ export const selectMatchSideEnds = (
       const candidateRoundIds = new Set([...firstHalf, ...secondHalf].map((entry) => entry.round.roundId));
       const nextAfterHalftime = candidates[boundary + 1]?.round;
       const nextAfterMatch = candidates[candidates.indexOf(lastSecondHalf) + 1]?.round;
+      const halftimeCaptureMs = captureTime(firstHalf.at(-1)!.round, nextAfterHalftime);
+      const matchCaptureMs = captureTime(lastSecondHalf.round, nextAfterMatch);
+      const firstHalfRosterAtMs = firstRound.startTimeMs + 1;
+      const secondHalfRosterAtMs = firstSecondHalf.round.startTimeMs + 1;
+      const halftimeMissingPlayerIds = missingPlayersAt(
+        input.players,
+        firstHalfRosterAtMs,
+        halftimeCaptureMs,
+      );
+      const matchMissingPlayerIds = missingPlayersAt(
+        input.players,
+        secondHalfRosterAtMs,
+        matchCaptureMs,
+      );
+      const reviewReasons = [
+        ...(!restartAnchored ? ['live-start-not-restart-anchored'] : []),
+        ...(reason === 'demo-ended' ? ['demo-ended-before-result'] : []),
+        ...(halftimeMissingPlayerIds.length ? ['player-missing-at-halftime-capture'] : []),
+        ...(matchMissingPlayerIds.length ? ['player-missing-at-match-capture'] : []),
+      ];
       selections.push({
         mr,
         liveStartTimeMs: firstRound.startTimeMs,
-        confidence,
+        confidence: reviewReasons.length ? 'review' : confidence,
+        reviewReasons,
         captures: [{
           half: 1,
           roundId: firstHalf.at(-1)!.round.roundId,
           competitiveRoundNumber: mr,
-          demoTimeMs: captureTime(firstHalf.at(-1)!.round, nextAfterHalftime),
+          demoTimeMs: halftimeCaptureMs,
           reason: 'halftime',
+          missingPlayerIds: halftimeMissingPlayerIds,
+          review: halftimeMissingPlayerIds.length > 0,
         }, {
           half: 2,
           roundId: lastSecondHalf.round.roundId,
           competitiveRoundNumber: mr + secondHalf.length,
-          demoTimeMs: captureTime(lastSecondHalf.round, nextAfterMatch),
+          demoTimeMs: matchCaptureMs,
           reason,
+          missingPlayerIds: matchMissingPlayerIds,
+          review: reason === 'demo-ended' || matchMissingPlayerIds.length > 0,
         }],
         excludedRoundIds: input.rounds
           .filter((round) => !candidateRoundIds.has(round.roundId))

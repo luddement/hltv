@@ -356,10 +356,16 @@ index faed4a2..f29765a 100644
  		m_colors.r = 0;
  		m_colors.g = 0;
  		m_colors.b = 0;
-@@ -182,6 +227,8 @@ int CHudScoreboard :: Draw( float flTime )
+@@ -182,6 +227,14 @@ int CHudScoreboard :: Draw( float flTime )
  int CHudScoreboard :: DrawScoreboard( float fTime )
  {
  	GetAllPlayersInfo();
++	if( UseCompactScoreboardLayout() )
++	{
++		// Archive captures care about the table, not a recorded dead-camera
++		// angle. An opaque neutral field makes every automated frame upright.
++		DrawUtils::DrawRectangle( 0, 0, ScreenWidth, ScreenHeight, 0, 0, 0, 255, false );
++	}
 +	if( hltv_legacy_scoreboard && hltv_legacy_scoreboard->value != 0.0f )
 +		RebuildTeams();
  	char ServerName[90];
@@ -1038,6 +1044,23 @@ index 0df0291..6a78378 100644
  
  		if ( pName )
  		{
+diff --git a/cl_dll/text_message.cpp b/cl_dll/text_message.cpp
+index 90af501..3653e75 100644
+--- a/cl_dll/text_message.cpp
++++ b/cl_dll/text_message.cpp
+@@ -181,6 +181,12 @@ char* ConvertCRtoNL( char *str )
+ #define MAX_TEXTMSG_STRING 512
+ int CHudTextMessage::MsgFunc_TextMsg( const char *pszName, int iSize, void *pbuf )
+ {
++	// Automated compact-scoreboard captures contain the match table only.
++	// Ignore join/leave/team-change and other transient TextMsg notifications
++	// before they can enter Xash's console-notify buffer.
++	if( CVAR_GET_FLOAT( "hltv_compact_scoreboard" ) != 0.0f )
++		return 1;
++
+ 	BufferReader reader( pszName, pbuf, iSize );
+ 
+ 	int msg_dest = reader.ReadByte();
 diff --git a/cl_dll/view.cpp b/cl_dll/view.cpp
 index 579b2d6..dfa7670 100644
 --- a/cl_dll/view.cpp

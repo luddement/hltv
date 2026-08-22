@@ -4375,6 +4375,15 @@
   const settleScoreboardCapture = async (): Promise<void> => {
     DemoEngine.execute('sys_timescale 0');
     DemoEngine.execute('hud_draw 1');
+    // Hidden seeking clears stale HUD queues. Clear once more at the exact
+    // capture point and keep transient channels disabled so join/leave, chat,
+    // killfeed and centre text cannot race the final scoreboard frame.
+    DemoEngine.execute('hud_saytext 0');
+    DemoEngine.execute('hud_saytext_time 0');
+    DemoEngine.execute('hud_deathnotice_time 0');
+    DemoEngine.execute('scr_centertime 0');
+    DemoEngine.execute('hud_centerid 0');
+    DemoEngine.execute('hltv_clear_transient_hud');
     // Archive frames should show the competitive result, not spectator-only
     // economy data. Reuse the native compact Score/Deaths/Latency layout for
     // every protocol while keeping ordinary playback unchanged.
@@ -4390,6 +4399,12 @@
       };
       window.requestAnimationFrame(sample);
     });
+    DemoEngine.execute('hltv_clear_transient_hud');
+    // The command mutates native HUD state synchronously, but the WebGL canvas
+    // still contains the previous frame until the engine has rendered again.
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    }));
     document.documentElement.dataset.scoreboardCaptureReady = 'true';
   };
 

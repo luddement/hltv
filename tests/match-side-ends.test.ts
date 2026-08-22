@@ -150,12 +150,24 @@ describe('competitive side-end selection', () => {
       mr: 15,
       liveStartTimeMs: 60_000,
       confidence: 'high',
+      reviewReasons: [],
       captures: [
         { half: 1, roundId: 'live-15', competitiveRoundNumber: 15, reason: 'halftime' },
         { half: 2, roundId: 'live-24', competitiveRoundNumber: 24, reason: 'match-won' },
       ],
     });
     expect(selected?.excludedRoundIds).toEqual(expect.arrayContaining(['warmup', 'knife']));
+  });
+
+  it('also rejects a one-kill knife round as pre-live junk', () => {
+    const input = fixture(12, Array.from({ length: 7 }, () => 'team-1' as const));
+    input.events = input.events.filter((event) => event.eventId !== 'death-knife-31000-knife');
+
+    expect(selectMatchSideEnds(input)).toMatchObject({
+      mr: 12,
+      liveStartTimeMs: 60_000,
+      excludedRoundIds: expect.arrayContaining(['warmup', 'knife']),
+    });
   });
 
   it('supports MR12 and marks a restart-less inference for review', () => {
@@ -180,10 +192,47 @@ describe('competitive side-end selection', () => {
 
     expect(selected).toMatchObject({
       confidence: 'review',
+      reviewReasons: ['demo-ended-before-result'],
       captures: [
         { roundId: 'live-15', reason: 'halftime' },
         { roundId: 'live-19', reason: 'demo-ended' },
       ],
+    });
+  });
+
+  it('marks a capture for review when a live player left before the native scoreboard frame', () => {
+    const input = fixture(15, Array.from({ length: 7 }, () => 'team-1' as const));
+    input.players[0].sessions[0].leftAtMs = 670_000;
+
+    const selected = selectMatchSideEnds(input);
+
+    expect(selected).toMatchObject({
+      confidence: 'review',
+      reviewReasons: ['player-missing-at-match-capture'],
+      captures: [
+        { half: 1, review: false, missingPlayerIds: [] },
+        { half: 2, review: true, missingPlayerIds: ['p1'] },
+      ],
+    });
+  });
+
+  it('does not flag a player who reconnects before the capture', () => {
+    const input = fixture(12, Array.from({ length: 7 }, () => 'team-1' as const));
+    const original = input.players[0].sessions[0];
+    original.leftAtMs = 600_000;
+    input.players[0].sessions.push({
+      ...original,
+      sessionId: 'p1-reconnected',
+      joinedAtMs: 601_000,
+      leftAtMs: null,
+      names: [{ fromMs: 601_000, toMs: null, value: 'TERRORIST-1', evidence: 'observed' }],
+      teams: [{ fromMs: 601_000, toMs: null, value: 'CT', evidence: 'observed' }],
+    });
+
+    expect(selectMatchSideEnds(input)).toMatchObject({
+      confidence: 'high',
+      reviewReasons: [],
+      captures: [{ review: false }, { review: false }],
     });
   });
 
