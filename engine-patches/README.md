@@ -32,7 +32,12 @@ WASM and glue together: the numeric EM_ASM addresses are build-specific.
 The Vite compatibility transform calculates the relocation against the pinned
 upstream runtime and aliases its side-module addresses dynamically.
 
-`cs16-client-hltv-v19.wasm` is rebuilt from CS16Client `15278ca`. It adds the
+`cs16-client-hltv-v24.wasm` is rebuilt from CS16Client `15278ca`. It adds the
+`hltv_reconstruction_path` command used by the cinematic director. The complete
+camera curve and its precomputed endpoint angles cross into WebAssembly once
+per pass. CS16Client interpolates them with lightweight arithmetic during
+rendering, eliminating continuous console commands from JavaScript.
+It retains the v19 scoreboard and spectator changes:
 `hltv_legacy_scoreboard` compatibility cvar and the independent
 `hltv_compact_scoreboard` presentation cvar. Spectator-only HP/Money columns
 are omitted from both ordinary playback and archived frames without activating
@@ -50,7 +55,8 @@ instead of being presented as zero. Legacy SayText payloads regain the original
 team-colored sender name with yellow message text. An opt-in, presentation-only
 camera override accepts a reconstructed entity origin and angle for short POV
 feasibility probes; it is disabled during normal replay. Apply
-`cs16-client-hltv.patch` to that exact commit to reproduce it.
+`cs16-client-hltv.patch` and then `cs16-client-cinematic-frame.patch` to that
+exact commit to reproduce it.
 The camera follows the killer's live player entity when it is present in the
 recorded packet and falls back to the indexed frag position otherwise. HLTV
 replays expose `hltv_spec_player <slot>` for native in-eye spectator mode,
@@ -84,4 +90,4 @@ the regular sight, while firearms retain their period-specific base gap.
 The app keeps all native spectator cvars disabled for POV demos, which
 retain the original CS/Xash view, animation and weapon pipeline.
 Its SHA-256 is
-`b53f0b77c339f03dd8a85b9acbe01100b5675b9a38069f2cf0b39f1e07695dfb`.
+`85c2930914a8d17531307b473b65b5ce94e2006e56703195cd94240276e870c3`.

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DeathEvent, HighlightMoment } from '../src/analysis/schema';
 import {
   buildAceCinematicPlan,
+  cinematicCameraPathCommand,
   cinematicCameraFrameAt,
 } from '../src/movie/ace-cinematic-director';
 
@@ -79,6 +80,14 @@ describe('ace cinematic director', () => {
     );
     expect(frame?.angles[0]).toBeCloseTo(90, 5);
     expect(frame?.angles[1]).toBeCloseTo(0, 5);
+  });
+
+  it('sends a complete camera path to the engine only once per pass', () => {
+    const pass = buildAceCinematicPlan(moment, deaths)?.passes.find((entry) =>
+      entry.id === 'gods-eye');
+    const command = cinematicCameraPathCommand(pass!);
+    expect(command?.startsWith('hltv_reconstruction_path ')).toBe(true);
+    expect(command?.split(' ')).toHaveLength(16);
   });
 
   it('rejects an incomplete fake ace', () => {

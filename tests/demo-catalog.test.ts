@@ -3,6 +3,7 @@ import {
   demoCatalogAssetUrl,
   demoCatalogMatchup,
   filterDemoCatalog,
+  toggleDemoCatalogSort,
   type DemoCatalogEntry,
 } from '/@/archive/demo-catalog';
 
@@ -63,6 +64,38 @@ describe('demo catalog', () => {
       [demos[0].path, 1],
       [demos[1].path, 3],
     ]))).toEqual([demos[1], demos[0]]);
+  });
+
+  it('sorts every column ascending as well, keeping missing scores last', () => {
+    expect(filterDemoCatalog(demos, '', 'all', 'date-asc')).toEqual([demos[0], demos[1]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'frag-asc')).toEqual([demos[1], demos[0]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'round-asc')).toEqual([demos[0], demos[1]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'ace-asc')).toEqual([demos[0], demos[1]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'zero-twelve-asc')).toEqual([demos[0], demos[1]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'comments-asc', new Map([
+      [demos[0].path, 3],
+      [demos[1].path, 1],
+    ]))).toEqual([demos[1], demos[0]]);
+
+    const unscored: DemoCatalogEntry = { ...demos[0], path: 'x.dem', topFragScore: null };
+    expect(filterDemoCatalog([unscored, demos[1]], '', 'all', 'frag-asc'))
+      .toEqual([demos[1], unscored]);
+    expect(filterDemoCatalog([unscored, demos[1]], '', 'all', 'frag-desc'))
+      .toEqual([demos[1], unscored]);
+  });
+
+  it('sorts match and map names in both directions', () => {
+    expect(filterDemoCatalog(demos, '', 'all', 'match-asc')).toEqual([demos[0], demos[1]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'match-desc')).toEqual([demos[1], demos[0]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'map-asc')).toEqual([demos[0], demos[1]]);
+    expect(filterDemoCatalog(demos, '', 'all', 'map-desc')).toEqual([demos[1], demos[0]]);
+  });
+
+  it('toggles a column between descending and ascending', () => {
+    expect(toggleDemoCatalogSort('date-desc', 'date')).toBe('date-asc');
+    expect(toggleDemoCatalogSort('date-asc', 'date')).toBe('date-desc');
+    expect(toggleDemoCatalogSort('date-asc', 'zero-twelve')).toBe('zero-twelve-desc');
+    expect(toggleDemoCatalogSort('zero-twelve-desc', 'zero-twelve')).toBe('zero-twelve-asc');
   });
 
   it('formats matchups and safely encodes nested archive URLs', () => {

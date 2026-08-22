@@ -1,0 +1,79 @@
+diff --git a/cl_dll/view.cpp b/cl_dll/view.cpp
+index dfa7670..aaedf61 100644
+--- a/cl_dll/view.cpp
++++ b/cl_dll/view.cpp
+@@ -98,0 +99,12 @@ int		g_ReplayLabWeaponId = WEAPON_NONE;
++static bool g_ReplayLabCameraPathActive = false;
++static vec3_t g_ReplayLabCameraFrom;
++static vec3_t g_ReplayLabCameraTo;
++static vec3_t g_ReplayLabCameraAnglesFrom;
++static vec3_t g_ReplayLabCameraAnglesTo;
++static float g_ReplayLabCameraArc = 0.0f;
++static float g_ReplayLabCameraRoll = 0.0f;
++static float g_ReplayLabCameraPathStartedAt = 0.0f;
++static float g_ReplayLabCameraPathDuration = 1.0f;
++static float g_ReplayLabCameraLastUpdateAt = -1.0f;
++static vec3_t g_ReplayLabCameraOrigin;
++static vec3_t g_ReplayLabCameraAngles;
+@@ -1983,0 +1996,31 @@ void DLLEXPORT V_CalcRefdef( struct ref_params_s *pparams )
++		else if( g_ReplayLabCameraPathActive )
++		{
++			float now = gEngfuncs.GetClientTime();
++			if( g_ReplayLabCameraLastUpdateAt < 0.0f
++				|| now - g_ReplayLabCameraLastUpdateAt >= 0.06f )
++			{
++				float progress = (now - g_ReplayLabCameraPathStartedAt)
++					/ g_ReplayLabCameraPathDuration;
++				if( progress < 0.0f ) progress = 0.0f;
++				if( progress > 1.0f ) progress = 1.0f;
++				float eased = progress * progress * (3.0f - 2.0f * progress);
++				for( int axis = 0; axis < 3; ++axis )
++				{
++					g_ReplayLabCameraOrigin[axis] = g_ReplayLabCameraFrom[axis]
++						+ (g_ReplayLabCameraTo[axis] - g_ReplayLabCameraFrom[axis]) * eased;
++					float angleDelta = g_ReplayLabCameraAnglesTo[axis]
++						- g_ReplayLabCameraAnglesFrom[axis];
++					while( angleDelta > 180.0f ) angleDelta -= 360.0f;
++					while( angleDelta < -180.0f ) angleDelta += 360.0f;
++					g_ReplayLabCameraAngles[axis] = g_ReplayLabCameraAnglesFrom[axis]
++						+ angleDelta * eased;
++				}
++				float curve = 4.0f * eased * (1.0f - eased);
++				g_ReplayLabCameraOrigin[2] += curve * g_ReplayLabCameraArc;
++				g_ReplayLabCameraAngles[ROLL] += curve * (1.0f - 2.0f * eased)
++					* g_ReplayLabCameraRoll * 2.6f;
++				g_ReplayLabCameraLastUpdateAt = now;
++			}
++			VectorCopy( g_ReplayLabCameraOrigin, pparams->vieworg );
++			VectorCopy( g_ReplayLabCameraAngles, pparams->viewangles );
++		}
+@@ -2072,0 +2116,26 @@ V_Init
++static void ReplayLabSetCameraPath( void )
++{
++	if( gEngfuncs.Cmd_Argc() != 16 )
++		return;
++
++	for( int axis = 0; axis < 3; ++axis )
++	{
++		g_ReplayLabCameraFrom[axis] = atof( gEngfuncs.Cmd_Argv( 1 + axis ) );
++		g_ReplayLabCameraTo[axis] = atof( gEngfuncs.Cmd_Argv( 4 + axis ) );
++		g_ReplayLabCameraAnglesFrom[axis] = atof( gEngfuncs.Cmd_Argv( 7 + axis ) );
++		g_ReplayLabCameraAnglesTo[axis] = atof( gEngfuncs.Cmd_Argv( 10 + axis ) );
++	}
++	g_ReplayLabCameraArc = atof( gEngfuncs.Cmd_Argv( 13 ) );
++	g_ReplayLabCameraRoll = atof( gEngfuncs.Cmd_Argv( 14 ) );
++	g_ReplayLabCameraPathDuration = atof( gEngfuncs.Cmd_Argv( 15 ) );
++	if( g_ReplayLabCameraPathDuration < 0.001f ) g_ReplayLabCameraPathDuration = 0.001f;
++	g_ReplayLabCameraPathStartedAt = gEngfuncs.GetClientTime();
++	g_ReplayLabCameraLastUpdateAt = -1.0f;
++	g_ReplayLabCameraPathActive = true;
++}
++
++static void ReplayLabClearCameraPath( void )
++{
++	g_ReplayLabCameraPathActive = false;
++}
++
+@@ -2102,0 +2172,2 @@ void V_Init (void)
++	gEngfuncs.pfnAddCommand( "hltv_reconstruction_path", ReplayLabSetCameraPath );
++	gEngfuncs.pfnAddCommand( "hltv_reconstruction_path_clear", ReplayLabClearCameraPath );

@@ -30,6 +30,26 @@ export type CinematicCameraFrame = {
   angles: CinematicVector;
 };
 
+const commandNumber = (value: number): string =>
+  (Number.isFinite(value) ? value : 0).toFixed(4);
+
+export const cinematicCameraPathCommand = (pass: AceCinematicPass): string | undefined => {
+  if (pass.mode !== 'camera'
+    || !pass.from || !pass.to || !pass.lookAtFrom || !pass.lookAtTo) return undefined;
+  const startFrame = cinematicCameraFrameAt(pass, pass.startTimeMs);
+  const endFrame = cinematicCameraFrameAt(pass, pass.endTimeMs);
+  if (!startFrame || !endFrame) return undefined;
+  return `hltv_reconstruction_path ${[
+    ...startFrame.origin,
+    ...endFrame.origin,
+    ...startFrame.angles,
+    ...endFrame.angles,
+    pass.arcHeight ?? 0,
+    pass.rollDegrees ?? 0,
+    Math.max(1, pass.endTimeMs - pass.startTimeMs) / 1_000,
+  ].map(commandNumber).join(' ')}`;
+};
+
 const add = (left: CinematicVector, right: CinematicVector): CinematicVector => [
   left[0] + right[0], left[1] + right[1], left[2] + right[2],
 ];

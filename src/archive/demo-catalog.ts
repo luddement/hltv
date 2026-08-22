@@ -40,14 +40,41 @@ export type DemoCatalog = {
   demos: DemoCatalogEntry[];
 };
 
-export type DemoCatalogSort =
-  | 'date-desc'
-  | 'date-asc'
-  | 'frag-desc'
-  | 'round-desc'
-  | 'comments-desc'
-  | 'ace-desc'
-  | 'zero-twelve-desc';
+export type DemoCatalogSortColumn =
+  | 'date'
+  | 'match'
+  | 'map'
+  | 'frag'
+  | 'round'
+  | 'comments'
+  | 'ace'
+  | 'zero-twelve';
+
+export type DemoCatalogSortDirection = 'asc' | 'desc';
+
+export type DemoCatalogSort = `${DemoCatalogSortColumn}-${DemoCatalogSortDirection}`;
+
+export const demoCatalogSortColumns: readonly DemoCatalogSortColumn[] = [
+  'date', 'match', 'map', 'frag', 'round', 'comments', 'ace', 'zero-twelve',
+];
+
+export const demoCatalogSortValues: readonly DemoCatalogSort[] = demoCatalogSortColumns
+  .flatMap((column) => [`${column}-desc`, `${column}-asc`] as DemoCatalogSort[]);
+
+export const demoCatalogSortColumn = (sort: DemoCatalogSort): DemoCatalogSortColumn =>
+  sort.slice(0, sort.lastIndexOf('-')) as DemoCatalogSortColumn;
+
+export const demoCatalogSortDirection = (sort: DemoCatalogSort): DemoCatalogSortDirection =>
+  (sort.endsWith('-asc') ? 'asc' : 'desc');
+
+export const toggleDemoCatalogSort = (
+  sort: DemoCatalogSort,
+  column: DemoCatalogSortColumn,
+): DemoCatalogSort => (
+  demoCatalogSortColumn(sort) === column && demoCatalogSortDirection(sort) === 'desc'
+    ? `${column}-asc`
+    : `${column}-desc`
+);
 
 const searchableText = (entry: DemoCatalogEntry): string => [
   entry.filename,
@@ -64,13 +91,49 @@ const searchableText = (entry: DemoCatalogEntry): string => [
   .replace(/[\u0300-\u036f]/g, '')
   .toLocaleLowerCase('en-GB');
 
-const descendingScore = (
+const compareScore = (
   left: number | null | undefined,
   right: number | null | undefined,
-): number => (right ?? -1) - (left ?? -1);
+  direction: DemoCatalogSortDirection,
+): number => {
+  // Missing scores always sink to the bottom, in both directions.
+  if (left === null || left === undefined) return (right === null || right === undefined) ? 0 : 1;
+  if (right === null || right === undefined) return -1;
+  return direction === 'asc' ? left - right : right - left;
+};
 
-const descendingDate = (left: DemoCatalogEntry, right: DemoCatalogEntry): number =>
-  (right.recordedAt ?? '').localeCompare(left.recordedAt ?? '');
+const compareDate = (
+  left: DemoCatalogEntry,
+  right: DemoCatalogEntry,
+  direction: DemoCatalogSortDirection,
+): number => (direction === 'asc'
+  ? (left.recordedAt ?? '9999').localeCompare(right.recordedAt ?? '9999')
+  : (right.recordedAt ?? '').localeCompare(left.recordedAt ?? ''));
+
+const compareText = (
+  left: string | null | undefined,
+  right: string | null | undefined,
+  direction: DemoCatalogSortDirection,
+): number => {
+  const leftValue = left?.trim();
+  const rightValue = right?.trim();
+  if (!leftValue) return rightValue ? 1 : 0;
+  if (!rightValue) return -1;
+  const compared = leftValue.localeCompare(rightValue, 'en-GB', { sensitivity: 'base' });
+  return direction === 'asc' ? compared : -compared;
+};
+
+const columnScore = (
+  entry: DemoCatalogEntry,
+  column: DemoCatalogSortColumn,
+  commentCounts: ReadonlyMap<string, number>,
+): number | null | undefined => {
+  if (column === 'frag') return entry.topFragScore;
+  if (column === 'round') return entry.topRoundScore;
+  if (column === 'ace') return entry.crewAceCount;
+  if (column === 'zero-twelve') return entry.crewZeroTwelveCount;
+  return commentCounts.get(entry.path) ?? 0;
+};
 
 export const filterDemoCatalog = (
   entries: readonly DemoCatalogEntry[],
@@ -90,31 +153,24 @@ export const filterDemoCatalog = (
     return queryTerms.every((term) => haystack.includes(term));
   });
 
+  const column = demoCatalogSortColumn(sort);
+  const direction = demoCatalogSortDirection(sort);
+
   return [...filtered].sort((left, right) => {
-    if (sort === 'frag-desc') {
-      return descendingScore(left.topFragScore, right.topFragScore)
-        || descendingDate(left, right);
+    if (column === 'date') return compareDate(left, right, direction);
+    if (column === 'match') {
+      return compareText(demoCatalogMatchup(left), demoCatalogMatchup(right), direction)
+        || compareDate(left, right, 'desc');
     }
-    if (sort === 'round-desc') {
-      return descendingScore(left.topRoundScore, right.topRoundScore)
-        || descendingDate(left, right);
+    if (column === 'map') {
+      return compareText(left.map, right.map, direction)
+        || compareDate(left, right, 'desc');
     }
-    if (sort === 'comments-desc') {
-      return (commentCounts.get(right.path) ?? 0) - (commentCounts.get(left.path) ?? 0)
-        || descendingDate(left, right);
-    }
-    if (sort === 'ace-desc') {
-      return descendingScore(left.crewAceCount, right.crewAceCount)
-        || descendingDate(left, right);
-    }
-    if (sort === 'zero-twelve-desc') {
-      return descendingScore(left.crewZeroTwelveCount, right.crewZeroTwelveCount)
-        || descendingDate(left, right);
-    }
-    if (sort === 'date-asc') {
-      return (left.recordedAt ?? '9999').localeCompare(right.recordedAt ?? '9999');
-    }
-    return descendingDate(left, right);
+    return compareScore(
+      columnScore(left, column, commentCounts),
+      columnScore(right, column, commentCounts),
+      direction,
+    ) || compareDate(left, right, 'desc');
   });
 };
 

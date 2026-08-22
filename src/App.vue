@@ -226,49 +226,61 @@
             <div class="archive-list" role="table" aria-label="Indexed demos">
               <div class="archive-row archive-row-header" role="row">
                 <button
-                  :class="['archive-sort-heading', { active: archiveSort === 'date-desc' || archiveSort === 'date-asc' }]"
+                  :class="['archive-sort-heading', { active: archiveSortColumn === 'date' }]"
                   type="button"
-                  :aria-label="archiveSort === 'date-desc' ? 'Sort oldest first' : 'Sort newest first'"
-                  :aria-pressed="archiveSort === 'date-desc' || archiveSort === 'date-asc'"
-                  @click="archiveSort = archiveSort === 'date-desc' ? 'date-asc' : 'date-desc'"
-                >Date <span aria-hidden="true">{{ archiveSort === 'date-asc' ? '↑' : '↓' }}</span></button>
-                <span>Match</span>
-                <span>Map</span>
+                  :aria-label="archiveSortLabel('date')"
+                  :aria-pressed="archiveSortColumn === 'date'"
+                  @click="toggleArchiveSort('date')"
+                >Date <span aria-hidden="true">{{ archiveSortArrow('date') }}</span></button>
                 <button
-                  :class="['archive-sort-heading', { active: archiveSort === 'frag-desc' }]"
+                  :class="['archive-sort-heading', { active: archiveSortColumn === 'match' }]"
                   type="button"
-                  aria-label="Sort by highest frag score"
-                  :aria-pressed="archiveSort === 'frag-desc'"
-                  @click="archiveSort = 'frag-desc'"
-                >Top frag <span aria-hidden="true">↓</span></button>
+                  :aria-label="archiveSortLabel('match')"
+                  :aria-pressed="archiveSortColumn === 'match'"
+                  @click="toggleArchiveSort('match')"
+                >Match <span aria-hidden="true">{{ archiveSortArrow('match') }}</span></button>
                 <button
-                  :class="['archive-sort-heading', { active: archiveSort === 'round-desc' }]"
+                  :class="['archive-sort-heading', { active: archiveSortColumn === 'map' }]"
                   type="button"
-                  aria-label="Sort by highest round score"
-                  :aria-pressed="archiveSort === 'round-desc'"
-                  @click="archiveSort = 'round-desc'"
-                >Top round <span aria-hidden="true">↓</span></button>
+                  :aria-label="archiveSortLabel('map')"
+                  :aria-pressed="archiveSortColumn === 'map'"
+                  @click="toggleArchiveSort('map')"
+                >Map <span aria-hidden="true">{{ archiveSortArrow('map') }}</span></button>
                 <button
-                  :class="['archive-sort-heading', { active: archiveSort === 'ace-desc' }]"
+                  :class="['archive-sort-heading', { active: archiveSortColumn === 'frag' }]"
                   type="button"
-                  aria-label="Sort by most PRAXXA aces"
-                  :aria-pressed="archiveSort === 'ace-desc'"
-                  @click="archiveSort = 'ace-desc'"
-                >Ace <span aria-hidden="true">↓</span></button>
+                  :aria-label="archiveSortLabel('frag')"
+                  :aria-pressed="archiveSortColumn === 'frag'"
+                  @click="toggleArchiveSort('frag')"
+                >Top frag <span aria-hidden="true">{{ archiveSortArrow('frag') }}</span></button>
                 <button
-                  :class="['archive-sort-heading', { active: archiveSort === 'zero-twelve-desc' }]"
+                  :class="['archive-sort-heading', { active: archiveSortColumn === 'round' }]"
                   type="button"
-                  aria-label="Sort by most PRAXXA 0–12 scorelines"
-                  :aria-pressed="archiveSort === 'zero-twelve-desc'"
-                  @click="archiveSort = 'zero-twelve-desc'"
-                >0–12 <span aria-hidden="true">↓</span></button>
+                  :aria-label="archiveSortLabel('round')"
+                  :aria-pressed="archiveSortColumn === 'round'"
+                  @click="toggleArchiveSort('round')"
+                >Top round <span aria-hidden="true">{{ archiveSortArrow('round') }}</span></button>
                 <button
-                  :class="['archive-sort-heading', { active: archiveSort === 'comments-desc' }]"
+                  :class="['archive-sort-heading', { active: archiveSortColumn === 'ace' }]"
                   type="button"
-                  aria-label="Sort by most comments"
-                  :aria-pressed="archiveSort === 'comments-desc'"
-                  @click="archiveSort = 'comments-desc'"
-                >Comments <span aria-hidden="true">↓</span></button>
+                  :aria-label="archiveSortLabel('ace')"
+                  :aria-pressed="archiveSortColumn === 'ace'"
+                  @click="toggleArchiveSort('ace')"
+                >Ace <span aria-hidden="true">{{ archiveSortArrow('ace') }}</span></button>
+                <button
+                  :class="['archive-sort-heading', { active: archiveSortColumn === 'zero-twelve' }]"
+                  type="button"
+                  :aria-label="archiveSortLabel('zero-twelve')"
+                  :aria-pressed="archiveSortColumn === 'zero-twelve'"
+                  @click="toggleArchiveSort('zero-twelve')"
+                >0–12 <span aria-hidden="true">{{ archiveSortArrow('zero-twelve') }}</span></button>
+                <button
+                  :class="['archive-sort-heading', { active: archiveSortColumn === 'comments' }]"
+                  type="button"
+                  :aria-label="archiveSortLabel('comments')"
+                  :aria-pressed="archiveSortColumn === 'comments'"
+                  @click="toggleArchiveSort('comments')"
+                >Comments <span aria-hidden="true">{{ archiveSortArrow('comments') }}</span></button>
                 <span></span>
               </div>
               <button
@@ -1298,10 +1310,15 @@
   import {
     demoCatalogAssetUrl,
     demoCatalogMatchup,
+    demoCatalogSortColumn,
+    demoCatalogSortDirection,
+    demoCatalogSortValues,
     filterDemoCatalog,
+    toggleDemoCatalogSort,
     type DemoCatalog,
     type DemoCatalogEntry,
     type DemoCatalogSort,
+    type DemoCatalogSortColumn,
   } from '/@/archive/demo-catalog';
   import { withVerifiedWallbangBonus } from '/@/analysis/highlight-analyzer';
   import type {
@@ -1363,7 +1380,7 @@
   } from '/@/movie/movie-project';
   import {
     buildAceCinematicPlan,
-    cinematicCameraFrameAt,
+    cinematicCameraPathCommand,
     type AceCinematicPass,
     type AceCinematicPlan,
   } from '/@/movie/ace-cinematic-director';
@@ -1451,10 +1468,21 @@
   const MOVIE_INTRO_PREFERENCE_KEY = 'replay-lab-movie-intro-v1';
   const ARCHIVE_FILTERS_STORAGE_KEY = 'replay-lab-demo-archive-filters-v1';
   const COMMENT_NICKNAME_STORAGE_KEY = 'replay-lab-comment-nickname-v1';
-  const archiveSortValues: readonly DemoCatalogSort[] = [
-    'date-desc', 'date-asc', 'frag-desc', 'round-desc', 'comments-desc',
-    'ace-desc', 'zero-twelve-desc',
-  ];
+  const archiveSortValues = demoCatalogSortValues;
+  // Etiketten beskriver vad nästa klick gör, inte nuvarande ordning.
+  const archiveSortLabels: Record<DemoCatalogSortColumn, { asc: string; desc: string }> = {
+    date: { desc: 'Sort newest first', asc: 'Sort oldest first' },
+    match: { desc: 'Sort match Z to A', asc: 'Sort match A to Z' },
+    map: { desc: 'Sort map Z to A', asc: 'Sort map A to Z' },
+    frag: { desc: 'Sort by highest frag score', asc: 'Sort by lowest frag score' },
+    round: { desc: 'Sort by highest round score', asc: 'Sort by lowest round score' },
+    ace: { desc: 'Sort by most PRAXXA aces', asc: 'Sort by fewest PRAXXA aces' },
+    'zero-twelve': {
+      desc: 'Sort by most PRAXXA 0–12 scorelines',
+      asc: 'Sort by fewest PRAXXA 0–12 scorelines',
+    },
+    comments: { desc: 'Sort by most comments', asc: 'Sort by fewest comments' },
+  };
 
   const hudPresets: Array<{
     id: HudPreset;
@@ -1490,6 +1518,17 @@
   const archiveClan = ref<'all' | string>('all');
   const crewIndex = shallowRef<CrewIndex>();
   const archiveSort = ref<DemoCatalogSort>('date-desc');
+  const archiveSortColumn = computed(() => demoCatalogSortColumn(archiveSort.value));
+  const archiveSortDirection = computed(() => demoCatalogSortDirection(archiveSort.value));
+  const toggleArchiveSort = (column: DemoCatalogSortColumn): void => {
+    archiveSort.value = toggleDemoCatalogSort(archiveSort.value, column);
+  };
+  const archiveSortArrow = (column: DemoCatalogSortColumn): string => (
+    archiveSortColumn.value === column && archiveSortDirection.value === 'asc' ? '↑' : '↓'
+  );
+  const archiveSortLabel = (column: DemoCatalogSortColumn): string => archiveSortLabels[column][
+    archiveSortColumn.value === column && archiveSortDirection.value === 'desc' ? 'asc' : 'desc'
+  ];
   const archiveResultLimit = ref(50);
   const archiveSelectionPath = ref('');
   const commentNickname = ref('');
@@ -1608,7 +1647,6 @@
   let movieAutomaticScoreboardVisible = false;
   let movieScoreboardStartFrame = 0;
   let aceCinematicAppliedPass = -1;
-  let aceCinematicLastCameraUpdateAt = 0;
   let aceCinematicGeneration = 0;
   const movieScoreboardsShown = new Set<string>();
   let playlistSuppressRoute = false;
@@ -3298,13 +3336,11 @@
     }
   };
 
-  const cinematicCommandNumber = (value: number): string =>
-    (Number.isFinite(value) ? value : 0).toFixed(4);
-
   const resetAceCinematicCamera = (targetSlot?: number) => {
     if (!engineStarted.value) return;
     DemoEngine.execute('-showscores');
     DemoEngine.execute('hltv_reconstruction_camera 0');
+    DemoEngine.execute('hltv_reconstruction_path_clear');
     DemoEngine.execute('spec_autodirector 0');
     DemoEngine.execute('set spec_pip_internal 0');
     DemoEngine.execute('spec_pip 0');
@@ -3317,6 +3353,7 @@
   const applyAceCinematicPass = (pass: AceCinematicPass) => {
     if (!engineStarted.value) return;
     DemoEngine.execute('-showscores');
+    DemoEngine.execute('hltv_reconstruction_path_clear');
     DemoEngine.execute('spec_autodirector 0');
     DemoEngine.execute('set spec_pip_internal 0');
     DemoEngine.execute('spec_pip 0');
@@ -3347,6 +3384,8 @@
       DemoEngine.execute('r_drawviewmodel 0');
       DemoEngine.execute('hud_draw 0');
       DemoEngine.execute('crosshair 0');
+      const pathCommand = cinematicCameraPathCommand(pass);
+      if (pathCommand) DemoEngine.execute(pathCommand);
       DemoEngine.execute('hltv_reconstruction_camera 1');
     }
     addLog(
@@ -3355,26 +3394,12 @@
     );
   };
 
-  const updateAceCinematicCamera = (pass: AceCinematicPass, now: number) => {
-    if (pass.mode !== 'camera' || now - aceCinematicLastCameraUpdateAt < 30) return;
-    const frame = cinematicCameraFrameAt(pass, hudDemoTimeMs.value);
-    if (!frame) return;
-    aceCinematicLastCameraUpdateAt = now;
-    DemoEngine.execute(`hltv_reconstruction_x ${cinematicCommandNumber(frame.origin[0])}`);
-    DemoEngine.execute(`hltv_reconstruction_y ${cinematicCommandNumber(frame.origin[1])}`);
-    DemoEngine.execute(`hltv_reconstruction_z ${cinematicCommandNumber(frame.origin[2])}`);
-    DemoEngine.execute(`hltv_reconstruction_pitch ${cinematicCommandNumber(frame.angles[0])}`);
-    DemoEngine.execute(`hltv_reconstruction_yaw ${cinematicCommandNumber(frame.angles[1])}`);
-    DemoEngine.execute(`hltv_reconstruction_roll ${cinematicCommandNumber(frame.angles[2])}`);
-  };
-
   const completeAceCinematic = (message = 'Cinematic complete · normal HLTV playback continues.') => {
     const targetSlot = aceCinematicPlan.value?.killerSlot;
     aceCinematicGeneration += 1;
     aceCinematicPlan.value = undefined;
     aceCinematicPassIndex.value = 0;
     aceCinematicAppliedPass = -1;
-    aceCinematicLastCameraUpdateAt = 0;
     fragReelSource.value = 'playback';
     fragReelActive.value = false;
     fragReelSeeking.value = false;
@@ -3391,9 +3416,10 @@
     seeking.value = true;
     aceCinematicPassIndex.value = index;
     aceCinematicAppliedPass = -1;
-    aceCinematicLastCameraUpdateAt = 0;
     try {
       DemoEngine.execute('sys_timescale 0');
+      DemoEngine.execute('hltv_reconstruction_camera 0');
+      DemoEngine.execute('hltv_reconstruction_path_clear');
     } catch {
       // seekTo owns the final playback state even if the demo just crossed a packet boundary.
     }
@@ -3414,7 +3440,7 @@
       });
   };
 
-  const updateAceCinematicDirector = (now: number) => {
+  const updateAceCinematicDirector = () => {
     if (!aceCinematicActive.value
       || fragReelSeeking.value
       || launching.value
@@ -3427,7 +3453,6 @@
       applyAceCinematicPass(pass);
       aceCinematicAppliedPass = aceCinematicPassIndex.value;
     }
-    updateAceCinematicCamera(pass, now);
     let landedIndex = -1;
     for (const [index, death] of plan.deaths.entries()) {
       if (death.demoTimeMs <= hudDemoTimeMs.value) landedIndex = index;
@@ -3447,7 +3472,7 @@
     completePlaylistTransition();
     void startMovieRecorderIfReady();
     updateStandaloneFragPlayback();
-    if (aceCinematicActive.value) updateAceCinematicDirector(now);
+    if (aceCinematicActive.value) updateAceCinematicDirector();
     else if (!updateMovieAutomaticScoreboard(now)) updateFragReel();
     updateMovieExportProgress();
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
@@ -3937,6 +3962,13 @@
 
     try {
       if (!engineCanvas.value) throw new Error('Could not create the WebGL canvas.');
+      const cinematicRenderSize = aceCinematicActive.value
+        ? (() => {
+            const aspect = Math.max(1, window.innerWidth / Math.max(1, window.innerHeight));
+            const width = Math.min(1_024, Math.max(640, window.innerWidth));
+            return { width, height: Math.max(360, Math.round(width / aspect)) };
+          })()
+        : undefined;
       await DemoEngine.start({
         canvas: engineCanvas.value,
         gameFiles: gameFiles.value,
@@ -3955,7 +3987,7 @@
           ? { width: movieQuality.value.width, height: movieQuality.value.height }
           : automatedScoreboardCapture.value
             ? { width: 1_920, height: 1_080 }
-            : undefined,
+            : cinematicRenderSize,
         startAtMs,
         reconstructionCamera,
         onSeekStateChange: (value) => {
@@ -4594,7 +4626,6 @@
     aceCinematicPlan.value = plan;
     aceCinematicPassIndex.value = 0;
     aceCinematicAppliedPass = -1;
-    aceCinematicLastCameraUpdateAt = 0;
     fragReelSource.value = 'cinematic';
     fragReelActive.value = true;
     fragReelSeeking.value = false;
@@ -4661,7 +4692,6 @@
     aceCinematicPlan.value = undefined;
     aceCinematicPassIndex.value = 0;
     aceCinematicAppliedPass = -1;
-    aceCinematicLastCameraUpdateAt = 0;
     fragReelActive.value = false;
     fragReelSeeking.value = false;
     playlistTransitioning.value = false;

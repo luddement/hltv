@@ -169,7 +169,7 @@ class DemoEngine {
       options.canvas.width = options.renderSize.width;
       options.canvas.height = options.renderSize.height;
       options.onLog(
-        `Locking the render surface to ${options.renderSize.width}×${options.renderSize.height} for movie export.`,
+        `Locking the render surface to ${options.renderSize.width}×${options.renderSize.height}.`,
         false,
       );
     }
