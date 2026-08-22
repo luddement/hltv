@@ -633,14 +633,24 @@
                     <small>{{ moment.rating.reasons.slice(0, 2).map(scoreReasonLabel).join(' · ') }}</small>
                   </span>
                   <span class="highlight-meta">{{ logicalTeamNameForPlayer(moment.killerPlayerId) }} · {{ momentVisibilityLabel(moment) }}</span>
-                  <button
-                    class="frag-play highlight-play"
-                    type="button"
-                    :data-preview-play-id="`moment:${moment.momentId}`"
-                    :disabled="!canLaunch"
-                    :aria-label="`Play highlight with ${moment.eventIds.length} ${moment.eventIds.length === 1 ? 'frag' : 'frags'}`"
-                    @click="playMoment(moment)"
-                  ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
+                  <span class="highlight-actions">
+                    <button
+                      class="frag-play highlight-play"
+                      type="button"
+                      :data-preview-play-id="`moment:${moment.momentId}`"
+                      :disabled="!canLaunch"
+                      :aria-label="`Play highlight with ${moment.eventIds.length} ${moment.eventIds.length === 1 ? 'frag' : 'frags'}`"
+                      @click="playMoment(moment)"
+                    ><span class="play-icon" aria-hidden="true"></span><span>Play</span></button>
+                    <button
+                      v-if="canPlayAceCinematicTest(moment)"
+                      class="ace-cinematic-test"
+                      type="button"
+                      :disabled="!canLaunch"
+                      aria-label="Play the automatic cinematic ACE camera test"
+                      @click="playAceCinematicTest(moment)"
+                    ><span>Test</span><strong>Ace cinematic</strong></button>
+                  </span>
                 </div>
               </section>
               <section>
@@ -1218,11 +1228,12 @@
           {{ engineStarted ? 'Engine running' : 'Starting…' }}
         </div>
         <div v-if="fragReelActive" class="frag-reel-status">
-          <span>ONLY FRAGS · {{ fragReelTeamLabel }} <strong>{{ fragReelDisplayIndex }}/{{ fragReelDisplayCount }}</strong></span>
+          <span>{{ aceCinematicActive ? 'ACE CINEMATIC' : 'ONLY FRAGS' }} · {{ fragReelTeamLabel }} <strong>{{ fragReelDisplayIndex }}/{{ fragReelDisplayCount }}</strong></span>
           <i aria-hidden="true"></i>
-          <span>SCORE <strong>{{ activeFragReelScore }}/100</strong></span>
+          <span v-if="aceCinematicActive">{{ activeAceCinematicPass?.label }}</span>
+          <span v-else>SCORE <strong>{{ activeFragReelScore }}/100</strong></span>
         </div>
-        <button v-if="fragReelActive" type="button" @click="stopFragReel">Exit Only Frags</button>
+        <button v-if="fragReelActive" type="button" @click="stopFragReel">{{ aceCinematicActive ? 'Exit cinematic' : 'Exit Only Frags' }}</button>
         <label class="engine-hud-select">
           <span>HUD</span>
           <select :value="hudPreset" :disabled="movieExportRunning" @change="onHudSelect">
@@ -1329,6 +1340,12 @@
     type MovieExportState,
     type MovieQualityId,
   } from '/@/movie/movie-project';
+  import {
+    buildAceCinematicPlan,
+    cinematicCameraFrameAt,
+    type AceCinematicPass,
+    type AceCinematicPlan,
+  } from '/@/movie/ace-cinematic-director';
   import type {
     MovieCrosshairStyle,
     MovieHudFrame,
@@ -1509,9 +1526,16 @@
   const interfaceTheme = ref<InterfaceTheme>('replay');
   const scoreboardHeld = ref(false);
   const fragReelActive = ref(false);
-  const fragReelSource = ref<'playback' | 'movie' | 'round' | 'playlist' | 'playlist-movie'>('playback');
+  const ACE_CINEMATIC_TEST_DEMO_SHA = 'cb6d68e58ad2d6d7c3a8de96dab1d03caec1c9bf91544a745e15bfa04cb5712e';
+  const fragReelSource = ref<'playback' | 'movie' | 'round' | 'playlist' | 'playlist-movie' | 'cinematic'>('playback');
   const roundFragDeaths = shallowRef<DeathEvent[]>([]);
   const roundFragTeamLabel = ref('');
+  const aceCinematicPlan = shallowRef<AceCinematicPlan>();
+  const aceCinematicPassIndex = ref(0);
+  const aceCinematicActive = computed(() => fragReelSource.value === 'cinematic'
+    && Boolean(aceCinematicPlan.value));
+  const activeAceCinematicPass = computed(() =>
+    aceCinematicPlan.value?.passes[aceCinematicPassIndex.value]);
   const fragReelSeeking = ref(false);
   const fragReelIndex = ref(0);
   const hudPlaybackStartMs = ref(0);
@@ -1558,6 +1582,9 @@
   let movieLastDiagnosticProgressBucket = -1;
   let movieAutomaticScoreboardVisible = false;
   let movieScoreboardStartFrame = 0;
+  let aceCinematicAppliedPass = -1;
+  let aceCinematicLastCameraUpdateAt = 0;
+  let aceCinematicGeneration = 0;
   const movieScoreboardsShown = new Set<string>();
   let playlistSuppressRoute = false;
   let playlistRunGeneration = 0;
@@ -1748,12 +1775,14 @@
     !launching.value
     && !seeking.value
     && !scoreboardHeld.value
+    && (!aceCinematicActive.value || activeAceCinematicPass.value?.mode === 'pov')
     && hudPreset.value !== 'original'
     && hudPreset.value !== 'clean');
   const customCrosshairVisible = computed(() =>
     !launching.value
     && !seeking.value
     && !scoreboardHeld.value
+    && (!aceCinematicActive.value || activeAceCinematicPass.value?.mode === 'pov')
     && hudPreset.value !== 'clean'
     && (analysisIndex.value?.demo.perspective.kind !== 'hltv'
       || (nativeFov.value > 40 && ![0, 3, 4, 6, 9, 13, 18, 24, 25, 29]
@@ -1763,6 +1792,7 @@
     !launching.value
     && !seeking.value
     && !scoreboardHeld.value
+    && (!aceCinematicActive.value || activeAceCinematicPass.value?.mode === 'pov')
     && hudPreset.value !== 'clean'
     && hudPreset.value !== 'original'
     && analysisIndex.value?.demo.perspective.kind === 'hltv'
@@ -1892,6 +1922,17 @@
       || logicalTeamIdForPlayer(moment.killerPlayerId) === highlightTeam.value)
     .sort((left, right) => right.rating.score - left.rating.score)
     .slice(0, 5));
+  const aceCinematicDeaths = (moment: HighlightMoment): DeathEvent[] => moment.eventIds
+    .flatMap((eventId) => {
+      const death = deathEvents.value.find((entry) => entry.eventId === eventId);
+      return death ? [death] : [];
+    });
+  const canPlayAceCinematicTest = (moment: HighlightMoment): boolean => {
+    if (analysisIndex.value?.demo.sha256 !== ACE_CINEMATIC_TEST_DEMO_SHA
+      || analysisIndex.value.demo.perspective.kind !== 'hltv'
+      || moment.eventIds.length !== 5) return false;
+    return Boolean(buildAceCinematicPlan(moment, aceCinematicDeaths(moment)));
+  };
   const roundPlaybackDeaths = (rating: RoundRating): DeathEvent[] => {
     const perspective = analysisIndex.value?.demo.perspective.kind;
     if (!perspective) return [];
@@ -2038,6 +2079,8 @@
   });
   const activeFragReelDeaths = computed(() => playlistMode.value
     ? playlistSegmentDeaths.value
+    : fragReelSource.value === 'cinematic'
+      ? aceCinematicPlan.value?.deaths ?? []
     : fragReelSource.value === 'round'
       ? roundFragDeaths.value
       : fragReelSource.value === 'movie'
@@ -2045,9 +2088,13 @@
         : fragReelDeaths.value);
   const fragReelDisplayIndex = computed(() => playlistMode.value
     ? playlistRunCursor.value + fragReelIndex.value + 1
+    : fragReelSource.value === 'cinematic'
+      ? aceCinematicPassIndex.value + 1
     : fragReelIndex.value + 1);
   const fragReelDisplayCount = computed(() => playlistMode.value
     ? playlistRunItems.value.length
+    : fragReelSource.value === 'cinematic'
+      ? aceCinematicPlan.value?.passes.length ?? 0
     : activeFragReelDeaths.value.length);
   const movieScoreboardEvents = computed(() => {
     const focusTeam = fragPlayer.value !== 'all'
@@ -2064,6 +2111,8 @@
   });
   const fragReelTeamLabel = computed(() => playlistMode.value
     ? fragPlaylist.value.title
+    : fragReelSource.value === 'cinematic'
+      ? `${playerLabel(aceCinematicPlan.value?.killerPlayerId ?? null)} · automatic director`
     : fragReelSource.value === 'round'
       ? roundFragTeamLabel.value
       : fragPlayer.value !== 'all'
@@ -3174,12 +3223,157 @@
     }
   };
 
+  const cinematicCommandNumber = (value: number): string =>
+    (Number.isFinite(value) ? value : 0).toFixed(4);
+
+  const resetAceCinematicCamera = (targetSlot?: number) => {
+    if (!engineStarted.value) return;
+    DemoEngine.execute('-showscores');
+    DemoEngine.execute('hltv_reconstruction_camera 0');
+    DemoEngine.execute('spec_autodirector 0');
+    DemoEngine.execute('set spec_pip_internal 0');
+    DemoEngine.execute('spec_pip 0');
+    if (targetSlot) DemoEngine.execute(`hltv_spec_player ${targetSlot}`);
+    DemoEngine.execute('spec_mode 4');
+    DemoEngine.execute('r_drawviewmodel 1');
+    applyEngineHudPreset();
+  };
+
+  const applyAceCinematicPass = (pass: AceCinematicPass) => {
+    if (!engineStarted.value) return;
+    DemoEngine.execute('-showscores');
+    DemoEngine.execute('spec_autodirector 0');
+    DemoEngine.execute('set spec_pip_internal 0');
+    DemoEngine.execute('spec_pip 0');
+    DemoEngine.execute(`hltv_spec_player ${pass.targetSlot}`);
+    if (pass.mode === 'pov') {
+      DemoEngine.execute('hltv_reconstruction_camera 0');
+      DemoEngine.execute('spec_mode 4');
+      const weapon = aceCinematicPlan.value?.deaths[0]?.weapon;
+      if (weapon) DemoEngine.execute(`hltv_native_weapon ${fragWeaponViewModel(weapon)}`);
+      DemoEngine.execute('r_drawviewmodel 1');
+      DemoEngine.execute('hud_draw 1');
+      DemoEngine.execute('crosshair 1');
+    } else if (pass.mode === 'chase') {
+      DemoEngine.execute('hltv_reconstruction_camera 0');
+      DemoEngine.execute('spec_mode 2');
+      DemoEngine.execute('r_drawviewmodel 0');
+      DemoEngine.execute('hud_draw 0');
+      DemoEngine.execute('crosshair 0');
+    } else if (pass.mode === 'overview') {
+      DemoEngine.execute('hltv_reconstruction_camera 0');
+      DemoEngine.execute('spec_mode 6');
+      DemoEngine.execute('r_drawviewmodel 0');
+      DemoEngine.execute('hud_draw 0');
+      DemoEngine.execute('crosshair 0');
+    } else {
+      DemoEngine.execute('spec_mode 3');
+      DemoEngine.execute('hltv_reconstruction_entity 0');
+      DemoEngine.execute('r_drawviewmodel 0');
+      DemoEngine.execute('hud_draw 0');
+      DemoEngine.execute('crosshair 0');
+      DemoEngine.execute('hltv_reconstruction_camera 1');
+    }
+    addLog(
+      `ACE director ${aceCinematicPassIndex.value + 1}/${aceCinematicPlan.value?.passes.length ?? 0}: ${pass.label}.`,
+      false,
+    );
+  };
+
+  const updateAceCinematicCamera = (pass: AceCinematicPass, now: number) => {
+    if (pass.mode !== 'camera' || now - aceCinematicLastCameraUpdateAt < 30) return;
+    const frame = cinematicCameraFrameAt(pass, hudDemoTimeMs.value);
+    if (!frame) return;
+    aceCinematicLastCameraUpdateAt = now;
+    DemoEngine.execute(`hltv_reconstruction_x ${cinematicCommandNumber(frame.origin[0])}`);
+    DemoEngine.execute(`hltv_reconstruction_y ${cinematicCommandNumber(frame.origin[1])}`);
+    DemoEngine.execute(`hltv_reconstruction_z ${cinematicCommandNumber(frame.origin[2])}`);
+    DemoEngine.execute(`hltv_reconstruction_pitch ${cinematicCommandNumber(frame.angles[0])}`);
+    DemoEngine.execute(`hltv_reconstruction_yaw ${cinematicCommandNumber(frame.angles[1])}`);
+    DemoEngine.execute(`hltv_reconstruction_roll ${cinematicCommandNumber(frame.angles[2])}`);
+  };
+
+  const completeAceCinematic = (message = 'ACE cinematic complete · normal HLTV playback continues.') => {
+    const targetSlot = aceCinematicPlan.value?.killerSlot;
+    aceCinematicGeneration += 1;
+    aceCinematicPlan.value = undefined;
+    aceCinematicPassIndex.value = 0;
+    aceCinematicAppliedPass = -1;
+    aceCinematicLastCameraUpdateAt = 0;
+    fragReelSource.value = 'playback';
+    fragReelActive.value = false;
+    fragReelSeeking.value = false;
+    seeking.value = false;
+    resetAceCinematicCamera(targetSlot);
+    addLog(message, false);
+  };
+
+  const seekToAceCinematicPass = (index: number) => {
+    const pass = aceCinematicPlan.value?.passes[index];
+    if (!pass || fragReelSeeking.value) return;
+    const generation = aceCinematicGeneration;
+    fragReelSeeking.value = true;
+    seeking.value = true;
+    aceCinematicPassIndex.value = index;
+    aceCinematicAppliedPass = -1;
+    aceCinematicLastCameraUpdateAt = 0;
+    try {
+      DemoEngine.execute('sys_timescale 0');
+    } catch {
+      // seekTo owns the final playback state even if the demo just crossed a packet boundary.
+    }
+    void DemoEngine.seekTo(pass.startTimeMs, true)
+      .then(() => {
+        if (generation !== aceCinematicGeneration || !aceCinematicActive.value) return;
+        hudPlaybackStartMs.value = pass.startTimeMs;
+        hudPlaybackStartedAt.value = performance.now();
+        seeking.value = false;
+        fragReelSeeking.value = false;
+        applyAceCinematicPass(pass);
+        aceCinematicAppliedPass = index;
+        engineCanvas.value?.focus();
+      })
+      .catch((error) => {
+        addLog(error instanceof Error ? error.message : 'The cinematic camera could not rewind.', true);
+        completeAceCinematic();
+      });
+  };
+
+  const updateAceCinematicDirector = (now: number) => {
+    if (!aceCinematicActive.value
+      || fragReelSeeking.value
+      || launching.value
+      || seeking.value
+      || !engineStarted.value) return;
+    const plan = aceCinematicPlan.value;
+    const pass = activeAceCinematicPass.value;
+    if (!plan || !pass) return;
+    if (aceCinematicAppliedPass !== aceCinematicPassIndex.value) {
+      applyAceCinematicPass(pass);
+      aceCinematicAppliedPass = aceCinematicPassIndex.value;
+    }
+    updateAceCinematicCamera(pass, now);
+    let landedIndex = -1;
+    for (const [index, death] of plan.deaths.entries()) {
+      if (death.demoTimeMs <= hudDemoTimeMs.value) landedIndex = index;
+    }
+    fragReelIndex.value = Math.max(0, landedIndex);
+    if (hudDemoTimeMs.value < pass.endTimeMs) return;
+    const nextIndex = aceCinematicPassIndex.value + 1;
+    if (nextIndex >= plan.passes.length) {
+      completeAceCinematic();
+      return;
+    }
+    seekToAceCinematicPass(nextIndex);
+  };
+
   const tickHudClock = (now: number) => {
     hudNow.value = now;
     completePlaylistTransition();
     void startMovieRecorderIfReady();
     updateStandaloneFragPlayback();
-    if (!updateMovieAutomaticScoreboard(now)) updateFragReel();
+    if (aceCinematicActive.value) updateAceCinematicDirector(now);
+    else if (!updateMovieAutomaticScoreboard(now)) updateFragReel();
     updateMovieExportProgress();
     hudClockFrame = window.requestAnimationFrame(tickHudClock);
   };
@@ -4182,6 +4376,10 @@
   };
 
   const stopFragReel = () => {
+    if (aceCinematicActive.value) {
+      completeAceCinematic('ACE cinematic ended · normal HLTV playback continues.');
+      return;
+    }
     if (movieExportRunning.value) {
       void cancelMovieExport();
       return;
@@ -4312,6 +4510,34 @@
     );
   };
 
+  const playAceCinematicTest = (moment: HighlightMoment) => {
+    const plan = buildAceCinematicPlan(moment, aceCinematicDeaths(moment));
+    if (!canPlayAceCinematicTest(moment) || !plan) return;
+    stopEngineBeforeLaunch();
+    workspaceViewSnapshot = captureWorkspaceView(`moment:${moment.momentId}`);
+    aceCinematicGeneration += 1;
+    aceCinematicPlan.value = plan;
+    aceCinematicPassIndex.value = 0;
+    aceCinematicAppliedPass = -1;
+    aceCinematicLastCameraUpdateAt = 0;
+    fragReelSource.value = 'cinematic';
+    fragReelActive.value = true;
+    fragReelSeeking.value = false;
+    fragReelIndex.value = 0;
+    standaloneFragEndTimeMs.value = undefined;
+    selectedFragId.value = plan.deaths[0]?.eventId ?? '';
+    const firstPass = plan.passes[0];
+    if (!firstPass) return;
+    hudPlaybackStartMs.value = firstPass.startTimeMs;
+    const camera = killerCameraFor(plan.deaths[0], firstPass.startTimeMs);
+    if (camera?.nativeHltv) camera.activateAfterMs = 0;
+    addLog(
+      `ACE cinematic queued: ${plan.passes.length} angles · ${formatDuration(plan.visibleDurationMs / 1_000)} visible runtime.`,
+      false,
+    );
+    void launchDemo(firstPass.startTimeMs, camera);
+  };
+
   const playRatedRound = (rating: RoundRating) => {
     const round = analysisIndex.value?.rounds.find((entry) => entry.roundId === rating.roundId);
     const winningDeaths = roundPlaybackDeaths(rating);
@@ -4346,6 +4572,11 @@
     movieAutomaticScoreboardVisible = false;
     movieScoreboardStartFrame = 0;
     movieScoreboardsShown.clear();
+    aceCinematicGeneration += 1;
+    aceCinematicPlan.value = undefined;
+    aceCinematicPassIndex.value = 0;
+    aceCinematicAppliedPass = -1;
+    aceCinematicLastCameraUpdateAt = 0;
     fragReelActive.value = false;
     fragReelSeeking.value = false;
     playlistTransitioning.value = false;
